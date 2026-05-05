@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("EMPLOYEE")
+  position      String?
+  department    String?
+  phone         String?
+  birthDate     DateTime?
+  startDate     DateTime?
+  managerId     String?
+  manager       User?     @relation("TeamMembers", fields: [managerId], references: [id])
+  teamMembers   User[]    @relation("TeamMembers")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts             Account[]
+  sessions             Session[]
+  posts                Post[]
+  comments             Comment[]
+  likes                Like[]
+  recognitionsGiven    Recognition[] @relation("GivenBy")
+  recognitionsReceived Recognition[] @relation("ReceivedBy")
+  leaveRequests        LeaveRequest[] @relation("RequestedBy")
+  approvedRequests     LeaveRequest[] @relation("ApprovedBy")
+  sentMessages         Message[]
+  salaries             Salary[]
+  channelMembers       ChannelMember[]
+}
+
+model Post {
+  id        String    @id @default(cuid())
+  content   String
+  imageUrl  String?
+  pinned    Boolean   @default(false)
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  likes     Like[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  allDay      Boolean   @default(false)
+  color       String    @default("#3b82f6")
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  fileUrl      String
+  fileType     String
+  fileSize     Int
+  category     String   @default("General")
+  uploadedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Recognition {
+  id           String   @id @default(cuid())
+  message      String
+  category     String   @default("great_job")
+  givenById    String
+  givenBy      User     @relation("GivenBy", fields: [givenById], references: [id], onDelete: Cascade)
+  receivedById String
+  receivedBy   User     @relation("ReceivedBy", fields: [receivedById], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+}
+
+model LeaveRequest {
+  id            String    @id @default(cuid())
+  type          String
+  status        String    @default("PENDING")
+  startDate     DateTime
+  endDate       DateTime
+  reason        String?
+  adminComment  String?
+  requestedById String
+  requestedBy   User      @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  approvedById  String?
+  approvedBy    User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Channel {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  isPrivate   Boolean         @default(false)
+  isDirect    Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  members     ChannelMember[]
+  messages    Message[]
+}
+
+model ChannelMember {
+  id        String   @id @default(cuid())
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+
+  @@unique([channelId, userId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Salary {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period      String
+  grossAmount Float
+  netAmount   Float
+  currency    String   @default("ARS")
+  breakdown   String?
+  fileUrl     String?
+  createdAt   DateTime @default(now())
+}
