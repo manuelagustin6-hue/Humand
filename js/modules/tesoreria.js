@@ -4,6 +4,7 @@ function renderTesoreria() {
   const txs = DB.getAll('treasuryTx');
   const projects = DB.getAll('projects');
 
+  // Calc balances
   const accountsWithBalance = accounts.map(acc => {
     const income = txs.filter(t => t.account_id === acc.id && t.type === 'income').reduce((s,t) => s+t.amount, 0);
     const expense = txs.filter(t => t.account_id === acc.id && t.type === 'expense').reduce((s,t) => s+t.amount, 0);
@@ -27,6 +28,7 @@ function renderTesoreria() {
   </div>
 </div>
 
+<!-- ACCOUNT CARDS -->
 <div class="grid-auto mb-2">
   ${accountsWithBalance.map(acc => `
   <div class="card" style="cursor:pointer" onclick="showAccountTx('${acc.id}')">
@@ -53,6 +55,7 @@ function renderTesoreria() {
   </div>
 </div>
 
+<!-- SUMMARY -->
 <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
   <div class="stat-card"><div class="stat-icon green"><i class="fas fa-arrow-down"></i></div><div>
     <div class="stat-value text-success">${fmtMoney(totalIncome)}</div><div class="stat-label">Ingresos Totales</div></div></div>
@@ -398,7 +401,7 @@ function exportTx() {
   const txs = DB.getAll('treasuryTx');
   const accounts = DB.getAll('bankAccounts');
   const projects = DB.getAll('projects');
-  exportCSV('movimientos_tesoreria.csv',
+  exportXLSX('movimientos_tesoreria.xlsx',
     ['Fecha','Cuenta','Tipo','Categoría','Descripción','Proyecto','Referencia','Importe'],
     txs.map(t => [
       t.date,

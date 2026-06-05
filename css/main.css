@@ -628,10 +628,18 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
 /* Print */
 @media print {
-  #sidebar, #topbar, .page-actions, .filter-bar { display: none !important; }
+  #sidebar, #topbar, .page-actions, .filter-bar, .btn, button { display: none !important; }
   #main-area { width: 100%; }
   #content { overflow: visible; padding: 0; }
   body { overflow: visible; }
+  #app { display: block; height: auto; }
+  .tabs { display: none !important; }
+  .tab-content { display: block !important; }
+  .tab-content:not(.active) { display: none !important; }
+  .card { break-inside: avoid; box-shadow: none; border: 1px solid #ccc; }
+  .stats-grid { grid-template-columns: repeat(4, 1fr) !important; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr 1fr !important; }
+  .chart-wrap, .chart-wrap canvas { max-height: 200px !important; }
 }
 
 /* ===== SCROLLBAR ===== */

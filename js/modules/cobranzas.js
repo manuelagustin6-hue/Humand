@@ -58,6 +58,7 @@ function renderCobranzas() {
   initTabs('cobr-tabs');
 }
 
+// ---- AGING REPORT ----
 function renderAging(invoices, collections, projects) {
   const today = todayStr();
   const openInvoices = invoices.filter(i => ['sent','overdue'].includes(i.status));
@@ -120,6 +121,7 @@ function renderAging(invoices, collections, projects) {
   </div>
 </div>
 
+<!-- Desglose de vencidas -->
 ${Object.entries(agingBuckets).filter(([k]) => k !== 'current').map(([key, b]) => {
   if (!b.invoices.length) return '';
   return `
@@ -147,6 +149,7 @@ ${Object.entries(agingBuckets).filter(([k]) => k !== 'current').map(([key, b]) =
 </div>`;
 }
 
+// ---- COLLECTIONS TABLE ----
 function renderCollectionsTable(collections, invoices, projects) {
   if (!collections.length) return `<div class="empty-state"><i class="fas fa-hand-holding-dollar"></i><p>No hay cobros registrados</p></div>`;
 
@@ -178,6 +181,7 @@ function renderCollectionsTable(collections, invoices, projects) {
   </div></div></div>`;
 }
 
+// ---- OPEN INVOICES ----
 function renderOpenInvoices(invoices, collections, projects) {
   const open = invoices.filter(i => ['sent','overdue','draft'].includes(i.status));
   if (!open.length) return `<div class="empty-state"><i class="fas fa-check-circle" style="color:var(--success);opacity:1"></i><p>¡Todas las facturas están cobradas!</p></div>`;
@@ -296,6 +300,7 @@ function saveCollection() {
     notes: document.getElementById('cf-notes').value.trim(),
   });
 
+  // Check if fully paid
   const allCollected = DB.getAll('collections').filter(c => c.invoice_id === invoiceId).reduce((s,c) => s+c.amount, 0);
   if (inv && allCollected >= inv.total) {
     DB.update('invoices', invoiceId, { status: 'paid' });

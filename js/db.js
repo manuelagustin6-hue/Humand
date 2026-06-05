@@ -111,31 +111,31 @@ const DB = {
 
     const chk = (col, item, field, setKey, label) => {
       if (item[field] && !sets[setKey].has(item[field]))
-        issues.push({ severity: 'error', collection: col, id: item.id, msg: label + ': referencia "' + field + '" (' + item[field] + ') no existe' });
+        issues.push({ severity: 'error', collection: col, id: item.id, msg: `${label}: referencia "${field}" (${item[field]}) no existe` });
     };
 
-    (db.purchaseOrders     || []).forEach(o  => { chk('purchaseOrders', o, 'project_id', 'projects', 'OC ' + (o.number||o.id)); chk('purchaseOrders', o, 'supplier_id', 'suppliers', 'OC ' + (o.number||o.id)); });
-    (db.purchaseRequisitions || []).forEach(r => chk('purchaseRequisitions', r, 'project_id', 'projects', 'Req ' + (r.number||r.id)));
-    (db.invoices           || []).forEach(i  => chk('invoices', i, 'project_id', 'projects', 'Fact. ' + (i.number||i.id)));
-    (db.certificates       || []).forEach(c  => chk('certificates', c, 'project_id', 'projects', 'Cert. ' + (c.number||c.id)));
-    (db.ganttTasks         || []).forEach(t  => chk('ganttTasks', t, 'project_id', 'projects', 'Tarea ' + (t.name||t.id)));
-    (db.boqItems           || []).forEach(b  => chk('boqItems', b, 'project_id', 'projects', 'BOQ ' + (b.description||b.id)));
-    (db.actualCosts        || []).forEach(c  => chk('actualCosts', c, 'project_id', 'projects', 'Costo ' + (c.description||c.id)));
-    (db.treasuryTx         || []).forEach(tx => chk('treasuryTx', tx, 'account_id', 'bankAccounts', 'Mov. ' + (tx.description||tx.id)));
-    (db.paymentOrders      || []).forEach(op => { chk('paymentOrders', op, 'supplier_id', 'suppliers', 'OP ' + (op.number||op.id)); chk('paymentOrders', op, 'account_id', 'bankAccounts', 'OP ' + (op.number||op.id)); });
-    (db.collections        || []).forEach(co => { chk('collections', co, 'invoice_id', 'invoices', 'Cobro ' + (co.reference||co.id)); chk('collections', co, 'project_id', 'projects', 'Cobro ' + (co.reference||co.id)); });
+    (db.purchaseOrders     || []).forEach(o  => { chk('purchaseOrders',     o,  'project_id',  'projects',     `OC ${o.number||o.id}`);  chk('purchaseOrders', o, 'supplier_id', 'suppliers', `OC ${o.number||o.id}`); });
+    (db.purchaseRequisitions || []).forEach(r => chk('purchaseRequisitions', r, 'project_id', 'projects', `Req ${r.number||r.id}`));
+    (db.invoices           || []).forEach(i  => chk('invoices',           i, 'project_id', 'projects',     `Fact. ${i.number||i.id}`));
+    (db.certificates       || []).forEach(c  => chk('certificates',       c, 'project_id', 'projects',     `Cert. ${c.number||c.id}`));
+    (db.ganttTasks         || []).forEach(t  => chk('ganttTasks',         t, 'project_id', 'projects',     `Tarea ${t.name||t.id}`));
+    (db.boqItems           || []).forEach(b  => chk('boqItems',           b, 'project_id', 'projects',     `BOQ ${b.description||b.id}`));
+    (db.actualCosts        || []).forEach(c  => chk('actualCosts',        c, 'project_id', 'projects',     `Costo ${c.description||c.id}`));
+    (db.treasuryTx         || []).forEach(tx => chk('treasuryTx',         tx,'account_id', 'bankAccounts', `Mov. ${tx.description||tx.id}`));
+    (db.paymentOrders      || []).forEach(op => { chk('paymentOrders', op, 'supplier_id', 'suppliers', `OP ${op.number||op.id}`); chk('paymentOrders', op, 'account_id', 'bankAccounts', `OP ${op.number||op.id}`); });
+    (db.collections        || []).forEach(co => { chk('collections', co, 'invoice_id', 'invoices', `Cobro ${co.reference||co.id}`); chk('collections', co, 'project_id', 'projects', `Cobro ${co.reference||co.id}`); });
 
     // Journal entry accounts & balance
     (db.journalEntries || []).forEach(je => {
       (je.lines || []).forEach(l => {
         if (l.account_code && !sets.accountCodes.has(l.account_code))
-          issues.push({ severity: 'error', collection: 'journalEntries', id: je.id, msg: 'Asiento ' + je.number + ': cuenta ' + l.account_code + ' no existe en el plan' });
+          issues.push({ severity: 'error', collection: 'journalEntries', id: je.id, msg: `Asiento ${je.number}: cuenta ${l.account_code} no existe en el plan` });
       });
       if (je.status === 'posted') {
         const td = (je.lines || []).reduce((s, l) => s + (l.debit || 0), 0);
         const tc = (je.lines || []).reduce((s, l) => s + (l.credit || 0), 0);
         if (Math.abs(td - tc) > 1)
-          issues.push({ severity: 'warning', collection: 'journalEntries', id: je.id, msg: 'Asiento ' + je.number + ' contabilizado pero desbalanceado (Debe ' + td.toLocaleString('es-AR') + ' vs Haber ' + tc.toLocaleString('es-AR') + ')' });
+          issues.push({ severity: 'warning', collection: 'journalEntries', id: je.id, msg: `Asiento ${je.number} contabilizado pero desbalanceado (Debe ${td.toLocaleString('es-AR')} ≠ Haber ${tc.toLocaleString('es-AR')})` });
       }
     });
 
@@ -143,18 +143,18 @@ const DB = {
     (db.invoices || []).filter(inv => inv.status === 'paid').forEach(inv => {
       const collected = (db.collections || []).filter(c => c.invoice_id === inv.id).reduce((s, c) => s + c.amount, 0);
       if (collected < inv.total * 0.99)
-        issues.push({ severity: 'warning', collection: 'invoices', id: inv.id, msg: 'Factura ' + inv.number + ' marcada Cobrada pero cobros registrados: $' + Math.round(collected).toLocaleString('es-AR') + ' de $' + Math.round(inv.total).toLocaleString('es-AR') });
+        issues.push({ severity: 'warning', collection: 'invoices', id: inv.id, msg: `Factura ${inv.number} marcada "Cobrada" pero cobros registrados: $${Math.round(collected).toLocaleString('es-AR')} de $${Math.round(inv.total).toLocaleString('es-AR')}` });
     });
 
     // Duplicate PO numbers
     const poNums = (db.purchaseOrders || []).map(p => p.number).filter(Boolean);
     poNums.filter((n, i) => poNums.indexOf(n) !== i).forEach(n =>
-      issues.push({ severity: 'warning', collection: 'purchaseOrders', msg: 'Número de OC duplicado: ' + n }));
+      issues.push({ severity: 'warning', collection: 'purchaseOrders', msg: `Número de OC duplicado: ${n}` }));
 
     // Duplicate invoice numbers
     const invNums = (db.invoices || []).map(i => i.number).filter(Boolean);
     invNums.filter((n, i) => invNums.indexOf(n) !== i).forEach(n =>
-      issues.push({ severity: 'warning', collection: 'invoices', msg: 'Número de factura duplicado: ' + n }));
+      issues.push({ severity: 'warning', collection: 'invoices', msg: `Número de factura duplicado: ${n}` }));
 
     return issues;
   },
@@ -191,12 +191,14 @@ const DB = {
         { id: 'req-003', number: 'OP-2025-003', project_id: p1, requested_by: 'Téc. Rodríguez', priority: 'critical', required_date: '2025-04-28', status: 'draft', items: [{ description: 'Encofrado metálico 1.20x2.40m', rubro: 'Encofrados', unit: 'Panel', quantity: 40, unit_price: 45000, total: 1800000 }], total: 1800000, notes: 'Necesario para losa del 5to piso', approved_by: null, approved_date: null, submitted_date: null, po_id: null, created_at: now() },
       ],
       boqItems: [
+        // Torre Palermo
         { id: uuid(), project_id: p1, chapter: '01', item: '01.01', category: 'Estructura', description: 'Hormigón armado fundaciones', unit: 'm3', quantity: 320, unit_price: 85000, total: 27200000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '01', item: '01.02', category: 'Estructura', description: 'Hormigón armado columnas y losas', unit: 'm3', quantity: 1200, unit_price: 78000, total: 93600000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '02', item: '02.01', category: 'Mampostería', description: 'Albañilería ladrillo hueco', unit: 'm2', quantity: 4800, unit_price: 12500, total: 60000000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '02', item: '02.02', category: 'Mampostería', description: 'Revoques interiores', unit: 'm2', quantity: 9600, unit_price: 4800, total: 46080000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '03', item: '03.01', category: 'Instalaciones', description: 'Instalación eléctrica', unit: 'm2', quantity: 4800, unit_price: 8500, total: 40800000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '03', item: '03.02', category: 'Instalaciones', description: 'Instalación sanitaria', unit: 'm2', quantity: 4800, unit_price: 7200, total: 34560000, created_at: now() },
+        // Shopping Quilmes
         { id: uuid(), project_id: p2, chapter: '01', item: '01.01', category: 'Estructura', description: 'Pilotes y fundaciones especiales', unit: 'm3', quantity: 850, unit_price: 125000, total: 106250000, created_at: now() },
         { id: uuid(), project_id: p2, chapter: '01', item: '01.02', category: 'Estructura', description: 'Estructura metálica principal', unit: 'tn', quantity: 480, unit_price: 380000, total: 182400000, created_at: now() },
         { id: uuid(), project_id: p2, chapter: '02', item: '02.01', category: 'Cerramiento', description: 'Fachada vidriada', unit: 'm2', quantity: 2800, unit_price: 55000, total: 154000000, created_at: now() },
@@ -241,22 +243,27 @@ const DB = {
         { id: uuid(), account_id: 'ba-002', project_id: p1, type: 'expense', category: 'Materiales menores', description: 'Compra materiales obra semana 15', amount: 145000, date: '2025-04-10', reference: 'CC-045', created_at: now() },
       ],
       accounts: [
+        // Activo
         { id: 'ac-100', code: '1', name: 'ACTIVO', type: 'asset', parent_id: null, active: true, created_at: now() },
         { id: 'ac-101', code: '1.1', name: 'Activo Corriente', type: 'asset', parent_id: 'ac-100', active: true, created_at: now() },
         { id: 'ac-102', code: '1.1.1', name: 'Caja y Bancos', type: 'asset', parent_id: 'ac-101', active: true, created_at: now() },
         { id: 'ac-103', code: '1.1.2', name: 'Cuentas por Cobrar', type: 'asset', parent_id: 'ac-101', active: true, created_at: now() },
         { id: 'ac-104', code: '1.2', name: 'Activo No Corriente', type: 'asset', parent_id: 'ac-100', active: true, created_at: now() },
         { id: 'ac-105', code: '1.2.1', name: 'Obras en Curso', type: 'asset', parent_id: 'ac-104', active: true, created_at: now() },
+        // Pasivo
         { id: 'ac-200', code: '2', name: 'PASIVO', type: 'liability', parent_id: null, active: true, created_at: now() },
         { id: 'ac-201', code: '2.1', name: 'Pasivo Corriente', type: 'liability', parent_id: 'ac-200', active: true, created_at: now() },
         { id: 'ac-202', code: '2.1.1', name: 'Cuentas por Pagar', type: 'liability', parent_id: 'ac-201', active: true, created_at: now() },
         { id: 'ac-203', code: '2.1.2', name: 'IVA a Pagar', type: 'liability', parent_id: 'ac-201', active: true, created_at: now() },
+        // Patrimonio
         { id: 'ac-300', code: '3', name: 'PATRIMONIO NETO', type: 'equity', parent_id: null, active: true, created_at: now() },
         { id: 'ac-301', code: '3.1', name: 'Capital Social', type: 'equity', parent_id: 'ac-300', active: true, created_at: now() },
         { id: 'ac-302', code: '3.2', name: 'Resultados Acumulados', type: 'equity', parent_id: 'ac-300', active: true, created_at: now() },
+        // Ingresos
         { id: 'ac-400', code: '4', name: 'INGRESOS', type: 'revenue', parent_id: null, active: true, created_at: now() },
         { id: 'ac-401', code: '4.1', name: 'Ingresos por Obras', type: 'revenue', parent_id: 'ac-400', active: true, created_at: now() },
         { id: 'ac-402', code: '4.2', name: 'Otros Ingresos', type: 'revenue', parent_id: 'ac-400', active: true, created_at: now() },
+        // Egresos
         { id: 'ac-500', code: '5', name: 'EGRESOS', type: 'expense', parent_id: null, active: true, created_at: now() },
         { id: 'ac-501', code: '5.1', name: 'Costo de Obras', type: 'expense', parent_id: 'ac-500', active: true, created_at: now() },
         { id: 'ac-502', code: '5.2', name: 'Gastos de Administración', type: 'expense', parent_id: 'ac-500', active: true, created_at: now() },

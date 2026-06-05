@@ -3,6 +3,7 @@ function renderRetenciones() {
   const retentions = DB.getAll('retentions');
   const paymentOrders = DB.getAll('paymentOrders');
 
+  // Calc applied retentions from payment orders
   const applied = [];
   paymentOrders.forEach(o => {
     const sup = DB.getById('suppliers', o.supplier_id);

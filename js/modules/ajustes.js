@@ -76,7 +76,7 @@ function buildBackupTab() {
     '<div class="card-header"><span class="card-title"><i class="fas fa-upload text-warning"></i> Importar Datos</span></div>' +
     '<div class="card-body">' +
     '<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">' +
-    'Restará los datos desde un archivo JSON generado por este sistema. ' +
+    'Restaurá los datos desde un archivo JSON generado por este sistema. ' +
     '<strong style="color:var(--danger)">Reemplaza todos los datos actuales.</strong>' +
     '</p>' +
     '<input type="file" id="ajustes-import-file" accept=".json" style="display:none" onchange="doImportBackup(this)">' +
@@ -233,7 +233,7 @@ function doImportBackup(input) {
   var reader = new FileReader();
   reader.onload = function(e) {
     confirmDialog(
-      'Importar datos desde "' + file.name + '"? Esto reemplazará TODOS los datos actuales.',
+      'Importar datos desde "' + file.name + '"? Esto reemplazará TODOS los datos actuales. Exportá un respaldo antes si es necesario.',
       function() {
         var result = DB.importData(e.target.result);
         if (result.ok) {
@@ -251,7 +251,7 @@ function doImportBackup(input) {
 
 function ajustesConfirmReset() {
   confirmDialog(
-    'Reiniciar con datos de demostración? Se perderán todos los datos actuales.',
+    'Reiniciar con datos de demostración? Se perderán todos los datos actuales. Exportá un respaldo primero si querés conservarlos.',
     function() {
       DB.resetToSeed();
       toast('Datos reiniciados. Recargando...', 'success');

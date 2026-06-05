@@ -6,6 +6,7 @@ function renderDashboard() {
   const collections = DB.getAll('collections');
   const tasks = DB.getAll('ganttTasks');
 
+  const actualCosts = DB.getAll('actualCosts');
   const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
   const activeProjects = projects.filter(p => p.status === 'active').length;
   const totalBilled = invoices.reduce((s, i) => s + (i.total || 0), 0);
@@ -14,6 +15,9 @@ function renderDashboard() {
   const totalPOs = pos.reduce((s, p) => s + (p.total || 0), 0);
   const overdueInvoices = invoices.filter(i => i.status === 'overdue').length;
   const tasksInProgress = tasks.filter(t => t.status === 'in_progress').length;
+  const totalActual = actualCosts.reduce((s, a) => s + (a.amount || 0), 0);
+  const grossMargin = totalBilled - totalActual;
+  const marginPct = totalBilled > 0 ? (grossMargin / totalBilled * 100) : 0;
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -22,10 +26,11 @@ function renderDashboard() {
     <div class="page-subtitle">Resumen ejecutivo del portafolio de obras</div>
   </div>
   <div class="page-actions">
-    <span style="font-size:12px;color:var(--text-muted)"><i class="fas fa-clock"></i> Actualizado: ${fmtDatetime(now())}</span>
+    <span style="font-size:12px;color:var(--text-muted)"><i class="fas fa-clock"></i> Actualizado: ${fmtDatetime(new Date().toISOString())}</span>
   </div>
 </div>
 
+<!-- KPI CARDS -->
 <div class="stats-grid">
   <div class="stat-card">
     <div class="stat-icon blue"><i class="fas fa-building"></i></div>
@@ -79,9 +84,20 @@ function renderDashboard() {
       <div class="stat-delta up"><i class="fas fa-stream"></i> ${tasks.filter(t=>t.status==='completed').length} completadas</div>
     </div>
   </div>
+  <div class="stat-card">
+    <div class="stat-icon ${marginPct >= 15 ? 'green' : marginPct >= 0 ? 'yellow' : 'red'}"><i class="fas fa-percentage"></i></div>
+    <div>
+      <div class="stat-value ${marginPct >= 0 ? 'text-success' : 'text-danger'}">${fmtPct(marginPct)}</div>
+      <div class="stat-label">Margen Bruto</div>
+      <div class="stat-delta ${marginPct >= 0 ? 'up' : 'down'}">
+        ${marginPct >= 0 ? '<i class="fas fa-arrow-up"></i>' : '<i class="fas fa-arrow-down"></i>'} ${fmtMoney(grossMargin)}
+      </div>
+    </div>
+  </div>
 </div>
 
-<div class="grid-2 mb-2">
+<!-- CHARTS ROW -->
+<div class="grid-3 mb-2">
   <div class="card">
     <div class="card-header">
       <span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Estado de Proyectos</span>
@@ -92,14 +108,23 @@ function renderDashboard() {
   </div>
   <div class="card">
     <div class="card-header">
-      <span class="card-title"><i class="fas fa-chart-line text-primary"></i> Facturación vs Cobros (últimos 6 meses)</span>
+      <span class="card-title"><i class="fas fa-chart-line text-primary"></i> Facturación vs Cobros</span>
     </div>
     <div class="card-body">
       <div class="chart-wrap"><canvas id="chart-cashflow"></canvas></div>
     </div>
   </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-balance-scale text-primary"></i> Presupuesto vs Costo Real</span>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrap"><canvas id="chart-budget"></canvas></div>
+    </div>
+  </div>
 </div>
 
+<!-- PROJECTS TABLE + ALERTS -->
 <div class="grid-2">
   <div class="card">
     <div class="card-header">
@@ -142,6 +167,7 @@ function renderDashboard() {
   </div>
 </div>
 
+<!-- RECENT ACTIVITY -->
 <div class="card mt-3">
   <div class="card-header">
     <span class="card-title"><i class="fas fa-history text-primary"></i> Facturas Recientes</span>
@@ -170,25 +196,33 @@ function renderDashboard() {
 </div>
   `;
 
+  // Charts
   renderProjectsChart(projects);
   renderCashflowChart(invoices, collections);
+  renderBudgetChart(projects, actualCosts);
 }
 
 function buildAlerts(invoices, pos, tasks) {
   const alerts = [];
+
   invoices.filter(i => i.status === 'overdue').forEach(i => {
     const p = DB.getById('projects', i.project_id);
     alerts.push({ type: 'danger', icon: 'fa-exclamation-circle', msg: `Factura vencida ${i.number} — ${p ? p.name : ''} — ${fmtMoney(i.total)}` });
   });
+
   pos.filter(p => p.status === 'sent').forEach(po => {
+    const proj = DB.getById('projects', po.project_id);
     alerts.push({ type: 'warning', icon: 'fa-clock', msg: `OC ${po.number} pendiente de recepción — ${fmtMoney(po.total)}` });
   });
+
   tasks.filter(t => t.status === 'delayed').forEach(t => {
     alerts.push({ type: 'danger', icon: 'fa-stream', msg: `Tarea demorada: ${t.name}` });
   });
+
   if (alerts.length === 0) {
     return `<div class="empty-state" style="padding:30px"><i class="fas fa-check-circle" style="color:var(--success);opacity:1"></i><p>Sin alertas pendientes</p></div>`;
   }
+
   return `<div style="padding:4px 0">
     ${alerts.map(a => `
       <div style="display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:flex-start">
@@ -203,6 +237,7 @@ function renderProjectsChart(projects) {
   if (!ctx) return;
   const statusCount = { active: 0, planning: 0, completed: 0, paused: 0 };
   projects.forEach(p => { if (statusCount[p.status] !== undefined) statusCount[p.status]++; });
+
   new Chart(ctx, {
     type: 'doughnut',
     data: {
@@ -216,16 +251,47 @@ function renderProjectsChart(projects) {
   });
 }
 
+function renderBudgetChart(projects, actualCosts) {
+  const ctx = document.getElementById('chart-budget');
+  if (!ctx || !projects.length) return;
+  const shown = projects.slice(0, 6);
+  const labels = shown.map(p => p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name);
+  const budgets = shown.map(p => p.budget || 0);
+  const actuals = shown.map(p => actualCosts.filter(a => a.project_id === p.id).reduce((s, a) => s + (a.amount || 0), 0));
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Presupuesto', data: budgets, backgroundColor: 'rgba(37,99,235,.55)', borderRadius: 4 },
+        { label: 'Costo Real', data: actuals, backgroundColor: 'rgba(239,68,68,.75)', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, indexAxis: 'y',
+      plugins: { legend: { labels: { font: { size: 10 } } } },
+      scales: {
+        x: { ticks: { callback: v => fmtMoney(v), font: { size: 9 } }, grid: { color: '#f1f5f9' } },
+        y: { ticks: { font: { size: 10 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
 function renderCashflowChart(invoices, collections) {
   const ctx = document.getElementById('chart-cashflow');
   if (!ctx) return;
+
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(); d.setMonth(d.getMonth() - i);
     months.push({ key: d.toISOString().slice(0,7), label: d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }) });
   }
+
   const billed = months.map(m => invoices.filter(i => i.date && i.date.startsWith(m.key)).reduce((s,i) => s + i.total, 0));
   const collected = months.map(m => collections.filter(c => c.date && c.date.startsWith(m.key)).reduce((s,c) => s + c.amount, 0));
+
   new Chart(ctx, {
     type: 'bar',
     data: {

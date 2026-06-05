@@ -13,6 +13,7 @@ function renderIndices() {
   </div>
 </div>
 
+<!-- CURRENT INDEX CARDS -->
 <div class="stats-grid" style="grid-template-columns:repeat(${Math.min(indices.length,4)},1fr);margin-bottom:16px">
   ${indices.filter(i=>i.active!==false).map(idx => {
     const lastHistory = (idx.history||[]).slice(-2);
@@ -101,6 +102,7 @@ function renderIndices() {
   `;
   initTabs('idx-tabs');
 
+  // Auto-fill calc when index changes
   document.getElementById('calc-index')?.addEventListener('change', function() {
     const idx = DB.getById('priceIndices', this.value);
     if (idx) {
@@ -229,6 +231,7 @@ function saveIndex(id) {
 
   if (id) {
     const existing = DB.getById('priceIndices', id);
+    // add to history if value changed
     const history = existing?.history || [];
     if (currVal && currVal !== existing?.current_value) {
       history.push({ date: lastUpdate, value: currVal });

@@ -18,7 +18,7 @@ function renderGantt() {
   </div>
 </div>
 <div id="gantt-container">
-  ${activeProjectId ? buildGanttView(activeProjectId) : `<div class="empty-state"><i class="fas fa-stream"></i><p>Selecioná un proyecto para ver su cronograma</p></div>`}
+  ${activeProjectId ? buildGanttView(activeProjectId) : `<div class="empty-state"><i class="fas fa-stream"></i><p>Seleccioná un proyecto para ver su cronograma</p></div>`}
 </div>
   `;
   if (activeProjectId) document.getElementById('gantt-project-sel').value = activeProjectId;
@@ -28,7 +28,7 @@ function loadGantt(projectId) {
   window.APP_STATE.activeProject = projectId;
   document.getElementById('gantt-container').innerHTML = projectId
     ? buildGanttView(projectId)
-    : `<div class="empty-state"><i class="fas fa-stream"></i><p>Selecioná un proyecto</p></div>`;
+    : `<div class="empty-state"><i class="fas fa-stream"></i><p>Seleccioná un proyecto</p></div>`;
 }
 
 function buildGanttView(projectId) {
@@ -40,11 +40,13 @@ function buildGanttView(projectId) {
     </div></div>`;
   }
 
+  // Stats
   const completed = tasks.filter(t => t.status === 'completed').length;
   const inProgress = tasks.filter(t => t.status === 'in_progress').length;
   const pending = tasks.filter(t => t.status === 'pending').length;
   const avgProgress = Math.round(tasks.reduce((s,t) => s+(t.progress||0), 0) / tasks.length);
 
+  // Determine date range
   const minDate = tasks.reduce((m, t) => t.start_date < m ? t.start_date : m, tasks[0].start_date);
   const maxDate = tasks.reduce((m, t) => t.end_date > m ? t.end_date : m, tasks[0].end_date);
 
@@ -52,6 +54,7 @@ function buildGanttView(projectId) {
   const endD = new Date(maxDate + 'T00:00:00');
   const totalDays = Math.max(daysBetween(minDate, maxDate), 1);
 
+  // Generate months
   const months = [];
   const cur = new Date(startD);
   cur.setDate(1);

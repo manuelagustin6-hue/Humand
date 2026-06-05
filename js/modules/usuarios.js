@@ -27,6 +27,7 @@ function renderUsuarios() {
 </div>
 
 <div class="grid-2 mt-2" style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+  <!-- USER LIST -->
   <div class="card">
     <div class="card-header"><span class="card-title"><i class="fas fa-users text-primary"></i> Lista de Usuarios</span></div>
     <div class="card-body" style="padding:0"><div class="table-wrap">
@@ -40,7 +41,9 @@ function renderUsuarios() {
               <div style="width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">
                 ${u.name.charAt(0).toUpperCase()}
               </div>
-              <div><div style="font-weight:600">${u.name}</div></div>
+              <div>
+                <div style="font-weight:600">${u.name}</div>
+              </div>
             </div>
           </td>
           <td style="font-size:12px">${u.email}</td>
@@ -59,6 +62,7 @@ function renderUsuarios() {
     </div></div>
   </div>
 
+  <!-- ROLES SUMMARY -->
   <div>
     <div class="card mb-2">
       <div class="card-header"><span class="card-title"><i class="fas fa-shield-alt text-primary"></i> Roles y Permisos</span></div>

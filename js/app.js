@@ -14,6 +14,7 @@ const MODULES = {
   tesoreria:      { title: 'Tesorería',              icon: 'fa-landmark',              render: renderTesoreria },
   contabilidad:   { title: 'Contabilidad',           icon: 'fa-book-open',             render: renderContabilidad },
   rubros:         { title: 'Rubros de Obra',         icon: 'fa-list-ol',               render: renderRubros },
+  contratos:       { title: 'Contratos',              icon: 'fa-file-contract',         render: renderContratos },
   certificaciones:{ title: 'Certificaciones',        icon: 'fa-certificate',           render: renderCertificaciones },
   ordenes_pago:   { title: 'Órdenes de Pago',        icon: 'fa-file-invoice',          render: renderOrdenesPago },
   retenciones:    { title: 'Retenciones',            icon: 'fa-percentage',            render: renderRetenciones },

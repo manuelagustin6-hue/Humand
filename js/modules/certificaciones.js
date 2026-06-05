@@ -131,6 +131,7 @@ function viewCert(id) {
     <div style="margin-top:4px"><span style="background:${statusColor[cert.status]};color:#fff;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${statusLabel[cert.status]||cert.status}</span></div>
   </div>
 </div>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
   <div style="background:var(--bg);padding:10px;border-radius:6px;font-size:12px">
     <div style="font-weight:600;margin-bottom:4px">PROYECTO</div>
@@ -145,6 +146,7 @@ function viewCert(id) {
     ${cert.approved_by ? `<div>Aprobado por: <strong>${cert.approved_by}</strong></div>` : ''}
   </div>
 </div>
+
 <div class="table-wrap" style="margin-bottom:12px">
   <table><thead><tr>
     <th>Descripción</th><th class="text-center">Unidad</th>
@@ -163,6 +165,7 @@ function viewCert(id) {
     </tr>`).join('')}
   </tbody></table>
 </div>
+
 <div style="display:flex;justify-content:flex-end">
   <div style="min-width:260px">
     <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
@@ -176,6 +179,10 @@ function viewCert(id) {
     </div>
   </div>
 </div>
+${cert.contab_tipo ? `<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:6px;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+  <span><strong>Contabilidad:</strong> ${cert.contab_tipo === 'AB' ? `A (${cert.contab_pct_a||0}%): ${fmtMoney(cert.amount_a||0)} &nbsp;/&nbsp; B: ${fmtMoney(cert.amount_b||0)}` : (cert.contab_tipo === 'B' ? 'Todo B (' + fmtMoney(cert.subtotal) + ')' : 'Todo A (' + fmtMoney(cert.subtotal) + ')')}</span>
+  <span><strong>Forma de pago:</strong> ${cert.forma_pago || '-'}</span>
+</div>` : ''}
 ${cert.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)"><strong>Notas:</strong> ${cert.notes}</div>` : ''}
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
@@ -371,7 +378,7 @@ function deleteCert(id) {
 function exportCertificates() {
   const certs = DB.getAll('certificates');
   const projects = DB.getAll('projects');
-  exportCSV('certificaciones.csv',
+  exportXLSX('certificaciones.xlsx',
     ['Número','Proyecto','Período Desde','Período Hasta','Fecha','Subtotal','Retención','Neto','Estado'],
     certs.map(c => [c.number, projects.find(p=>p.id===c.project_id)?.name||'', c.period_from, c.period_to, c.date, c.subtotal, c.retention_amount||0, c.net_amount, c.status])
   );
