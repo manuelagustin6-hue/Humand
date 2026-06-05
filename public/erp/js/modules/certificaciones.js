@@ -179,6 +179,10 @@ function viewCert(id) {
     </div>
   </div>
 </div>
+${cert.contab_tipo ? `<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:6px;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+  <span><strong>Contabilidad:</strong> ${cert.contab_tipo === 'AB' ? `A (${cert.contab_pct_a||0}%): ${fmtMoney(cert.amount_a||0)} &nbsp;/&nbsp; B: ${fmtMoney(cert.amount_b||0)}` : (cert.contab_tipo === 'B' ? 'Todo B (' + fmtMoney(cert.subtotal) + ')' : 'Todo A (' + fmtMoney(cert.subtotal) + ')')}</span>
+  <span><strong>Forma de pago:</strong> ${cert.forma_pago || '-'}</span>
+</div>` : ''}
 ${cert.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)"><strong>Notas:</strong> ${cert.notes}</div>` : ''}
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
