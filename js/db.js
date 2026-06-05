@@ -50,6 +50,120 @@ const DB = {
     this.save(db);
   },
 
+  // ---- BACKUP / RESTORE ----
+  export() {
+    const data = this.get();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'erp_backup_' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  importData(jsonStr) {
+    try {
+      const data = JSON.parse(jsonStr);
+      if (typeof data !== 'object' || Array.isArray(data)) throw new Error('Formato inválido');
+      if (!Array.isArray(data.projects)) throw new Error('Colección "projects" faltante o inválida');
+      if (!Array.isArray(data.suppliers)) throw new Error('Colección "suppliers" faltante o inválida');
+      this.save(data);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  // ---- STATS ----
+  stats() {
+    const raw = localStorage.getItem(this.KEY) || '';
+    const bytes = new Blob([raw]).size;
+    const maxBytes = 5 * 1024 * 1024;
+    const db = this.get();
+    const collections = Object.entries(db)
+      .filter(([, v]) => Array.isArray(v))
+      .map(([name, arr]) => ({ name, count: arr.length }))
+      .sort((a, b) => b.count - a.count);
+    return {
+      bytes,
+      maxBytes,
+      pct: (bytes / maxBytes * 100).toFixed(1),
+      kb: (bytes / 1024).toFixed(1),
+      collections,
+      total: collections.reduce((s, c) => s + c.count, 0),
+    };
+  },
+
+  // ---- INTEGRITY CHECK ----
+  integrity() {
+    const db = this.get();
+    const issues = [];
+
+    const sets = {
+      projects:     new Set((db.projects     || []).map(p => p.id)),
+      suppliers:    new Set((db.suppliers    || []).map(s => s.id)),
+      bankAccounts: new Set((db.bankAccounts || []).map(b => b.id)),
+      invoices:     new Set((db.invoices     || []).map(i => i.id)),
+      accountCodes: new Set((db.accounts     || []).map(a => a.code)),
+    };
+
+    const chk = (col, item, field, setKey, label) => {
+      if (item[field] && !sets[setKey].has(item[field]))
+        issues.push({ severity: 'error', collection: col, id: item.id, msg: label + ': referencia "' + field + '" (' + item[field] + ') no existe' });
+    };
+
+    (db.purchaseOrders     || []).forEach(o  => { chk('purchaseOrders', o, 'project_id', 'projects', 'OC ' + (o.number||o.id)); chk('purchaseOrders', o, 'supplier_id', 'suppliers', 'OC ' + (o.number||o.id)); });
+    (db.purchaseRequisitions || []).forEach(r => chk('purchaseRequisitions', r, 'project_id', 'projects', 'Req ' + (r.number||r.id)));
+    (db.invoices           || []).forEach(i  => chk('invoices', i, 'project_id', 'projects', 'Fact. ' + (i.number||i.id)));
+    (db.certificates       || []).forEach(c  => chk('certificates', c, 'project_id', 'projects', 'Cert. ' + (c.number||c.id)));
+    (db.ganttTasks         || []).forEach(t  => chk('ganttTasks', t, 'project_id', 'projects', 'Tarea ' + (t.name||t.id)));
+    (db.boqItems           || []).forEach(b  => chk('boqItems', b, 'project_id', 'projects', 'BOQ ' + (b.description||b.id)));
+    (db.actualCosts        || []).forEach(c  => chk('actualCosts', c, 'project_id', 'projects', 'Costo ' + (c.description||c.id)));
+    (db.treasuryTx         || []).forEach(tx => chk('treasuryTx', tx, 'account_id', 'bankAccounts', 'Mov. ' + (tx.description||tx.id)));
+    (db.paymentOrders      || []).forEach(op => { chk('paymentOrders', op, 'supplier_id', 'suppliers', 'OP ' + (op.number||op.id)); chk('paymentOrders', op, 'account_id', 'bankAccounts', 'OP ' + (op.number||op.id)); });
+    (db.collections        || []).forEach(co => { chk('collections', co, 'invoice_id', 'invoices', 'Cobro ' + (co.reference||co.id)); chk('collections', co, 'project_id', 'projects', 'Cobro ' + (co.reference||co.id)); });
+
+    // Journal entry accounts & balance
+    (db.journalEntries || []).forEach(je => {
+      (je.lines || []).forEach(l => {
+        if (l.account_code && !sets.accountCodes.has(l.account_code))
+          issues.push({ severity: 'error', collection: 'journalEntries', id: je.id, msg: 'Asiento ' + je.number + ': cuenta ' + l.account_code + ' no existe en el plan' });
+      });
+      if (je.status === 'posted') {
+        const td = (je.lines || []).reduce((s, l) => s + (l.debit || 0), 0);
+        const tc = (je.lines || []).reduce((s, l) => s + (l.credit || 0), 0);
+        if (Math.abs(td - tc) > 1)
+          issues.push({ severity: 'warning', collection: 'journalEntries', id: je.id, msg: 'Asiento ' + je.number + ' contabilizado pero desbalanceado (Debe ' + td.toLocaleString('es-AR') + ' vs Haber ' + tc.toLocaleString('es-AR') + ')' });
+      }
+    });
+
+    // Paid invoices vs collections
+    (db.invoices || []).filter(inv => inv.status === 'paid').forEach(inv => {
+      const collected = (db.collections || []).filter(c => c.invoice_id === inv.id).reduce((s, c) => s + c.amount, 0);
+      if (collected < inv.total * 0.99)
+        issues.push({ severity: 'warning', collection: 'invoices', id: inv.id, msg: 'Factura ' + inv.number + ' marcada Cobrada pero cobros registrados: $' + Math.round(collected).toLocaleString('es-AR') + ' de $' + Math.round(inv.total).toLocaleString('es-AR') });
+    });
+
+    // Duplicate PO numbers
+    const poNums = (db.purchaseOrders || []).map(p => p.number).filter(Boolean);
+    poNums.filter((n, i) => poNums.indexOf(n) !== i).forEach(n =>
+      issues.push({ severity: 'warning', collection: 'purchaseOrders', msg: 'Número de OC duplicado: ' + n }));
+
+    // Duplicate invoice numbers
+    const invNums = (db.invoices || []).map(i => i.number).filter(Boolean);
+    invNums.filter((n, i) => invNums.indexOf(n) !== i).forEach(n =>
+      issues.push({ severity: 'warning', collection: 'invoices', msg: 'Número de factura duplicado: ' + n }));
+
+    return issues;
+  },
+
+  // ---- RESET ----
+  resetToSeed() {
+    this.save(this.seed());
+  },
+
   // ---- SEED DATA ----
   seed() {
     const p1 = 'proj-001', p2 = 'proj-002', p3 = 'proj-003';
@@ -77,14 +191,12 @@ const DB = {
         { id: 'req-003', number: 'OP-2025-003', project_id: p1, requested_by: 'Téc. Rodríguez', priority: 'critical', required_date: '2025-04-28', status: 'draft', items: [{ description: 'Encofrado metálico 1.20x2.40m', rubro: 'Encofrados', unit: 'Panel', quantity: 40, unit_price: 45000, total: 1800000 }], total: 1800000, notes: 'Necesario para losa del 5to piso', approved_by: null, approved_date: null, submitted_date: null, po_id: null, created_at: now() },
       ],
       boqItems: [
-        // Torre Palermo
         { id: uuid(), project_id: p1, chapter: '01', item: '01.01', category: 'Estructura', description: 'Hormigón armado fundaciones', unit: 'm3', quantity: 320, unit_price: 85000, total: 27200000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '01', item: '01.02', category: 'Estructura', description: 'Hormigón armado columnas y losas', unit: 'm3', quantity: 1200, unit_price: 78000, total: 93600000, created_at: now() },
-        { id: uuid(), project_id: p1, chapter: '02', item: '02.01', category: 'Mampotería', description: 'Albañilería ladrillo hueco', unit: 'm2', quantity: 4800, unit_price: 12500, total: 60000000, created_at: now() },
-        { id: uuid(), project_id: p1, chapter: '02', item: '02.02', category: 'Mampotería', description: 'Revoques interiores', unit: 'm2', quantity: 9600, unit_price: 4800, total: 46080000, created_at: now() },
+        { id: uuid(), project_id: p1, chapter: '02', item: '02.01', category: 'Mampostería', description: 'Albañilería ladrillo hueco', unit: 'm2', quantity: 4800, unit_price: 12500, total: 60000000, created_at: now() },
+        { id: uuid(), project_id: p1, chapter: '02', item: '02.02', category: 'Mampostería', description: 'Revoques interiores', unit: 'm2', quantity: 9600, unit_price: 4800, total: 46080000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '03', item: '03.01', category: 'Instalaciones', description: 'Instalación eléctrica', unit: 'm2', quantity: 4800, unit_price: 8500, total: 40800000, created_at: now() },
         { id: uuid(), project_id: p1, chapter: '03', item: '03.02', category: 'Instalaciones', description: 'Instalación sanitaria', unit: 'm2', quantity: 4800, unit_price: 7200, total: 34560000, created_at: now() },
-        // Shopping Quilmes
         { id: uuid(), project_id: p2, chapter: '01', item: '01.01', category: 'Estructura', description: 'Pilotes y fundaciones especiales', unit: 'm3', quantity: 850, unit_price: 125000, total: 106250000, created_at: now() },
         { id: uuid(), project_id: p2, chapter: '01', item: '01.02', category: 'Estructura', description: 'Estructura metálica principal', unit: 'tn', quantity: 480, unit_price: 380000, total: 182400000, created_at: now() },
         { id: uuid(), project_id: p2, chapter: '02', item: '02.01', category: 'Cerramiento', description: 'Fachada vidriada', unit: 'm2', quantity: 2800, unit_price: 55000, total: 154000000, created_at: now() },
@@ -92,20 +204,20 @@ const DB = {
       actualCosts: [
         { id: uuid(), project_id: p1, category: 'Estructura', description: 'Hormigón real ejecutado', amount: 28500000, date: '2025-03-15', reference: 'OC-2025-001', created_at: now() },
         { id: uuid(), project_id: p1, category: 'Estructura', description: 'Hierros y armaduras', amount: 13987600, date: '2025-04-10', reference: 'OC-2025-002', created_at: now() },
-        { id: uuid(), project_id: p1, category: 'Mampotería', description: 'Ladrilllería semana 1-4', amount: 18500000, date: '2025-04-20', reference: 'Rem-045', created_at: now() },
+        { id: uuid(), project_id: p1, category: 'Mampostería', description: 'Ladrillería semana 1-4', amount: 18500000, date: '2025-04-20', reference: 'Rem-045', created_at: now() },
         { id: uuid(), project_id: p2, category: 'Estructura', description: 'Pilotes ejecutados', amount: 112000000, date: '2025-02-28', reference: 'OC-2024-088', created_at: now() },
       ],
       ganttTasks: [
-        { id: 'gt-001', project_id: p1, name: 'Demolición y limpieza', start_date: '2025-01-15', end_date: '2025-02-15', progress: 100, status: 'completed', assignee: 'Equipo A', color: 'green', dependencies: [], approval_status: 'approved', created_at: now() },
-        { id: 'gt-002', project_id: p1, name: 'Fundaciones y pilotes', start_date: '2025-02-01', end_date: '2025-04-30', progress: 85, status: 'in_progress', assignee: 'Equipo B', color: 'blue', dependencies: ['gt-001'], approval_status: 'approved', created_at: now() },
-        { id: 'gt-003', project_id: p1, name: 'Estructura hormigón P1-P6', start_date: '2025-04-01', end_date: '2025-08-31', progress: 40, status: 'in_progress', assignee: 'Equipo C', color: 'blue', dependencies: ['gt-002'], approval_status: 'pending', created_at: now() },
-        { id: 'gt-004', project_id: p1, name: 'Estructura hormigón P7-P12', start_date: '2025-08-01', end_date: '2025-12-31', progress: 0, status: 'pending', assignee: 'Equipo C', color: 'gray', dependencies: ['gt-003'], approval_status: 'pending', created_at: now() },
-        { id: 'gt-005', project_id: p1, name: 'Mampotería y revoques', start_date: '2025-06-01', end_date: '2026-03-31', progress: 10, status: 'in_progress', assignee: 'Equipo D', color: 'yellow', dependencies: ['gt-003'], approval_status: 'pending', created_at: now() },
-        { id: 'gt-006', project_id: p1, name: 'Instalaciones eléctricas', start_date: '2025-09-01', end_date: '2026-04-30', progress: 0, status: 'pending', assignee: 'ElecTech SRL', color: 'gray', dependencies: ['gt-004'], approval_status: 'pending', created_at: now() },
-        { id: 'gt-007', project_id: p1, name: 'Terminaciones y entrega', start_date: '2026-03-01', end_date: '2026-06-30', progress: 0, status: 'pending', assignee: 'Equipo E', color: 'gray', dependencies: ['gt-005', 'gt-006'], approval_status: 'pending', created_at: now() },
-        { id: 'gt-008', project_id: p2, name: 'Movimiento de suelos', start_date: '2024-09-01', end_date: '2024-11-30', progress: 100, status: 'completed', assignee: 'Vial SA', color: 'green', dependencies: [], approval_status: 'approved', created_at: now() },
-        { id: 'gt-009', project_id: p2, name: 'Pilotes y fundaciones', start_date: '2024-10-01', end_date: '2025-02-28', progress: 100, status: 'completed', assignee: 'Ciment AR', color: 'green', dependencies: ['gt-008'], approval_status: 'approved', created_at: now() },
-        { id: 'gt-010', project_id: p2, name: 'Estructura metálica', start_date: '2025-02-01', end_date: '2025-08-31', progress: 60, status: 'in_progress', assignee: 'Metaler SA', color: 'blue', dependencies: ['gt-009'], approval_status: 'pending', created_at: now() },
+        { id: 'gt-001', project_id: p1, name: 'Demolición y limpieza', start_date: '2025-01-15', end_date: '2025-02-15', progress: 100, status: 'completed', assignee: 'Equipo A', color: 'green', dependencies: [], created_at: now() },
+        { id: 'gt-002', project_id: p1, name: 'Fundaciones y pilotes', start_date: '2025-02-01', end_date: '2025-04-30', progress: 85, status: 'in_progress', assignee: 'Equipo B', color: 'blue', dependencies: ['gt-001'], created_at: now() },
+        { id: 'gt-003', project_id: p1, name: 'Estructura hormigón P1-P6', start_date: '2025-04-01', end_date: '2025-08-31', progress: 40, status: 'in_progress', assignee: 'Equipo C', color: 'blue', dependencies: ['gt-002'], created_at: now() },
+        { id: 'gt-004', project_id: p1, name: 'Estructura hormigón P7-P12', start_date: '2025-08-01', end_date: '2025-12-31', progress: 0, status: 'pending', assignee: 'Equipo C', color: 'gray', dependencies: ['gt-003'], created_at: now() },
+        { id: 'gt-005', project_id: p1, name: 'Mampostería y revoques', start_date: '2025-06-01', end_date: '2026-03-31', progress: 10, status: 'in_progress', assignee: 'Equipo D', color: 'yellow', dependencies: ['gt-003'], created_at: now() },
+        { id: 'gt-006', project_id: p1, name: 'Instalaciones eléctricas', start_date: '2025-09-01', end_date: '2026-04-30', progress: 0, status: 'pending', assignee: 'ElecTech SRL', color: 'gray', dependencies: ['gt-004'], created_at: now() },
+        { id: 'gt-007', project_id: p1, name: 'Terminaciones y entrega', start_date: '2026-03-01', end_date: '2026-06-30', progress: 0, status: 'pending', assignee: 'Equipo E', color: 'gray', dependencies: ['gt-005', 'gt-006'], created_at: now() },
+        { id: 'gt-008', project_id: p2, name: 'Movimiento de suelos', start_date: '2024-09-01', end_date: '2024-11-30', progress: 100, status: 'completed', assignee: 'Vial SA', color: 'green', dependencies: [], created_at: now() },
+        { id: 'gt-009', project_id: p2, name: 'Pilotes y fundaciones', start_date: '2024-10-01', end_date: '2025-02-28', progress: 100, status: 'completed', assignee: 'Ciment AR', color: 'green', dependencies: ['gt-008'], created_at: now() },
+        { id: 'gt-010', project_id: p2, name: 'Estructura metálica', start_date: '2025-02-01', end_date: '2025-08-31', progress: 60, status: 'in_progress', assignee: 'Metaler SA', color: 'blue', dependencies: ['gt-009'], created_at: now() },
       ],
       invoices: [
         { id: 'inv-001', number: 'FA-0001-00001234', type: 'A', project_id: p1, client_name: 'Inversiones RP SA', client_cuit: '30-99887766-5', client_address: 'Av. Corrientes 1200, CABA', items: [{ description: 'Certificación obra - Marzo 2025', unit: 'Global', quantity: 1, unit_price: 12500000, total: 12500000, tax_rate: 21 }], subtotal: 12500000, tax: 2625000, total: 15125000, status: 'paid', date: '2025-03-31', due_date: '2025-04-30', notes: 'Certificado N°1', created_at: now() },
@@ -154,7 +266,7 @@ const DB = {
         { id: 'rub-001', code: '01', name: 'Trabajos Preliminares', unit: 'gl', category: 'Trabajos Preliminares', description: 'Limpieza, cerramiento provisorio, instalaciones temporarias', active: true, created_at: now() },
         { id: 'rub-002', code: '02', name: 'Movimiento de Suelos', unit: 'm³', category: 'Estructuras', description: 'Excavación, nivelación y rellenos compactados', active: true, created_at: now() },
         { id: 'rub-003', code: '03', name: 'Hormigón Armado', unit: 'm³', category: 'Estructuras', description: 'Hormigón estructural H-21 a H-30 con armadura', active: true, created_at: now() },
-        { id: 'rub-004', code: '04', name: 'Mampotería', unit: 'm²', category: 'Albañilería', description: 'Muros de ladrillo cerámico hueco', active: true, created_at: now() },
+        { id: 'rub-004', code: '04', name: 'Mampostería', unit: 'm²', category: 'Albañilería', description: 'Muros de ladrillo cerámico hueco', active: true, created_at: now() },
         { id: 'rub-005', code: '05', name: 'Revoques', unit: 'm²', category: 'Terminaciones', description: 'Revoque grueso y fino interior y exterior', active: true, created_at: now() },
         { id: 'rub-006', code: '06', name: 'Carpintería Metálica', unit: 'un', category: 'Carpintería', description: 'Ventanas, puertas y marcos metálicos', active: true, created_at: now() },
         { id: 'rub-007', code: '07', name: 'Carpintería de Madera', unit: 'un', category: 'Carpintería', description: 'Puertas placares y muebles de madera', active: true, created_at: now() },
@@ -166,7 +278,7 @@ const DB = {
       ],
       certificates: [
         { id: 'cert-001', number: 'CERT-2025-001', project_id: p1, date: '2025-03-31', period_from: '2025-03-01', period_to: '2025-03-31', status: 'approved', approved_by: 'Director de Obra', items: [{ description: 'Fundaciones y pilotes', unit: 'm³', quantity_contract: 320, quantity_period: 180, unit_price: 85000, amount_period: 15300000, pct_complete: 56.25 }, { description: 'Estructura P1-P3', unit: 'm³', quantity_contract: 1200, quantity_period: 120, unit_price: 78000, amount_period: 9360000, pct_complete: 10 }], subtotal: 24660000, retention_pct: 5, retention_amount: 1233000, net_amount: 23427000, invoice_id: 'inv-001', notes: 'Primer certificado de avance', created_at: now() },
-        { id: 'cert-002', number: 'CERT-2025-002', project_id: p1, date: '2025-04-30', period_from: '2025-04-01', period_to: '2025-04-30', status: 'pending', approved_by: '', items: [{ description: 'Estructura P4-P6', unit: 'm³', quantity_contract: 1200, quantity_period: 150, unit_price: 78000, amount_period: 11700000, pct_complete: 12.5 }, { description: 'Mampotería planta baja', unit: 'm²', quantity_contract: 4800, quantity_period: 480, unit_price: 12500, amount_period: 6000000, pct_complete: 10 }], subtotal: 17700000, retention_pct: 5, retention_amount: 885000, net_amount: 16815000, invoice_id: 'inv-002', notes: 'Segundo certificado', created_at: now() },
+        { id: 'cert-002', number: 'CERT-2025-002', project_id: p1, date: '2025-04-30', period_from: '2025-04-01', period_to: '2025-04-30', status: 'pending', approved_by: '', items: [{ description: 'Estructura P4-P6', unit: 'm³', quantity_contract: 1200, quantity_period: 150, unit_price: 78000, amount_period: 11700000, pct_complete: 12.5 }, { description: 'Mampostería planta baja', unit: 'm²', quantity_contract: 4800, quantity_period: 480, unit_price: 12500, amount_period: 6000000, pct_complete: 10 }], subtotal: 17700000, retention_pct: 5, retention_amount: 885000, net_amount: 16815000, invoice_id: 'inv-002', notes: 'Segundo certificado', created_at: now() },
         { id: 'cert-003', number: 'CERT-2025-003', project_id: p2, date: '2025-03-31', period_from: '2025-03-01', period_to: '2025-03-31', status: 'approved', approved_by: 'Inspección Técnica', items: [{ description: 'Estructura metálica - Nivel 1', unit: 'tn', quantity_contract: 480, quantity_period: 120, unit_price: 380000, amount_period: 45600000, pct_complete: 25 }], subtotal: 45600000, retention_pct: 5, retention_amount: 2280000, net_amount: 43320000, invoice_id: 'inv-003', notes: '', created_at: now() },
       ],
       paymentOrders: [

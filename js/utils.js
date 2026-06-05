@@ -220,6 +220,37 @@ function isOverdue(dueDateStr) {
   return dueDateStr && dueDateStr < todayStr();
 }
 
+// ---- FORM VALIDATION ----
+function validateForm(rules) {
+  for (const rule of rules) {
+    const el = document.getElementById(rule.id);
+    if (!el) continue;
+    const val = (el.value || '').trim();
+    if (rule.required && !val) {
+      toast('"' + rule.label + '" es obligatorio', 'error');
+      el.focus();
+      return false;
+    }
+    if (!val) continue;
+    if (rule.type === 'number') {
+      const n = parseFloat(val);
+      if (isNaN(n)) { toast('"' + rule.label + '" debe ser un número válido', 'error'); el.focus(); return false; }
+      if (rule.min !== undefined && n < rule.min) { toast('"' + rule.label + '" debe ser mayor o igual a ' + rule.min, 'error'); el.focus(); return false; }
+      if (rule.max !== undefined && n > rule.max) { toast('"' + rule.label + '" debe ser menor o igual a ' + rule.max, 'error'); el.focus(); return false; }
+    }
+    if (rule.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+      toast('"' + rule.label + '": formato de email inválido', 'error'); el.focus(); return false;
+    }
+    if (rule.type === 'cuit' && !/^\d{2}-\d{7,8}-\d$/.test(val)) {
+      toast('"' + rule.label + '": CUIT inválido (ej: 30-12345678-9)', 'error'); el.focus(); return false;
+    }
+    if (rule.custom && !rule.custom(val)) {
+      toast(rule.customMsg || ('"' + rule.label + '": valor inválido'), 'error'); el.focus(); return false;
+    }
+  }
+  return true;
+}
+
 // ---- DEBOUNCE ----
 function debounce(fn, ms = 300) {
   let t;
