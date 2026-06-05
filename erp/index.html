@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>ERP Construcción</title>
+  <link rel="stylesheet" href="css/main.css?v=5">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><i class="fas fa-hard-hat"></i></div>
+      <div class="brand-text">
+        <span class="brand-name">ConstructERP</span>
+        <span class="brand-sub">Gestión Integral</span>
+      </div>
+      <button id="sidebar-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+    </div>
+
+    <div class="sidebar-search">
+      <i class="fas fa-search"></i>
+      <input type="text" placeholder="Buscar módulo..." oninput="filterNav(this.value)">
+    </div>
+
+    <nav id="sidebar-nav">
+      <ul>
+        <li class="nav-item" data-module="dashboard">
+          <a href="#" onclick="navigate('dashboard')">
+            <i class="fas fa-chart-pie"></i><span>Dashboard</span>
+          </a>
+        </li>
+
+        <li class="nav-section">GESTIÓN DE PROYECTOS</li>
+        <li class="nav-item" data-module="projects">
+          <a href="#" onclick="navigate('projects')">
+            <i class="fas fa-building"></i><span>Proyectos</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="gantt">
+          <a href="#" onclick="navigate('gantt')">
+            <i class="fas fa-stream"></i><span>Cronograma Gantt</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="contratos">
+          <a href="#" onclick="navigate('contratos')">
+            <i class="fas fa-file-contract"></i><span>Contratos</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="certificaciones">
+          <a href="#" onclick="navigate('certificaciones')">
+            <i class="fas fa-certificate"></i><span>Certificaciones</span>
+          </a>
+        </li>
+
+        <li class="nav-section">COSTOS Y PRESUPUESTO</li>
+        <li class="nav-item" data-module="presupuesto">
+          <a href="#" onclick="navigate('presupuesto')">
+            <i class="fas fa-calculator"></i><span>Cómputo y Presupuesto</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="rubros">
+          <a href="#" onclick="navigate('rubros')">
+            <i class="fas fa-list-ol"></i><span>Rubros de Obra</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="seguimiento">
+          <a href="#" onclick="navigate('seguimiento')">
+            <i class="fas fa-chart-line"></i><span>Seguimiento Presupuesto</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="indices">
+          <a href="#" onclick="navigate('indices')">
+            <i class="fas fa-chart-line"></i><span>Índices de Ajuste</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="compras">
+          <a href="#" onclick="navigate('compras')">
+            <i class="fas fa-shopping-cart"></i><span>Compras</span>
+          </a>
+        </li>
+
+        <li class="nav-section">FINANZAS</li>
+        <li class="nav-item" data-module="facturacion">
+          <a href="#" onclick="navigate('facturacion')">
+            <i class="fas fa-file-invoice-dollar"></i><span>Facturación</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="cobranzas">
+          <a href="#" onclick="navigate('cobranzas')">
+            <i class="fas fa-hand-holding-dollar"></i><span>Cobranzas</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="tesoreria">
+          <a href="#" onclick="navigate('tesoreria')">
+            <i class="fas fa-landmark"></i><span>Tesorería</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="ordenes_pago">
+          <a href="#" onclick="navigate('ordenes_pago')">
+            <i class="fas fa-file-invoice"></i><span>Órdenes de Pago</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="retenciones">
+          <a href="#" onclick="navigate('retenciones')">
+            <i class="fas fa-percentage"></i><span>Retenciones</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="contabilidad">
+          <a href="#" onclick="navigate('contabilidad')">
+            <i class="fas fa-book-open"></i><span>Contabilidad</span>
+          </a>
+        </li>
+
+        <li class="nav-section">ADMINISTRACIÓN</li>
+        <li class="nav-item" data-module="reportes">
+          <a href="#" onclick="navigate('reportes')">
+            <i class="fas fa-chart-bar"></i><span>Reportes</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="usuarios">
+          <a href="#" onclick="navigate('usuarios')">
+            <i class="fas fa-users"></i><span>Usuarios</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="ajustes">
+          <a href="#" onclick="navigate('ajustes')">
+            <i class="fas fa-cog"></i><span>Ajustes del Sistema</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-avatar">A</div>
+      <div class="user-info">
+        <span class="user-name">Administrador</span>
+        <span class="user-role">Super Admin</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN AREA -->
+  <div id="main-area">
+
+    <!-- TOPBAR -->
+    <header id="topbar">
+      <div class="topbar-left">
+        <div id="breadcrumb" class="breadcrumb">
+          <i class="fas fa-chart-pie"></i>
+          <span>Dashboard</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div id="project-selector-wrap">
+          <label><i class="fas fa-building"></i></label>
+          <select id="global-project" onchange="setActiveProject(this.value)">
+            <option value="">Todos los proyectos</option>
+          </select>
+        </div>
+        <button class="icon-btn" title="Notificaciones"><i class="fas fa-bell"></i><span class="badge">3</span></button>
+        <button class="icon-btn" title="Configuración"><i class="fas fa-cog"></i></button>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main id="content"></main>
+
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="modal-overlay" style="display:none">
+  <div id="modal-box" class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-title">Título</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="modal-body" class="modal-body"></div>
+    <div id="modal-footer" class="modal-footer"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast-wrap"></div>
+
+<!-- SCRIPTS -->
+<script src="js/db.js?v=5"></script>
+<script src="js/utils.js?v=5"></script>
+<script src="js/modules/dashboard.js?v=5"></script>
+<script src="js/modules/projects.js?v=5"></script>
+<script src="js/modules/compras.js?v=5"></script>
+<script src="js/modules/presupuesto.js?v=5"></script>
+<script src="js/modules/seguimiento.js?v=5"></script>
+<script src="js/modules/gantt.js?v=5"></script>
+<script src="js/modules/facturacion.js?v=5"></script>
+<script src="js/modules/cobranzas.js?v=5"></script>
+<script src="js/modules/tesoreria.js?v=5"></script>
+<script src="js/modules/contabilidad.js?v=5"></script>
+<script src="js/modules/rubros.js?v=5"></script>
+<script src="js/modules/certificaciones.js?v=5"></script>
+<script src="js/modules/ordenes_pago.js?v=5"></script>
+<script src="js/modules/retenciones.js?v=5"></script>
+<script src="js/modules/indices.js?v=5"></script>
+<script src="js/modules/contratos.js?v=5"></script>
+<script src="js/modules/reportes.js?v=5"></script>
+<script src="js/modules/usuarios.js?v=5"></script>
+<script src="js/modules/ajustes.js?v=5"></script>
+<script src="js/app.js?v=5"></script>
+</body>
+</html>
