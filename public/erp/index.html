@@ -46,6 +46,11 @@
             <i class="fas fa-stream"></i><span>Cronograma Gantt</span>
           </a>
         </li>
+        <li class="nav-item" data-module="certificaciones">
+          <a href="#" onclick="navigate('certificaciones')">
+            <i class="fas fa-certificate"></i><span>Certificaciones</span>
+          </a>
+        </li>
 
         <li class="nav-section">COSTOS Y PRESUPUESTO</li>
         <li class="nav-item" data-module="presupuesto">
@@ -53,9 +58,19 @@
             <i class="fas fa-calculator"></i><span>Cómputo y Presupuesto</span>
           </a>
         </li>
+        <li class="nav-item" data-module="rubros">
+          <a href="#" onclick="navigate('rubros')">
+            <i class="fas fa-list-ol"></i><span>Rubros de Obra</span>
+          </a>
+        </li>
         <li class="nav-item" data-module="seguimiento">
           <a href="#" onclick="navigate('seguimiento')">
             <i class="fas fa-chart-line"></i><span>Seguimiento Presupuesto</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="indices">
+          <a href="#" onclick="navigate('indices')">
+            <i class="fas fa-chart-line"></i><span>Índices de Ajuste</span>
           </a>
         </li>
         <li class="nav-item" data-module="compras">
@@ -80,9 +95,31 @@
             <i class="fas fa-landmark"></i><span>Tesorería</span>
           </a>
         </li>
+        <li class="nav-item" data-module="ordenes_pago">
+          <a href="#" onclick="navigate('ordenes_pago')">
+            <i class="fas fa-file-invoice"></i><span>Órdenes de Pago</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="retenciones">
+          <a href="#" onclick="navigate('retenciones')">
+            <i class="fas fa-percentage"></i><span>Retenciones</span>
+          </a>
+        </li>
         <li class="nav-item" data-module="contabilidad">
           <a href="#" onclick="navigate('contabilidad')">
             <i class="fas fa-book-open"></i><span>Contabilidad</span>
+          </a>
+        </li>
+
+        <li class="nav-section">ADMINISTRACIÓN</li>
+        <li class="nav-item" data-module="reportes">
+          <a href="#" onclick="navigate('reportes')">
+            <i class="fas fa-chart-bar"></i><span>Reportes</span>
+          </a>
+        </li>
+        <li class="nav-item" data-module="usuarios">
+          <a href="#" onclick="navigate('usuarios')">
+            <i class="fas fa-users"></i><span>Usuarios</span>
           </a>
         </li>
       </ul>
@@ -154,6 +191,13 @@
 <script src="js/modules/cobranzas.js"></script>
 <script src="js/modules/tesoreria.js"></script>
 <script src="js/modules/contabilidad.js"></script>
+<script src="js/modules/rubros.js"></script>
+<script src="js/modules/certificaciones.js"></script>
+<script src="js/modules/ordenes_pago.js"></script>
+<script src="js/modules/retenciones.js"></script>
+<script src="js/modules/indices.js"></script>
+<script src="js/modules/reportes.js"></script>
+<script src="js/modules/usuarios.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

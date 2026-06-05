@@ -119,10 +119,16 @@ function buildGanttView(projectId) {
         const widthPct = Math.max(0.5, (daysBetween(taskStart, taskEnd) / totalDays * 100)).toFixed(2);
         const barColor = task.status === 'completed' ? 'green' : task.status === 'in_progress' ? 'blue' : task.status === 'delayed' ? 'red' : 'gray';
 
+        const approvalBadge = task.approval_status === 'approved'
+          ? '<span class="badge badge-green" style="font-size:9px">✓ Aprobada</span>'
+          : task.approval_status === 'rejected'
+          ? '<span class="badge badge-red" style="font-size:9px">✗ Rechazada</span>'
+          : '<span class="badge badge-yellow" style="font-size:9px">Pendiente aprobación</span>';
+
         return `<div class="gantt-row">
           <div class="gantt-task-info">
             <div class="gantt-task-name">${task.name}</div>
-            <div class="gantt-task-assign"><i class="fas fa-user" style="font-size:10px"></i> ${task.assignee || '-'} &nbsp; ${statusBadge(task.status)}</div>
+            <div class="gantt-task-assign"><i class="fas fa-user" style="font-size:10px"></i> ${task.assignee || '-'} &nbsp; ${statusBadge(task.status)} ${approvalBadge}</div>
           </div>
           <div class="gantt-timeline-row">
             <div class="gantt-today-line" style="left:${todayPos}%"></div>
@@ -175,6 +181,8 @@ function buildGanttView(projectId) {
             <td>${statusBadge(t.status)}</td>
             <td><div class="table-actions">
               <button class="btn-ghost btn btn-sm" onclick="openTaskForm('${projectId}', '${t.id}')"><i class="fas fa-edit"></i></button>
+              ${t.approval_status !== 'approved' ? `<button class="btn btn-sm btn-success" title="Aprobar" onclick="approveTask('${t.id}', '${projectId}')"><i class="fas fa-check"></i></button>` : ''}
+              ${t.approval_status === 'approved' ? `<button class="btn btn-sm btn-warning" title="Revocar aprobación" onclick="revokeTaskApproval('${t.id}', '${projectId}')"><i class="fas fa-undo"></i></button>` : ''}
               <button class="btn-ghost btn btn-sm danger" onclick="deleteTask('${t.id}', '${projectId}')"><i class="fas fa-trash"></i></button>
             </div></td>
           </tr>`).join('')}
@@ -268,6 +276,18 @@ function saveTask(id) {
   else { DB.insert('ganttTasks', data); toast('Tarea creada', 'success'); }
 
   closeModal();
+  loadGantt(projectId);
+}
+
+function approveTask(id, projectId) {
+  DB.update('ganttTasks', id, { approval_status: 'approved' });
+  toast('Tarea aprobada', 'success');
+  loadGantt(projectId);
+}
+
+function revokeTaskApproval(id, projectId) {
+  DB.update('ganttTasks', id, { approval_status: 'pending' });
+  toast('Aprobación revocada', 'warning');
   loadGantt(projectId);
 }
 
