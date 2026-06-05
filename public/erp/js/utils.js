@@ -57,6 +57,11 @@ const STATUS_MAP = {
   expense_a: { label: 'Egreso',    cls: 'badge-yellow' },
   // Journal
   posted: { label: 'Contabilizado', cls: 'badge-green' },
+  // Requisitions / Certificates
+  submitted:  { label: 'Enviado',     cls: 'badge-blue' },
+  approved:   { label: 'Aprobado',    cls: 'badge-green' },
+  rejected:   { label: 'Rechazado',   cls: 'badge-red' },
+  converted:  { label: 'Convertido',  cls: 'badge-cyan' },
 };
 
 function statusBadge(status) {

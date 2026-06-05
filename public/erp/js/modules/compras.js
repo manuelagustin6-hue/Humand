@@ -4,18 +4,23 @@ function renderCompras() {
 <div class="page-header">
   <div>
     <div class="page-title">Compras</div>
-    <div class="page-subtitle">Órdenes de compra, proveedores y materiales</div>
+    <div class="page-subtitle">Pedidos de materiales, órdenes de compra y proveedores</div>
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="openSupplierForm()"><i class="fas fa-truck"></i> Nuevo Proveedor</button>
-    <button class="btn btn-primary" onclick="openPOForm()"><i class="fas fa-plus"></i> Nueva OC</button>
+    <button class="btn btn-secondary" onclick="openPOForm()"><i class="fas fa-file-alt"></i> Nueva OC</button>
+    <button class="btn btn-primary" onclick="openRequisitionForm()"><i class="fas fa-plus"></i> Nuevo Pedido</button>
   </div>
 </div>
 
 <div id="compras-tabs">
   <div class="tabs">
+    <button class="tab-btn" data-tab="tab-pedidos">Pedidos de Materiales</button>
     <button class="tab-btn" data-tab="tab-oc">Órdenes de Compra</button>
     <button class="tab-btn" data-tab="tab-suppliers">Proveedores</button>
+  </div>
+  <div id="tab-pedidos" class="tab-content">
+    ${renderRequisitionsTab()}
   </div>
   <div id="tab-oc" class="tab-content">
     ${renderPOTable()}
@@ -26,6 +31,466 @@ function renderCompras() {
 </div>
   `;
   initTabs('compras-tabs');
+}
+
+// ==== REQUISITIONS (PEDIDOS DE MATERIALES) ====
+
+function renderRequisitionsTab() {
+  const reqs = DB.getAll('purchaseRequisitions');
+  const projects = DB.getAll('projects');
+
+  const pending = reqs.filter(r => r.status === 'submitted').length;
+  const approved = reqs.filter(r => r.status === 'approved').length;
+  const converted = reqs.filter(r => r.status === 'converted').length;
+  const totalAmt = reqs.reduce((s, r) => s + (r.total || 0), 0);
+
+  return `
+<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-clipboard-list"></i></div><div>
+    <div class="stat-value">${reqs.length}</div><div class="stat-label">Total Pedidos</div></div></div>
+  <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-clock"></i></div><div>
+    <div class="stat-value">${pending}</div><div class="stat-label">Pendientes Aprobación</div></div></div>
+  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div><div>
+    <div class="stat-value">${approved}</div><div class="stat-label">Aprobados</div></div></div>
+  <div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-exchange-alt"></i></div><div>
+    <div class="stat-value">${fmtMoney(totalAmt)}</div><div class="stat-label">Monto Total Est.</div></div></div>
+</div>
+<div class="filter-bar">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" placeholder="Buscar pedido, proyecto, solicitante..." oninput="filterRequisitions(this.value)">
+  </div>
+  <select class="form-control" style="width:170px" onchange="filterRequisitions(undefined, this.value)">
+    <option value="">Todos los estados</option>
+    <option value="draft">Borrador</option>
+    <option value="submitted">Enviado</option>
+    <option value="approved">Aprobado</option>
+    <option value="rejected">Rechazado</option>
+    <option value="converted">Convertido a OC</option>
+  </select>
+  <select class="form-control" style="width:130px" onchange="filterRequisitions(undefined, undefined, this.value)">
+    <option value="">Toda prioridad</option>
+    <option value="normal">Normal</option>
+    <option value="urgent">Urgente</option>
+    <option value="critical">Crítico</option>
+  </select>
+  <button class="btn btn-secondary" onclick="exportRequisitions()"><i class="fas fa-download"></i> Exportar</button>
+</div>
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap" id="req-table-wrap">
+      ${buildRequisitionRows(reqs, projects)}
+    </div>
+  </div>
+</div>`;
+}
+
+function reqPriorityBadge(priority) {
+  const map = { normal: ['badge-gray','Normal'], urgent: ['badge-yellow','Urgente'], critical: ['badge-red','Crítico'] };
+  const [cls, label] = map[priority] || ['badge-gray', priority];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function buildRequisitionRows(reqs, projects) {
+  if (!reqs.length) return `<div class="empty-state"><i class="fas fa-clipboard-list"></i><p>No hay pedidos de materiales</p></div>`;
+  return `<table><thead><tr>
+    <th>Número</th><th>Proyecto</th><th>Solicitado por</th><th>Prioridad</th><th>Fecha Nec.</th><th>Total Est.</th><th>Estado</th><th>Acciones</th>
+  </tr></thead>
+  <tbody>
+  ${reqs.map(req => {
+    const proj = projects.find(p => p.id === req.project_id);
+    return `<tr>
+      <td><strong>${req.number}</strong></td>
+      <td>${proj ? proj.name : '-'}</td>
+      <td style="font-size:12px">${req.requested_by || '-'}</td>
+      <td>${reqPriorityBadge(req.priority)}</td>
+      <td>${fmtDate(req.required_date)}</td>
+      <td class="number-cell"><strong>${fmtMoney(req.total || 0)}</strong></td>
+      <td>${statusBadge(req.status)}</td>
+      <td><div class="table-actions">
+        <button class="btn-ghost btn btn-sm" title="Ver detalle" onclick="viewRequisition('${req.id}')"><i class="fas fa-eye"></i></button>
+        ${req.status === 'draft' ? `
+          <button class="btn-ghost btn btn-sm" title="Editar" onclick="openRequisitionForm('${req.id}')"><i class="fas fa-edit"></i></button>
+          <button class="btn btn-sm btn-primary" onclick="submitRequisition('${req.id}')"><i class="fas fa-paper-plane"></i> Enviar</button>
+        ` : ''}
+        ${req.status === 'submitted' ? `
+          <button class="btn btn-sm btn-success" onclick="approveRequisition('${req.id}')"><i class="fas fa-check"></i> Aprobar</button>
+          <button class="btn btn-sm btn-danger" onclick="openRejectRequisition('${req.id}')"><i class="fas fa-times"></i> Rechazar</button>
+        ` : ''}
+        ${req.status === 'approved' ? `
+          <button class="btn btn-sm btn-primary" onclick="convertRequisitionToOC('${req.id}')"><i class="fas fa-file-alt"></i> Generar OC</button>
+        ` : ''}
+        ${['draft', 'rejected'].includes(req.status) ? `
+          <button class="btn-ghost btn btn-sm danger" onclick="deleteRequisition('${req.id}')"><i class="fas fa-trash"></i></button>
+        ` : ''}
+      </div></td>
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+
+window._reqFilters = { q: '', status: '', priority: '' };
+function filterRequisitions(q, status, priority) {
+  if (q !== undefined) window._reqFilters.q = q.toLowerCase();
+  if (status !== undefined) window._reqFilters.status = status;
+  if (priority !== undefined) window._reqFilters.priority = priority;
+  let reqs = DB.getAll('purchaseRequisitions');
+  const projects = DB.getAll('projects');
+  const f = window._reqFilters;
+  if (f.q) reqs = reqs.filter(r => {
+    const proj = projects.find(p => p.id === r.project_id);
+    return r.number.toLowerCase().includes(f.q)
+      || (r.requested_by || '').toLowerCase().includes(f.q)
+      || (proj && proj.name.toLowerCase().includes(f.q));
+  });
+  if (f.status) reqs = reqs.filter(r => r.status === f.status);
+  if (f.priority) reqs = reqs.filter(r => r.priority === f.priority);
+  const wrap = document.getElementById('req-table-wrap');
+  if (wrap) wrap.innerHTML = buildRequisitionRows(reqs, projects);
+}
+
+function viewRequisition(id) {
+  const req = DB.getById('purchaseRequisitions', id);
+  const proj = DB.getById('projects', req.project_id);
+  const linkedPO = req.po_id ? DB.getById('purchaseOrders', req.po_id) : null;
+
+  openModal(`Pedido ${req.number}`, `
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div>
+    <div class="form-label">Proyecto</div><p>${proj?.name || '-'}</p>
+    <div class="form-label mt-1">Solicitado por</div><p>${req.requested_by || '-'}</p>
+    <div class="form-label mt-1">Prioridad</div><p>${reqPriorityBadge(req.priority)}</p>
+  </div>
+  <div>
+    <div class="form-label">Fecha de Necesidad</div><p>${fmtDate(req.required_date)}</p>
+    <div class="form-label mt-1">Estado</div><p>${statusBadge(req.status)}</p>
+    ${req.approved_by ? `<div class="form-label mt-1">Aprobado por</div><p>${req.approved_by} — ${fmtDate(req.approved_date)}</p>` : ''}
+    ${req.rejection_reason ? `<div class="form-label mt-1">Motivo rechazo</div><p class="text-danger">${req.rejection_reason}</p>` : ''}
+    ${linkedPO ? `<div class="form-label mt-1">OC Generada</div><p style="color:var(--primary);font-weight:600">${linkedPO.number}</p>` : ''}
+  </div>
+</div>
+${req.notes ? `<div style="margin-bottom:12px;padding:10px;background:var(--surface-2);border-radius:6px;font-size:13px"><strong>Notas:</strong> ${req.notes}</div>` : ''}
+<div class="table-wrap">
+<table><thead><tr>
+  <th>Descripción</th><th>Rubro</th><th>Unidad</th>
+  <th class="text-right">Cantidad</th><th class="text-right">P.Est. Unit.</th><th class="text-right">Total Est.</th>
+</tr></thead>
+<tbody>
+${(req.items || []).map(it => `<tr>
+  <td>${it.description}</td>
+  <td style="font-size:11px;color:var(--text-muted)">${it.rubro || '-'}</td>
+  <td>${it.unit}</td>
+  <td class="number-cell text-right">${fmtNum(it.quantity)}</td>
+  <td class="number-cell text-right">${fmtMoney(it.unit_price)}</td>
+  <td class="number-cell text-right"><strong>${fmtMoney(it.total)}</strong></td>
+</tr>`).join('')}
+<tr class="total-row">
+  <td colspan="5" class="text-right"><strong>TOTAL ESTIMADO</strong></td>
+  <td class="number-cell text-right"><strong>${fmtMoney(req.total || 0)}</strong></td>
+</tr>
+</tbody></table>
+</div>
+`, 'modal-lg', `
+<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
+${req.status === 'draft' ? `<button class="btn btn-secondary" onclick="closeModal(); openRequisitionForm('${req.id}')"><i class="fas fa-edit"></i> Editar</button><button class="btn btn-primary" onclick="closeModal(); submitRequisition('${req.id}')"><i class="fas fa-paper-plane"></i> Enviar</button>` : ''}
+${req.status === 'submitted' ? `
+  <button class="btn btn-success" onclick="closeModal(); approveRequisition('${req.id}')"><i class="fas fa-check"></i> Aprobar</button>
+  <button class="btn btn-danger" onclick="closeModal(); openRejectRequisition('${req.id}')"><i class="fas fa-times"></i> Rechazar</button>
+` : ''}
+${req.status === 'approved' ? `<button class="btn btn-primary" onclick="closeModal(); convertRequisitionToOC('${req.id}')"><i class="fas fa-file-alt"></i> Generar OC</button>` : ''}
+<button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+`);
+}
+
+// ---- REQUISITION FORM ----
+function openRequisitionForm(id = null) {
+  const req = id ? DB.getById('purchaseRequisitions', id) : null;
+  const projects = DB.getAll('projects');
+  const rubros = DB.getAll('rubros');
+  const nextNum = `OP-${new Date().getFullYear()}-${String(DB.getAll('purchaseRequisitions').length + 1).padStart(3, '0')}`;
+  const items = req?.items || [{ description: '', rubro: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }];
+  const rubroOpts = rubros.map(r => `<option value="${r.name}">${r.code} — ${r.name}</option>`).join('');
+
+  openModal(req ? 'Editar Pedido' : 'Nuevo Pedido de Materiales', `
+<div class="form-grid form-grid-2">
+  <div class="form-group">
+    <label class="form-label">Número</label>
+    <input class="form-control" id="req-num" value="${req?.number || nextNum}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Prioridad</label>
+    <select class="form-control" id="req-priority">
+      <option value="normal" ${!req || req.priority === 'normal' ? 'selected' : ''}>Normal</option>
+      <option value="urgent" ${req?.priority === 'urgent' ? 'selected' : ''}>Urgente</option>
+      <option value="critical" ${req?.priority === 'critical' ? 'selected' : ''}>Crítico</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Proyecto *</label>
+    <select class="form-control" id="req-project">
+      <option value="">Seleccionar...</option>
+      ${projects.map(p => `<option value="${p.id}" ${req?.project_id === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Fecha de Necesidad *</label>
+    <input class="form-control" id="req-date" type="date" value="${req?.required_date || addDays(todayStr(), 7)}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Solicitado por</label>
+    <input class="form-control" id="req-by" value="${req?.requested_by || ''}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Notas</label>
+    <input class="form-control" id="req-notes" value="${req?.notes || ''}">
+  </div>
+</div>
+
+<div class="divider"></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+  <strong style="font-size:13px">Ítems Solicitados</strong>
+  <button class="btn btn-sm btn-secondary" onclick="addReqItem()"><i class="fas fa-plus"></i> Agregar ítem</button>
+</div>
+<div id="req-items">
+  <div style="display:grid;grid-template-columns:2.5fr 1.5fr 70px 80px 110px 110px 34px;gap:5px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted)">
+    <span>Descripción</span><span>Rubro</span><span>Unidad</span><span>Cant.</span><span>P.Est.Unit.</span><span>Total Est.</span><span></span>
+  </div>
+  ${items.map((it, i) => reqItemRow(it, i, rubroOpts)).join('')}
+</div>
+<div class="divider"></div>
+<div id="req-totals" style="text-align:right;font-size:13px">
+  ${calcReqTotalsHtml(items)}
+</div>
+`, 'modal-lg', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-primary" onclick="saveRequisition('${id || ''}')"><i class="fas fa-save"></i> Guardar</button>
+`);
+  window._reqItems = [...items];
+}
+
+function reqItemRow(it, i, rubroOpts) {
+  const ro = rubroOpts || DB.getAll('rubros').map(r => `<option value="${r.name}">${r.code} — ${r.name}</option>`).join('');
+  return `<div id="reqitem-row-${i}" style="display:grid;grid-template-columns:2.5fr 1.5fr 70px 80px 110px 110px 34px;gap:5px;margin-bottom:6px;align-items:center">
+    <input class="form-control" style="font-size:12px" placeholder="Descripción del material" value="${it.description || ''}" oninput="updateReqItem(${i},'description',this.value)">
+    <select class="form-control" style="font-size:11px" onchange="updateReqItem(${i},'rubro',this.value)">
+      <option value="">Sin rubro</option>${ro}
+    </select>
+    <input class="form-control" style="font-size:12px" value="${it.unit || 'un'}" oninput="updateReqItem(${i},'unit',this.value)">
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity || 1}" oninput="updateReqItem(${i},'quantity',+this.value)">
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price || 0}" placeholder="0" oninput="updateReqItem(${i},'unit_price',+this.value)">
+    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total || 0).replace('$', '').trim()}" id="reqitem-total-${i}">
+    <button class="btn-ghost btn danger" onclick="removeReqItem(${i})"><i class="fas fa-times"></i></button>
+  </div>`;
+}
+
+window._reqItems = [];
+function addReqItem() {
+  window._reqItems.push({ description: '', rubro: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 });
+  const i = window._reqItems.length - 1;
+  const cont = document.getElementById('req-items');
+  const ro = DB.getAll('rubros').map(r => `<option value="${r.name}">${r.code} — ${r.name}</option>`).join('');
+  const div = document.createElement('div');
+  div.innerHTML = reqItemRow({ description: '', rubro: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }, i, ro);
+  cont.appendChild(div.firstElementChild);
+}
+
+function updateReqItem(i, field, val) {
+  if (!window._reqItems[i]) window._reqItems[i] = { description: '', rubro: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 };
+  window._reqItems[i][field] = val;
+  window._reqItems[i].total = (window._reqItems[i].quantity || 0) * (window._reqItems[i].unit_price || 0);
+  const totEl = document.getElementById(`reqitem-total-${i}`);
+  if (totEl) totEl.value = fmtMoney(window._reqItems[i].total).replace('$', '').trim();
+  document.getElementById('req-totals').innerHTML = calcReqTotalsHtml(window._reqItems.filter(Boolean));
+}
+
+function removeReqItem(i) {
+  const row = document.getElementById(`reqitem-row-${i}`);
+  if (row) row.remove();
+  window._reqItems[i] = null;
+  document.getElementById('req-totals').innerHTML = calcReqTotalsHtml(window._reqItems.filter(Boolean));
+}
+
+function calcReqTotalsHtml(items) {
+  const valid = items.filter(Boolean);
+  const total = valid.reduce((s, it) => s + (it.total || 0), 0);
+  return `<span>Ítems: <strong>${valid.length}</strong> &nbsp;|&nbsp; TOTAL ESTIMADO: <strong style="font-size:15px;color:var(--primary)">${fmtMoney(total)}</strong></span>`;
+}
+
+function saveRequisition(id) {
+  const projectId = document.getElementById('req-project').value;
+  if (!projectId) { toast('El proyecto es obligatorio', 'error'); return; }
+
+  const items = window._reqItems.filter(Boolean).filter(it => it.description);
+  if (!items.length) {
+    document.querySelectorAll('[id^="reqitem-row-"]').forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      const selects = row.querySelectorAll('select');
+      if (inputs[0]?.value) items.push({
+        description: inputs[0].value,
+        rubro: selects[0]?.value || '',
+        unit: inputs[1]?.value || 'un',
+        quantity: +inputs[2]?.value || 1,
+        unit_price: +inputs[3]?.value || 0,
+        total: (+inputs[2]?.value || 1) * (+inputs[3]?.value || 0),
+      });
+    });
+  }
+  if (!items.length) { toast('Agregá al menos un ítem', 'error'); return; }
+
+  const total = items.reduce((s, it) => s + (it.total || 0), 0);
+  const data = {
+    number: document.getElementById('req-num').value,
+    project_id: projectId,
+    priority: document.getElementById('req-priority').value,
+    required_date: document.getElementById('req-date').value,
+    requested_by: document.getElementById('req-by').value.trim(),
+    notes: document.getElementById('req-notes').value.trim(),
+    status: id ? (DB.getById('purchaseRequisitions', id)?.status || 'draft') : 'draft',
+    items,
+    total,
+  };
+
+  if (id) { DB.update('purchaseRequisitions', id, data); toast('Pedido actualizado', 'success'); }
+  else { DB.insert('purchaseRequisitions', data); toast('Pedido creado', 'success'); }
+
+  window._reqItems = [];
+  closeModal();
+  renderCompras();
+}
+
+// ---- WORKFLOW ACTIONS ----
+function submitRequisition(id) {
+  confirmDialog('¿Enviar el pedido para aprobación?', () => {
+    DB.update('purchaseRequisitions', id, { status: 'submitted', submitted_date: todayStr() });
+    toast('Pedido enviado para aprobación', 'success');
+    renderCompras();
+  });
+}
+
+function approveRequisition(id) {
+  DB.update('purchaseRequisitions', id, {
+    status: 'approved',
+    approved_by: 'Administrador',
+    approved_date: todayStr(),
+  });
+  toast('Pedido aprobado', 'success');
+  renderCompras();
+}
+
+function openRejectRequisition(id) {
+  openModal('Rechazar Pedido', `
+<div class="form-group">
+  <label class="form-label">Motivo del rechazo *</label>
+  <textarea class="form-control" id="reject-reason" rows="3" placeholder="Indicá el motivo del rechazo..."></textarea>
+</div>
+`, '', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-danger" onclick="rejectRequisition('${id}')"><i class="fas fa-times"></i> Rechazar</button>
+`);
+}
+
+function rejectRequisition(id) {
+  const reason = document.getElementById('reject-reason').value.trim();
+  if (!reason) { toast('El motivo del rechazo es obligatorio', 'error'); return; }
+  DB.update('purchaseRequisitions', id, {
+    status: 'rejected',
+    rejection_reason: reason,
+    rejected_date: todayStr(),
+  });
+  toast('Pedido rechazado', 'warning');
+  closeModal();
+  renderCompras();
+}
+
+function convertRequisitionToOC(reqId) {
+  const req = DB.getById('purchaseRequisitions', reqId);
+  if (!req) return;
+  const suppliers = DB.getAll('suppliers').filter(s => s.status === 'active');
+
+  openModal('Convertir Pedido a Orden de Compra', `
+<p style="margin-bottom:14px;font-size:13px;padding:10px;background:var(--surface-2);border-radius:6px">
+  <strong>${req.number}</strong> — ${req.items?.length || 0} ítems — Total estimado: <strong>${fmtMoney(req.total || 0)}</strong>
+</p>
+<div class="form-grid form-grid-2">
+  <div class="form-group">
+    <label class="form-label">Proveedor *</label>
+    <select class="form-control" id="req-conv-supplier">
+      <option value="">Seleccionar proveedor...</option>
+      ${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Fecha de Entrega Estimada</label>
+    <input class="form-control" type="date" id="req-conv-date" value="${req.required_date || addDays(todayStr(), 15)}">
+  </div>
+</div>
+`, '', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-primary" onclick="doConvertToOC('${reqId}')"><i class="fas fa-file-alt"></i> Crear OC</button>
+`);
+}
+
+function doConvertToOC(reqId) {
+  const req = DB.getById('purchaseRequisitions', reqId);
+  const supplierId = document.getElementById('req-conv-supplier').value;
+  const expectedDate = document.getElementById('req-conv-date').value;
+  if (!supplierId) { toast('Seleccioná un proveedor', 'error'); return; }
+
+  const items = (req.items || []).map(it => ({
+    description: it.description,
+    unit: it.unit,
+    quantity: it.quantity,
+    unit_price: it.unit_price,
+    total: it.total,
+  }));
+  const subtotal = items.reduce((s, it) => s + (it.total || 0), 0);
+  const tax = subtotal * 0.21;
+  const nextNum = `OC-${new Date().getFullYear()}-${String(DB.getAll('purchaseOrders').length + 1).padStart(3, '0')}`;
+
+  const po = DB.insert('purchaseOrders', {
+    number: nextNum,
+    project_id: req.project_id,
+    supplier_id: supplierId,
+    status: 'draft',
+    date: todayStr(),
+    expected_date: expectedDate,
+    notes: `Generada desde pedido ${req.number}`,
+    items,
+    subtotal,
+    tax,
+    total: subtotal + tax,
+  });
+
+  DB.update('purchaseRequisitions', reqId, { status: 'converted', po_id: po.id });
+
+  toast(`OC ${nextNum} creada correctamente`, 'success');
+  closeModal();
+  renderCompras();
+}
+
+function deleteRequisition(id) {
+  confirmDialog('¿Eliminar este pedido?', () => {
+    DB.remove('purchaseRequisitions', id);
+    toast('Pedido eliminado', 'warning');
+    renderCompras();
+  });
+}
+
+function exportRequisitions() {
+  const reqs = DB.getAll('purchaseRequisitions');
+  const projects = DB.getAll('projects');
+  exportCSV('pedidos_materiales.csv',
+    ['Número', 'Proyecto', 'Solicitado por', 'Prioridad', 'Fecha Necesidad', 'Total Est.', 'Estado'],
+    reqs.map(r => [
+      r.number,
+      projects.find(p => p.id === r.project_id)?.name || '',
+      r.requested_by || '',
+      r.priority,
+      r.required_date,
+      r.total || 0,
+      r.status,
+    ])
+  );
 }
 
 // ---- PURCHASE ORDERS ----
@@ -279,7 +744,6 @@ function savePO(id) {
 
   const items = window._poItems.filter(Boolean).filter(it => it.description);
   if (!items.length) {
-    // Try to read from form rows
     const rows = document.querySelectorAll('[id^="poi-row-"]');
     rows.forEach((row, i) => {
       const inputs = row.querySelectorAll('input');
