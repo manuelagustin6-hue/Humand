@@ -169,7 +169,7 @@ function viewRequisition(id) {
     ${linkedPO ? `<div class="form-label mt-1">OC Generada</div><p style="color:var(--primary);font-weight:600">${linkedPO.number}</p>` : ''}
   </div>
 </div>
-${req.notes ? `<div style="margin-bottom:12px;padding:10px;background:var(--surface-2);border-radius:6px;font-size:13px"><strong>Notas:</strong> ${req.notes}</div>` : ''}
+${req.notes ? `<div style="margin-bottom:12px;padding:10px;background:var(--bg);border-radius:6px;font-size:13px"><strong>Notas:</strong> ${req.notes}</div>` : ''}
 <div class="table-wrap">
 <table><thead><tr>
   <th>Descripción</th><th>Rubro</th><th>Unidad</th>
@@ -408,7 +408,7 @@ function convertRequisitionToOC(reqId) {
   const suppliers = DB.getAll('suppliers').filter(s => s.status === 'active');
 
   openModal('Convertir Pedido a Orden de Compra', `
-<p style="margin-bottom:14px;font-size:13px;padding:10px;background:var(--surface-2);border-radius:6px">
+<p style="margin-bottom:14px;font-size:13px;padding:10px;background:var(--bg);border-radius:6px">
   <strong>${req.number}</strong> — ${req.items?.length || 0} ítems — Total estimado: <strong>${fmtMoney(req.total || 0)}</strong>
 </p>
 <div class="form-grid form-grid-2">
