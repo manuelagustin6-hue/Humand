@@ -18,12 +18,16 @@ function renderContabilidad() {
 <div id="conta-tabs">
   <div class="tabs">
     <button class="tab-btn" data-tab="tab-diario">Libro Diario</button>
+    <button class="tab-btn" data-tab="tab-sumas-conta">Sumas y Saldos</button>
     <button class="tab-btn" data-tab="tab-balance">Balance General</button>
     <button class="tab-btn" data-tab="tab-resultados">Resultados</button>
     <button class="tab-btn" data-tab="tab-cuentas">Plan de Cuentas</button>
   </div>
   <div id="tab-diario" class="tab-content">
     ${renderJournal(entries)}
+  </div>
+  <div id="tab-sumas-conta" class="tab-content">
+    ${renderSumasYSaldosContabilidad(accounts, entries)}
   </div>
   <div id="tab-balance" class="tab-content">
     ${renderBalance(accounts, entries)}
@@ -41,6 +45,7 @@ function renderContabilidad() {
   setTimeout(() => renderResultsChart(accounts, entries), 100);
 }
 
+// ---- JOURNAL ----
 function renderJournal(entries) {
   return `
 <div class="filter-bar">
@@ -119,8 +124,13 @@ function filterJE(q, from, to) {
   if (list) list.innerHTML = buildJEList(entries);
 }
 
+// ---- BALANCE SHEET ----
 function renderBalance(accounts, entries) {
   const balances = calcAccountBalances(accounts, entries);
+
+  const assets = accounts.filter(a => a.type === 'asset' && !a.parent_id);
+  const liabilities = accounts.filter(a => a.type === 'liability' && !a.parent_id);
+  const equity = accounts.filter(a => a.type === 'equity' && !a.parent_id);
 
   const totalAssets = sumBalances(accounts.filter(a => a.type === 'asset'), balances);
   const totalLiabilities = sumBalances(accounts.filter(a => a.type === 'liability'), balances);
@@ -209,6 +219,7 @@ function renderBalance(accounts, entries) {
 </div>`;
 }
 
+// ---- RESULTS ----
 function renderResults(accounts, entries) {
   const balances = calcAccountBalances(accounts, entries);
   const revenues = accounts.filter(a => a.type === 'revenue');
@@ -297,6 +308,7 @@ function renderResultsChart(accounts, entries) {
   });
 }
 
+// ---- CHART OF ACCOUNTS ----
 function renderAccountPlan(accounts) {
   const types = [
     { type: 'asset', label: 'ACTIVO', color: 'badge-blue' },
@@ -335,9 +347,11 @@ function renderAccountPlan(accounts) {
 </div></div>`;
 }
 
+// ---- JOURNAL ENTRY FORM ----
 function openJEForm(id = null) {
   const e = id ? DB.getById('journalEntries', id) : null;
   const nextNum = `AS-${new Date().getFullYear()}-${String(DB.getAll('journalEntries').length + 1).padStart(3,'0')}`;
+  const accounts = DB.getAll('accounts').filter(a => !accounts?.find || a.parent_id);
   const accountOptions = DB.getAll('accounts').map(a => `<option value="${a.code}" data-name="${a.name}">${a.code} — ${a.name}</option>`).join('');
 
   const lines = e?.lines || [
@@ -394,9 +408,9 @@ function jeLine(l, i, accountOptions) {
       <option value="">Cuenta...</option>${ao}
     </select>
     <input class="form-control" style="font-size:11px;background:#f8fafc" readonly id="jel-name-${i}" value="${l.account_name||''}">
-    <input class="form-control" style="font-size:11px" placeholder="Descripción" id="jel-desc-${i}" value="${l.description||''}" oninput="updateJELine(${i},'description',this.value)">
-    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-debit-${i}" value="${l.debit||''}" placeholder="0" oninput="updateJELine(${i},'debit',+this.value)">
-    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-credit-${i}" value="${l.credit||''}" placeholder="0" oninput="updateJELine(${i},'credit',+this.value)">
+    <input class="form-control" style="font-size:11px" placeholder="Descripción" id="jel-desc-${i}" value="${l.description||\'\'}" oninput="updateJELine(${i},'description',this.value)">
+    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-debit-${i}" value="${l.debit||\'\'}" placeholder="0" oninput="updateJELine(${i},'debit',+this.value)">
+    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-credit-${i}" value="${l.credit||\'\'}" placeholder="0" oninput="updateJELine(${i},'credit',+this.value)">
     <button class="btn-ghost btn danger" onclick="removeJELine(${i})"><i class="fas fa-times" style="font-size:10px"></i></button>
   </div>`;
 }
@@ -498,6 +512,7 @@ function deleteJE(id) {
   });
 }
 
+// ---- ACCOUNT FORM ----
 function openAccountForm(id = null) {
   const acc = id ? DB.getById('accounts', id) : null;
   const accounts = DB.getAll('accounts');
@@ -582,6 +597,87 @@ function exportJournal() {
   );
 }
 
+// ---- SUMAS Y SALDOS ----
+function renderSumasYSaldosContabilidad(accounts, entries) {
+  const posted = entries.filter(e => e.status === 'posted');
+  const debits = {}, credits = {};
+  accounts.forEach(a => { debits[a.code] = 0; credits[a.code] = 0; });
+  posted.forEach(e => e.lines.forEach(l => {
+    if (!l.account_code) return;
+    debits[l.account_code] = (debits[l.account_code]||0) + (l.debit||0);
+    credits[l.account_code] = (credits[l.account_code]||0) + (l.credit||0);
+  }));
+
+  const totalD = Object.values(debits).reduce((s,v)=>s+v,0);
+  const totalC = Object.values(credits).reduce((s,v)=>s+v,0);
+  const balanced = Math.abs(totalD - totalC) < 1;
+  const active = accounts.filter(a => debits[a.code] || credits[a.code]);
+
+  return `
+<div class="card">
+  <div class="card-header">
+    <span class="card-title"><i class="fas fa-balance-scale text-primary"></i> Balance de Comprobación — Sumas y Saldos</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="badge ${balanced?'badge-green':'badge-red'}">${balanced?'✓ Cuadrado':'⚠ Desbalanceado'}</span>
+      <button class="btn btn-sm btn-secondary" onclick="exportSumasContabilidad()"><i class="fas fa-download"></i></button>
+    </div>
+  </div>
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap">
+      <table><thead><tr>
+        <th>Código</th><th>Cuenta</th><th>Tipo</th>
+        <th class="text-right">Debe Acum.</th><th class="text-right">Haber Acum.</th>
+        <th class="text-right">Saldo Deudor</th><th class="text-right">Saldo Acreedor</th>
+      </tr></thead>
+      <tbody>
+        ${active.sort((a,b)=>a.code.localeCompare(b.code)).map(a => {
+          const d = debits[a.code]||0, c = credits[a.code]||0;
+          const sd = d>c?d-c:0, sc = c>d?c-d:0;
+          const types = { asset:'ACTIVO', liability:'PASIVO', equity:'PATRIMONIO', revenue:'INGRESO', expense:'EGRESO' };
+          const colors = { asset:'badge-blue', liability:'badge-red', equity:'badge-green', revenue:'badge-cyan', expense:'badge-yellow' };
+          return `<tr>
+            <td><strong>${a.code}</strong></td>
+            <td style="padding-left:${(a.code.split('.').length-1)*12+4}px">${a.name}</td>
+            <td><span class="badge ${colors[a.type]||'badge-gray'}">${types[a.type]||a.type}</span></td>
+            <td class="number-cell text-right">${d?fmtMoney(d):'-'}</td>
+            <td class="number-cell text-right">${c?fmtMoney(c):'-'}</td>
+            <td class="number-cell text-right ${sd?'text-primary':''}}">${sd?fmtMoney(sd):'-'}</td>
+            <td class="number-cell text-right ${sc?'text-primary':''}}">${sc?fmtMoney(sc):'-'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+      <tfoot><tr class="total-row">
+        <td colspan="3"><strong>TOTALES</strong></td>
+        <td class="number-cell text-right"><strong>${fmtMoney(totalD)}</strong></td>
+        <td class="number-cell text-right"><strong>${fmtMoney(totalC)}</strong></td>
+        <td class="number-cell text-right"><strong>${fmtMoney(active.reduce((s,a)=>{const d=debits[a.code]||0,c=credits[a.code]||0;return s+(d>c?d-c:0);},0))}</strong></td>
+        <td class="number-cell text-right"><strong>${fmtMoney(active.reduce((s,a)=>{const d=debits[a.code]||0,c=credits[a.code]||0;return s+(c>d?c-d:0);},0))}</strong></td>
+      </tr></tfoot>
+    </table>
+  </div>
+</div>`;
+}
+
+function exportSumasContabilidad() {
+  const accounts = DB.getAll('accounts');
+  const entries = DB.getAll('journalEntries').filter(e=>e.status==='posted');
+  const debits = {}, credits = {};
+  accounts.forEach(a => { debits[a.code]=0; credits[a.code]=0; });
+  entries.forEach(e => e.lines.forEach(l => {
+    if (!l.account_code) return;
+    debits[l.account_code] = (debits[l.account_code]||0)+(l.debit||0);
+    credits[l.account_code] = (credits[l.account_code]||0)+(l.credit||0);
+  }));
+  exportCSV('sumas_y_saldos.csv',
+    ['Código','Cuenta','Tipo','Debe Acum.','Haber Acum.','Saldo Deudor','Saldo Acreedor'],
+    accounts.filter(a=>debits[a.code]||credits[a.code]).sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
+      const d=debits[a.code]||0,c=credits[a.code]||0;
+      return [a.code,a.name,a.type,d,c,d>c?d-c:0,c>d?c-d:0];
+    })
+  );
+}
+
+// ---- HELPERS ----
 function calcAccountBalances(accounts, entries) {
   const balances = {};
   accounts.forEach(a => { balances[a.code] = 0; });
