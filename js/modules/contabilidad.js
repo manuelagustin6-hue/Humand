@@ -408,9 +408,9 @@ function jeLine(l, i, accountOptions) {
       <option value="">Cuenta...</option>${ao}
     </select>
     <input class="form-control" style="font-size:11px;background:#f8fafc" readonly id="jel-name-${i}" value="${l.account_name||''}">
-    <input class="form-control" style="font-size:11px" placeholder="Descripción" id="jel-desc-${i}" value="${l.description||\'\'}" oninput="updateJELine(${i},'description',this.value)">
-    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-debit-${i}" value="${l.debit||\'\'}" placeholder="0" oninput="updateJELine(${i},'debit',+this.value)">
-    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-credit-${i}" value="${l.credit||\'\'}" placeholder="0" oninput="updateJELine(${i},'credit',+this.value)">
+    <input class="form-control" style="font-size:11px" placeholder="Descripción" id="jel-desc-${i}" value="${l.description||''}" oninput="updateJELine(${i},'description',this.value)">
+    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-debit-${i}" value="${l.debit||''}" placeholder="0" oninput="updateJELine(${i},'debit',+this.value)">
+    <input class="form-control" style="font-size:11px" type="number" min="0" id="jel-credit-${i}" value="${l.credit||''}" placeholder="0" oninput="updateJELine(${i},'credit',+this.value)">
     <button class="btn-ghost btn danger" onclick="removeJELine(${i})"><i class="fas fa-times" style="font-size:10px"></i></button>
   </div>`;
 }
@@ -466,6 +466,7 @@ function saveJE(id) {
   const description = document.getElementById('je-desc').value.trim();
   if (!description) { toast('La descripción es obligatoria', 'error'); return; }
 
+  // Read lines from DOM
   const lines = [];
   document.querySelectorAll('[id^="jel-row-"]').forEach((row, i) => {
     const selects = row.querySelectorAll('select');
@@ -482,6 +483,7 @@ function saveJE(id) {
     }
   });
 
+  // Also use _jeLines
   window._jeLines.filter(Boolean).forEach(l => {
     if (l.account_code && !lines.find(ll => ll.account_code === l.account_code)) lines.push(l);
   });
@@ -641,8 +643,8 @@ function renderSumasYSaldosContabilidad(accounts, entries) {
             <td><span class="badge ${colors[a.type]||'badge-gray'}">${types[a.type]||a.type}</span></td>
             <td class="number-cell text-right">${d?fmtMoney(d):'-'}</td>
             <td class="number-cell text-right">${c?fmtMoney(c):'-'}</td>
-            <td class="number-cell text-right ${sd?'text-primary':''}}">${sd?fmtMoney(sd):'-'}</td>
-            <td class="number-cell text-right ${sc?'text-primary':''}}">${sc?fmtMoney(sc):'-'}</td>
+            <td class="number-cell text-right ${sd?'text-primary':''}">${sd?fmtMoney(sd):'-'}</td>
+            <td class="number-cell text-right ${sc?'text-primary':''}">${sc?fmtMoney(sc):'-'}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -697,6 +699,7 @@ function calcAccountBalances(accounts, entries) {
     });
   });
 
+  // Propagate to parents
   accounts.filter(a => a.parent_id).forEach(a => {
     const parent = accounts.find(p => p.id === a.parent_id);
     if (parent) balances[parent.code] = (balances[parent.code]||0) + (balances[a.code]||0);
