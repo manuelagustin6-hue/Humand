@@ -29,27 +29,39 @@ function fmtPct(n) {
 
 // ---- STATUS BADGES ----
 const STATUS_MAP = {
+  // Projects
   active:    { label: 'Activo',      cls: 'badge-green' },
   planning:  { label: 'Planificación', cls: 'badge-blue' },
   paused:    { label: 'Pausado',     cls: 'badge-yellow' },
   completed: { label: 'Completado',  cls: 'badge-gray' },
+  // Purchase orders
   draft:     { label: 'Borrador',    cls: 'badge-gray' },
   sent:      { label: 'Enviada',     cls: 'badge-blue' },
   received:  { label: 'Recibida',    cls: 'badge-green' },
   cancelled: { label: 'Cancelada',   cls: 'badge-red' },
+  // Invoices
   paid:      { label: 'Cobrada',     cls: 'badge-green' },
   overdue:   { label: 'Vencida',     cls: 'badge-red' },
+  // Tasks
   pending:    { label: 'Pendiente',  cls: 'badge-gray' },
   in_progress:{ label: 'En curso',   cls: 'badge-blue' },
   delayed:    { label: 'Demorada',   cls: 'badge-red' },
+  // Treasury
   income:  { label: 'Ingreso', cls: 'badge-green' },
   expense: { label: 'Egreso',  cls: 'badge-red' },
+  // Accounts
   asset:     { label: 'Activo',    cls: 'badge-blue' },
   liability: { label: 'Pasivo',    cls: 'badge-red' },
   equity:    { label: 'Patrimonio',cls: 'badge-green' },
   revenue:   { label: 'Ingreso',   cls: 'badge-cyan' },
   expense_a: { label: 'Egreso',    cls: 'badge-yellow' },
+  // Journal
   posted: { label: 'Contabilizado', cls: 'badge-green' },
+  // Requisitions / Certificates
+  submitted:  { label: 'Enviado',     cls: 'badge-blue' },
+  approved:   { label: 'Aprobado',    cls: 'badge-green' },
+  rejected:   { label: 'Rechazado',   cls: 'badge-red' },
+  converted:  { label: 'Convertido',  cls: 'badge-cyan' },
 };
 
 function statusBadge(status) {
@@ -150,6 +162,7 @@ function initTabs(containerId) {
       if (tc) tc.classList.add('active');
     });
   });
+  // activate first
   const firstBtn = container.querySelector('.tab-btn');
   if (firstBtn) firstBtn.click();
 }
