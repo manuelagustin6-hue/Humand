@@ -370,6 +370,18 @@ function viewContract(id) {
       '</tbody></table></div>'
     : '<div class="empty-state" style="padding:20px"><p>Sin adicionales cargados (economías ni demasías)</p></div>';
 
+  // cronograma (Gantt) — bars filled by renderCronograma after init
+  const cronoHtml =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+      '<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-info-circle"></i> Barra = período de la partida · relleno = avance certificado · línea roja = hoy · marcador negro (Desvío) = avance esperado</span>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button id="crono-btn-proyectado" class="btn btn-sm btn-secondary" onclick="renderCronograma(\'' + id + '\',\'proyectado\')">Proyectado</button>' +
+        '<button id="crono-btn-real" class="btn btn-sm btn-primary" onclick="renderCronograma(\'' + id + '\',\'real\')">Real</button>' +
+        '<button id="crono-btn-desvio" class="btn btn-sm btn-secondary" onclick="renderCronograma(\'' + id + '\',\'desvio\')">Desvío</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="crono-bars"></div>';
+
   const condHtml =
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:12px">' +
       '<div style="background:var(--bg);padding:10px;border-radius:6px"><div class="form-label">Anticipo</div><strong>' + fmtPct(contract.anticipo_pct || 0) + '</strong></div>' +
@@ -404,12 +416,14 @@ function viewContract(id) {
       '<div class="tabs">' +
         '<button class="tab-btn" data-tab="ctab-cond">Condiciones</button>' +
         '<button class="tab-btn" data-tab="ctab-items">Partidas (' + (contract.items || []).length + ')</button>' +
+        '<button class="tab-btn" data-tab="ctab-crono">Cronograma</button>' +
         '<button class="tab-btn" data-tab="ctab-certs">Certificaciones (' + certs.length + ')</button>' +
         '<button class="tab-btn" data-tab="ctab-adic">Adicionales (' + (contract.adicionales || []).length + ')</button>' +
         '<button class="tab-btn" data-tab="ctab-cf">Cash Flow</button>' +
       '</div>' +
       '<div id="ctab-cond" class="tab-content">' + condHtml + '</div>' +
       '<div id="ctab-items" class="tab-content">' + itemsHtml + '</div>' +
+      '<div id="ctab-crono" class="tab-content">' + cronoHtml + '</div>' +
       '<div id="ctab-certs" class="tab-content">' + certsHtml + '</div>' +
       '<div id="ctab-adic" class="tab-content">' + adicionalesHtml + '</div>' +
       '<div id="ctab-cf" class="tab-content">' + cashflowHtml + '</div>' +
@@ -425,7 +439,10 @@ function viewContract(id) {
         '<button class="btn btn-success" onclick="closeModal();finishContract(\'' + id + '\')"><i class="fas fa-flag-checkered"></i> Finalizar Contrato</button>'
       : '')
   );
-  setTimeout(() => initTabs('contract-detail-tabs'), 50);
+  setTimeout(function() {
+    initTabs('contract-detail-tabs');
+    renderCronograma(id, 'real');
+  }, 50);
 }
 
 // ---- FINALIZAR CONTRATO ----
@@ -538,6 +555,124 @@ function startContract(id) {
   });
 }
 
+// ---- CRONOGRAMA (GANTT) ----
+function clampVal(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function monthsBetween(startStr, endStr) {
+  const months = [];
+  if (!startStr || !endStr) return months;
+  let d = new Date(startStr.slice(0, 7) + '-01T00:00:00');
+  const end = new Date(endStr.slice(0, 7) + '-01T00:00:00');
+  let guard = 0;
+  while (d <= end && guard < 240) {
+    months.push(d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }));
+    d.setMonth(d.getMonth() + 1);
+    guard++;
+  }
+  return months;
+}
+
+function buildCronogramaHtml(contract, mode) {
+  const start = contract.start_date;
+  const end   = contract.end_date;
+  if (!start || !end) return '<div class="empty-state" style="padding:20px"><p>El contrato no tiene fechas de inicio y fin definidas.</p></div>';
+
+  const t0   = new Date(start + 'T00:00:00').getTime();
+  const t1   = new Date(end   + 'T00:00:00').getTime();
+  const span = t1 - t0;
+  if (span <= 0) return '<div class="empty-state" style="padding:20px"><p>Fechas de contrato inválidas.</p></div>';
+
+  const months    = monthsBetween(start, end);
+  const today     = new Date().getTime();
+  const todayPct  = clampVal((today - t0) / span * 100, 0, 100);
+
+  const certs = DB.getAll('certificates').filter(function(c) {
+    return c.contract_id === contract.id && c.status !== 'rejected';
+  });
+  const accumByDesc = {};
+  certs.forEach(function(c) {
+    (c.items || []).forEach(function(it) {
+      const k = (it.description || '').trim();
+      accumByDesc[k] = (accumByDesc[k] || 0) + (it.quantity_period || 0);
+    });
+  });
+
+  const items = contract.items || [];
+  if (!items.length) return '<div class="empty-state" style="padding:20px"><p>No hay partidas cargadas en el contrato.</p></div>';
+
+  const pctPerMonth = months.length > 0 ? (100 / months.length) : 100;
+  const headerHtml =
+    '<div style="display:flex;margin-left:200px;margin-bottom:4px">' +
+    months.map(function(m) {
+      return '<div style="width:' + pctPerMonth + '%;font-size:9px;color:var(--text-muted);text-align:center;border-left:1px solid var(--border);padding:2px 0;overflow:hidden;white-space:nowrap">' + m + '</div>';
+    }).join('') +
+    '</div>';
+
+  const rowsHtml = items.map(function(it) {
+    const iStart   = it.start_date ? new Date(it.start_date + 'T00:00:00').getTime() : t0;
+    const iEnd     = it.end_date   ? new Date(it.end_date   + 'T00:00:00').getTime() : t1;
+    const leftPct  = clampVal((iStart - t0) / span * 100, 0, 100);
+    const widthPct = clampVal((iEnd - iStart) / span * 100, 0, 100 - leftPct);
+
+    const accum   = accumByDesc[(it.description || '').trim()] || 0;
+    const certPct = it.quantity > 0 ? clampVal(accum / it.quantity * 100, 0, 100) : 0;
+
+    const iSpan    = (iEnd - iStart) || 1;
+    const elapsed  = clampVal(today - iStart, 0, iSpan);
+    const expPct   = clampVal(elapsed / iSpan * 100, 0, 100);
+
+    var fillStyle, markerHtml;
+    markerHtml = '';
+
+    if (mode === 'proyectado') {
+      fillStyle = 'position:absolute;left:0;top:0;right:0;bottom:0;background:repeating-linear-gradient(45deg,var(--primary),var(--primary) 3px,transparent 3px,transparent 10px);opacity:0.65';
+    } else if (mode === 'real') {
+      fillStyle = 'position:absolute;left:0;top:0;bottom:0;width:' + certPct + '%;background:var(--primary);opacity:0.85';
+    } else {
+      var fillColor = certPct >= expPct ? 'var(--success)' : 'var(--danger)';
+      fillStyle = 'position:absolute;left:0;top:0;bottom:0;width:' + certPct + '%;background:' + fillColor + ';opacity:0.8';
+      markerHtml = '<div style="position:absolute;left:' + expPct + '%;top:0;bottom:0;width:2px;background:rgba(0,0,0,0.5);z-index:2"></div>';
+    }
+
+    return '<div style="display:flex;align-items:center;margin-bottom:5px;height:26px">' +
+      '<div style="width:200px;min-width:200px;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding-right:6px" title="' + (it.description || '') + '">' + (it.description || 'Partida') + '</div>' +
+      '<div style="flex:1;position:relative;height:100%;background:var(--bg);border:1px solid var(--border);border-radius:3px">' +
+        '<div style="position:absolute;left:' + todayPct + '%;top:0;bottom:0;width:1px;background:var(--danger);z-index:3;opacity:0.75"></div>' +
+        '<div style="position:absolute;left:' + leftPct + '%;width:' + widthPct + '%;top:2px;bottom:2px;background:rgba(99,115,232,0.12);border-radius:2px;overflow:hidden">' +
+          '<div style="' + fillStyle + '"></div>' +
+          markerHtml +
+        '</div>' +
+        '<div style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--text-muted);z-index:4">' + Math.round(certPct) + '%</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  const legendHtml =
+    '<div style="display:flex;gap:16px;margin-top:10px;font-size:10px;color:var(--text-muted);flex-wrap:wrap">' +
+    '<span><span style="display:inline-block;width:12px;height:12px;background:var(--primary);border-radius:2px;vertical-align:middle;margin-right:3px"></span>Avance certificado</span>' +
+    '<span><span style="display:inline-block;width:12px;height:12px;background:var(--danger);border-radius:2px;vertical-align:middle;margin-right:3px"></span>Hoy</span>' +
+    (mode === 'desvio'
+      ? '<span><span style="display:inline-block;width:2px;height:12px;background:rgba(0,0,0,0.5);vertical-align:middle;margin-right:3px"></span>Avance esperado</span>' +
+        '<span><span style="display:inline-block;width:12px;height:12px;background:var(--success);border-radius:2px;vertical-align:middle;margin-right:3px"></span>Adelantado</span>' +
+        '<span><span style="display:inline-block;width:12px;height:12px;background:var(--danger);border-radius:2px;vertical-align:middle;margin-right:3px"></span>Demorado</span>'
+      : '') +
+    '</div>';
+
+  return '<div style="overflow-x:auto">' + headerHtml + '<div style="min-width:600px">' + rowsHtml + '</div>' + legendHtml + '</div>';
+}
+
+function renderCronograma(contractId, mode) {
+  window._cronoMode = mode;
+  const contract = DB.getById('contracts', contractId);
+  if (!contract) return;
+  const bars = document.getElementById('crono-bars');
+  if (bars) bars.innerHTML = buildCronogramaHtml(contract, mode);
+  ['proyectado', 'real', 'desvio'].forEach(function(m) {
+    const b = document.getElementById('crono-btn-' + m);
+    if (b) b.className = 'btn btn-sm ' + (m === mode ? 'btn-primary' : 'btn-secondary');
+  });
+}
+
 // ---- CONTRACT FORM ----
 function openContractForm(id = null) {
   const contract  = id ? DB.getById('contracts', id) : null;
@@ -559,6 +694,7 @@ function openContractForm(id = null) {
       '<button class="tab-btn" data-tab="cf-general">General</button>' +
       '<button class="tab-btn" data-tab="cf-cond">Condiciones</button>' +
       '<button class="tab-btn" data-tab="cf-partidas">Partidas de Obra</button>' +
+      '<button class="tab-btn" data-tab="cf-crono">Cronograma</button>' +
       '<button class="tab-btn" data-tab="cf-adicionales">Adicionales</button>' +
       '<button class="tab-btn" data-tab="cf-cashflow">Cash Flow</button>' +
     '</div>' +
@@ -632,6 +768,18 @@ function openContractForm(id = null) {
       calcContractTotalsHtml(items) +
     '</div></div>' +
 
+    // CRONOGRAMA (fechas por partida)
+    '<div id="cf-crono" class="tab-content">' +
+    '<div style="margin-bottom:10px;font-size:12px;color:var(--text-muted)">' +
+      '<i class="fas fa-info-circle"></i> Definí el inicio y fin de cada partida. Por defecto toman el período del contrato. El avance se mostrará según las certificaciones.' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:2.5fr 160px 160px;gap:6px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted)">' +
+      '<span>Partida</span><span>Inicio</span><span>Fin</span>' +
+    '</div>' +
+    '<div id="cont-crono-rows">' +
+      items.map(function(it, i) { return cronoFormRow(it, i, (contract && contract.start_date) || todayStr(), (contract && contract.end_date) || addDays(todayStr(), 180)); }).join('') +
+    '</div></div>' +
+
     // ADICIONALES (economías y demasías)
     '<div id="cf-adicionales" class="tab-content">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
@@ -675,6 +823,7 @@ function openContractForm(id = null) {
   window._contractItems = items.map(function(it) { return Object.assign({}, it); });
   window._contractCashflow = cashflow.map(function(r) { return Object.assign({}, r); });
   window._contractAdicionales = adicionales.map(function(a) { return Object.assign({}, a); });
+  window._cronoDefaults = { start: (contract && contract.start_date) || todayStr(), end: (contract && contract.end_date) || addDays(todayStr(), 180) };
   setTimeout(function() { initTabs('contract-form-tabs'); }, 30);
 }
 
@@ -705,6 +854,22 @@ function addContractItem() {
   const div = document.createElement('div');
   div.innerHTML = contractItemRow(it, i);
   cont.appendChild(div.firstElementChild);
+  // keep cronograma rows in sync
+  const cr = document.getElementById('cont-crono-rows');
+  if (cr) {
+    const def = window._cronoDefaults || { start: todayStr(), end: addDays(todayStr(), 180) };
+    const d2 = document.createElement('div');
+    d2.innerHTML = cronoFormRow(Object.assign({}, it), i, def.start, def.end);
+    cr.appendChild(d2.firstElementChild);
+  }
+}
+
+function cronoFormRow(it, i, defStart, defEnd) {
+  return '<div id="crono-form-row-' + i + '" style="display:grid;grid-template-columns:2.5fr 160px 160px;gap:6px;margin-bottom:6px;align-items:center">' +
+    '<input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="' + (it.description || ('Partida ' + (i + 1))) + '">' +
+    '<input class="form-control" style="font-size:12px" type="date" value="' + (it.start_date || defStart) + '" oninput="updateContractItem(' + i + ',\'start_date\',this.value)">' +
+    '<input class="form-control" style="font-size:12px" type="date" value="' + (it.end_date || defEnd) + '" oninput="updateContractItem(' + i + ',\'end_date\',this.value)">' +
+    '</div>';
 }
 
 function updateContractItem(i, field, val) {
@@ -722,6 +887,8 @@ function updateContractItem(i, field, val) {
 function removeContractItem(i) {
   const row = document.getElementById('coni-row-' + i);
   if (row) row.remove();
+  const cronoRow = document.getElementById('crono-form-row-' + i);
+  if (cronoRow) cronoRow.remove();
   window._contractItems[i] = null;
   const totalsEl = document.getElementById('cont-totals');
   if (totalsEl) totalsEl.innerHTML = calcContractTotalsHtml(window._contractItems.filter(Boolean));
