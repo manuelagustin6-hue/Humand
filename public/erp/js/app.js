@@ -20,6 +20,7 @@ const MODULES = {
   indices:        { title: 'Índices de Ajuste',      icon: 'fa-chart-line',            render: renderIndices },
   reportes:       { title: 'Reportes',               icon: 'fa-chart-bar',             render: renderReportes },
   usuarios:       { title: 'Usuarios',               icon: 'fa-users',                 render: renderUsuarios },
+  ajustes:        { title: 'Ajustes del Sistema',    icon: 'fa-cog',                   render: renderAjustes },
 };
 
 function navigate(module) {

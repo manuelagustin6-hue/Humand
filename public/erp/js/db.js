@@ -50,6 +50,120 @@ const DB = {
     this.save(db);
   },
 
+  // ---- BACKUP / RESTORE ----
+  export() {
+    const data = this.get();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'erp_backup_' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  importData(jsonStr) {
+    try {
+      const data = JSON.parse(jsonStr);
+      if (typeof data !== 'object' || Array.isArray(data)) throw new Error('Formato inválido');
+      if (!Array.isArray(data.projects)) throw new Error('Colección "projects" faltante o inválida');
+      if (!Array.isArray(data.suppliers)) throw new Error('Colección "suppliers" faltante o inválida');
+      this.save(data);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  // ---- STATS ----
+  stats() {
+    const raw = localStorage.getItem(this.KEY) || '';
+    const bytes = new Blob([raw]).size;
+    const maxBytes = 5 * 1024 * 1024;
+    const db = this.get();
+    const collections = Object.entries(db)
+      .filter(([, v]) => Array.isArray(v))
+      .map(([name, arr]) => ({ name, count: arr.length }))
+      .sort((a, b) => b.count - a.count);
+    return {
+      bytes,
+      maxBytes,
+      pct: (bytes / maxBytes * 100).toFixed(1),
+      kb: (bytes / 1024).toFixed(1),
+      collections,
+      total: collections.reduce((s, c) => s + c.count, 0),
+    };
+  },
+
+  // ---- INTEGRITY CHECK ----
+  integrity() {
+    const db = this.get();
+    const issues = [];
+
+    const sets = {
+      projects:     new Set((db.projects     || []).map(p => p.id)),
+      suppliers:    new Set((db.suppliers    || []).map(s => s.id)),
+      bankAccounts: new Set((db.bankAccounts || []).map(b => b.id)),
+      invoices:     new Set((db.invoices     || []).map(i => i.id)),
+      accountCodes: new Set((db.accounts     || []).map(a => a.code)),
+    };
+
+    const chk = (col, item, field, setKey, label) => {
+      if (item[field] && !sets[setKey].has(item[field]))
+        issues.push({ severity: 'error', collection: col, id: item.id, msg: `${label}: referencia "${field}" (${item[field]}) no existe` });
+    };
+
+    (db.purchaseOrders     || []).forEach(o  => { chk('purchaseOrders',     o,  'project_id',  'projects',     `OC ${o.number||o.id}`);  chk('purchaseOrders', o, 'supplier_id', 'suppliers', `OC ${o.number||o.id}`); });
+    (db.purchaseRequisitions || []).forEach(r => chk('purchaseRequisitions', r, 'project_id', 'projects', `Req ${r.number||r.id}`));
+    (db.invoices           || []).forEach(i  => chk('invoices',           i, 'project_id', 'projects',     `Fact. ${i.number||i.id}`));
+    (db.certificates       || []).forEach(c  => chk('certificates',       c, 'project_id', 'projects',     `Cert. ${c.number||c.id}`));
+    (db.ganttTasks         || []).forEach(t  => chk('ganttTasks',         t, 'project_id', 'projects',     `Tarea ${t.name||t.id}`));
+    (db.boqItems           || []).forEach(b  => chk('boqItems',           b, 'project_id', 'projects',     `BOQ ${b.description||b.id}`));
+    (db.actualCosts        || []).forEach(c  => chk('actualCosts',        c, 'project_id', 'projects',     `Costo ${c.description||c.id}`));
+    (db.treasuryTx         || []).forEach(tx => chk('treasuryTx',         tx,'account_id', 'bankAccounts', `Mov. ${tx.description||tx.id}`));
+    (db.paymentOrders      || []).forEach(op => { chk('paymentOrders', op, 'supplier_id', 'suppliers', `OP ${op.number||op.id}`); chk('paymentOrders', op, 'account_id', 'bankAccounts', `OP ${op.number||op.id}`); });
+    (db.collections        || []).forEach(co => { chk('collections', co, 'invoice_id', 'invoices', `Cobro ${co.reference||co.id}`); chk('collections', co, 'project_id', 'projects', `Cobro ${co.reference||co.id}`); });
+
+    // Journal entry accounts & balance
+    (db.journalEntries || []).forEach(je => {
+      (je.lines || []).forEach(l => {
+        if (l.account_code && !sets.accountCodes.has(l.account_code))
+          issues.push({ severity: 'error', collection: 'journalEntries', id: je.id, msg: `Asiento ${je.number}: cuenta ${l.account_code} no existe en el plan` });
+      });
+      if (je.status === 'posted') {
+        const td = (je.lines || []).reduce((s, l) => s + (l.debit || 0), 0);
+        const tc = (je.lines || []).reduce((s, l) => s + (l.credit || 0), 0);
+        if (Math.abs(td - tc) > 1)
+          issues.push({ severity: 'warning', collection: 'journalEntries', id: je.id, msg: `Asiento ${je.number} contabilizado pero desbalanceado (Debe ${td.toLocaleString('es-AR')} ≠ Haber ${tc.toLocaleString('es-AR')})` });
+      }
+    });
+
+    // Paid invoices vs collections
+    (db.invoices || []).filter(inv => inv.status === 'paid').forEach(inv => {
+      const collected = (db.collections || []).filter(c => c.invoice_id === inv.id).reduce((s, c) => s + c.amount, 0);
+      if (collected < inv.total * 0.99)
+        issues.push({ severity: 'warning', collection: 'invoices', id: inv.id, msg: `Factura ${inv.number} marcada "Cobrada" pero cobros registrados: $${Math.round(collected).toLocaleString('es-AR')} de $${Math.round(inv.total).toLocaleString('es-AR')}` });
+    });
+
+    // Duplicate PO numbers
+    const poNums = (db.purchaseOrders || []).map(p => p.number).filter(Boolean);
+    poNums.filter((n, i) => poNums.indexOf(n) !== i).forEach(n =>
+      issues.push({ severity: 'warning', collection: 'purchaseOrders', msg: `Número de OC duplicado: ${n}` }));
+
+    // Duplicate invoice numbers
+    const invNums = (db.invoices || []).map(i => i.number).filter(Boolean);
+    invNums.filter((n, i) => invNums.indexOf(n) !== i).forEach(n =>
+      issues.push({ severity: 'warning', collection: 'invoices', msg: `Número de factura duplicado: ${n}` }));
+
+    return issues;
+  },
+
+  // ---- RESET ----
+  resetToSeed() {
+    this.save(this.seed());
+  },
+
   // ---- SEED DATA ----
   seed() {
     const p1 = 'proj-001', p2 = 'proj-002', p3 = 'proj-003';
