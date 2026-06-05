@@ -1,5 +1,15 @@
 /* ===== REPORTES ===== */
 function renderReportes() {
+  const projects = DB.getAll('projects');
+  const invoices = DB.getAll('invoices');
+  const collections = DB.getAll('collections');
+  const actualCosts = DB.getAll('actualCosts');
+  const totalBilled = invoices.reduce((s, i) => s + (i.total || 0), 0);
+  const totalCollected = collections.reduce((s, c) => s + (c.amount || 0), 0);
+  const totalActual = actualCosts.reduce((s, a) => s + (a.amount || 0), 0);
+  const grossMargin = totalBilled - totalActual;
+  const marginPct = totalBilled > 0 ? (grossMargin / totalBilled * 100) : 0;
+
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
@@ -7,22 +17,47 @@ function renderReportes() {
     <div class="page-subtitle">Informes gerenciales, contables y de control de obra</div>
   </div>
   <div class="page-actions">
-    <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir Vista</button>
+    <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+  </div>
+</div>
+
+<!-- EXECUTIVE KPIs -->
+<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="stat-card">
+    <div class="stat-icon blue"><i class="fas fa-file-invoice-dollar"></i></div>
+    <div><div class="stat-value" style="font-size:16px">${fmtMoney(totalBilled)}</div><div class="stat-label">Facturado Total</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon green"><i class="fas fa-hand-holding-dollar"></i></div>
+    <div><div class="stat-value" style="font-size:16px">${fmtMoney(totalCollected)}</div><div class="stat-label">Cobrado Total</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon yellow"><i class="fas fa-wrench"></i></div>
+    <div><div class="stat-value" style="font-size:16px">${fmtMoney(totalActual)}</div><div class="stat-label">Costo Real Total</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon ${marginPct >= 15 ? 'green' : marginPct >= 0 ? 'cyan' : 'red'}"><i class="fas fa-percentage"></i></div>
+    <div>
+      <div class="stat-value ${marginPct >= 0 ? 'text-success' : 'text-danger'}" style="font-size:16px">${fmtPct(marginPct)}</div>
+      <div class="stat-label">Margen Bruto (${fmtMoney(grossMargin)})</div>
+    </div>
   </div>
 </div>
 
 <div id="rep-tabs">
   <div class="tabs" style="flex-wrap:wrap">
-    <button class="tab-btn" data-tab="tab-sumas">Sumas y Saldos</button>
+    <button class="tab-btn" data-tab="tab-rentabilidad">Rentabilidad</button>
     <button class="tab-btn" data-tab="tab-proyecto">Resumen por Proyecto</button>
+    <button class="tab-btn" data-tab="tab-sumas">Sumas y Saldos</button>
     <button class="tab-btn" data-tab="tab-flujo">Flujo Proyectado</button>
     <button class="tab-btn" data-tab="tab-certs-rep">Certificaciones</button>
-    <button class="tab-btn" data-tab="tab-aging-rep">Aging</button>
+    <button class="tab-btn" data-tab="tab-aging-rep">Aging Deudores</button>
     <button class="tab-btn" data-tab="tab-compras-rep">Compras</button>
   </div>
 
-  <div id="tab-sumas" class="tab-content">${renderSumasYSaldos()}</div>
+  <div id="tab-rentabilidad" class="tab-content">${renderReporteRentabilidad()}</div>
   <div id="tab-proyecto" class="tab-content">${renderReporteProyecto()}</div>
+  <div id="tab-sumas" class="tab-content">${renderSumasYSaldos()}</div>
   <div id="tab-flujo" class="tab-content">${renderFlujoCaja()}</div>
   <div id="tab-certs-rep" class="tab-content">${renderReporteCertificaciones()}</div>
   <div id="tab-aging-rep" class="tab-content">${renderReporteAging()}</div>
@@ -30,7 +65,10 @@ function renderReportes() {
 </div>
   `;
   initTabs('rep-tabs');
-  setTimeout(() => renderFlujoCajaChart(), 100);
+  setTimeout(() => {
+    renderFlujoCajaChart();
+    renderRentabilidadChart();
+  }, 120);
 }
 
 // ---- SUMAS Y SALDOS ----
@@ -136,7 +174,10 @@ function renderReporteProyecto() {
   const certificates = DB.getAll('certificates');
 
   return `<div class="card">
-    <div class="card-header"><span class="card-title"><i class="fas fa-building text-primary"></i> Resumen Ejecutivo por Proyecto</span></div>
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-building text-primary"></i> Resumen Ejecutivo por Proyecto</span>
+      <button class="btn btn-sm btn-secondary" onclick="exportReporteProyecto()"><i class="fas fa-download"></i> Exportar CSV</button>
+    </div>
     <div class="card-body" style="padding:0"><div class="table-wrap">
       <table><thead><tr>
         <th>Proyecto</th><th>Cliente</th><th>Estado</th>
@@ -370,7 +411,10 @@ function renderReporteCertificaciones() {
     if (c.status === 'pending') byProject[c.project_id].pending++;
   });
 
-  return `<div class="card"><div class="card-header"><span class="card-title"><i class="fas fa-certificate text-primary"></i> Estado de Certificaciones por Proyecto</span></div>
+  return `<div class="card"><div class="card-header">
+    <span class="card-title"><i class="fas fa-certificate text-primary"></i> Estado de Certificaciones por Proyecto</span>
+    <button class="btn btn-sm btn-secondary" onclick="exportReporteCertificaciones()"><i class="fas fa-download"></i> Exportar CSV</button>
+  </div>
   <div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr>
       <th>Proyecto</th><th>Presupuesto</th><th>Certificados Aprobados</th><th>Pendientes</th>
@@ -423,7 +467,10 @@ function renderReporteAging() {
 
   const grandTotal = buckets.reduce((s,b)=>s+b.total,0);
 
-  return `<div class="card"><div class="card-header"><span class="card-title"><i class="fas fa-clock text-warning"></i> Aging de Deudores</span></div>
+  return `<div class="card"><div class="card-header">
+    <span class="card-title"><i class="fas fa-clock text-warning"></i> Aging de Deudores</span>
+    <button class="btn btn-sm btn-secondary" onclick="exportReporteAging()"><i class="fas fa-download"></i> Exportar CSV</button>
+  </div>
   <div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr><th>Rango</th><th>Facturas</th><th class="text-right">Saldo</th><th class="text-right">% del Total</th><th>Distribución</th></tr></thead>
     <tbody>
@@ -469,7 +516,10 @@ function renderReporteCompras() {
     <div class="stat-value">${fmtMoney(byStatus['received']||0)}</div><div class="stat-label">Recibido</div></div></div>
 </div>
 
-<div class="card"><div class="card-header"><span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Compras por Proveedor</span></div>
+<div class="card"><div class="card-header">
+  <span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Compras por Proveedor</span>
+  <button class="btn btn-sm btn-secondary" onclick="exportReporteCompras()"><i class="fas fa-download"></i> Exportar CSV</button>
+</div>
 <div class="card-body" style="padding:0"><div class="table-wrap">
   <table><thead><tr><th>Proveedor</th><th class="text-right">Total Comprado</th><th class="text-right">% del Total</th><th>Participación</th></tr></thead>
   <tbody>
@@ -486,4 +536,248 @@ function renderReporteCompras() {
   <tfoot><tr class="total-row"><td>TOTAL</td><td class="number-cell text-right">${fmtMoney(totalPOs)}</td><td colspan="2"></td></tr></tfoot>
   </table>
 </div></div></div>`;
+}
+
+// ---- RENTABILIDAD REPORT ----
+function renderReporteRentabilidad() {
+  const projects = DB.getAll('projects');
+  const invoices = DB.getAll('invoices');
+  const collections = DB.getAll('collections');
+  const actualCosts = DB.getAll('actualCosts');
+
+  const rows = projects.map(p => {
+    const invs = invoices.filter(i => i.project_id === p.id);
+    const billed = invs.reduce((s, i) => s + (i.total || 0), 0);
+    const invIds = invs.map(i => i.id);
+    const collected = collections.filter(c => invIds.includes(c.invoice_id)).reduce((s, c) => s + (c.amount || 0), 0);
+    const costs = actualCosts.filter(a => a.project_id === p.id).reduce((s, a) => s + (a.amount || 0), 0);
+    const budget = p.budget || 0;
+    const margin = billed - costs;
+    const marginPct = billed > 0 ? margin / billed * 100 : 0;
+    const budgetVar = budget > 0 ? (budget - costs) / budget * 100 : 0;
+    return { p, billed, collected, costs, budget, margin, marginPct, budgetVar };
+  });
+
+  const totBilled = rows.reduce((s, r) => s + r.billed, 0);
+  const totCosts = rows.reduce((s, r) => s + r.costs, 0);
+  const totMargin = totBilled - totCosts;
+  const totMarginPct = totBilled > 0 ? totMargin / totBilled * 100 : 0;
+
+  return `
+<div class="grid-2 mb-2">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Margen por Proyecto (%)</span>
+      <button class="btn btn-sm btn-secondary" onclick="exportReporteRentabilidad()"><i class="fas fa-download"></i> Exportar CSV</button>
+    </div>
+    <div class="card-body"><div style="height:280px"><canvas id="chart-rentabilidad"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title"><i class="fas fa-info-circle text-primary"></i> Indicadores Globales</span></div>
+    <div class="card-body">
+      <div style="display:grid;gap:12px">
+        <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px">
+          <span style="font-size:13px;color:var(--text-muted)">Facturado Total</span>
+          <strong>${fmtMoney(totBilled)}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:10px;background:var(--bg);border-radius:8px">
+          <span style="font-size:13px;color:var(--text-muted)">Costo Real Total</span>
+          <strong class="text-danger">${fmtMoney(totCosts)}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:10px;background:${totMargin >= 0 ? 'var(--success-light)' : 'var(--danger-light)'};border-radius:8px;border:1px solid ${totMargin >= 0 ? 'var(--success)' : 'var(--danger)'}">
+          <span style="font-size:13px;font-weight:600">Margen Bruto</span>
+          <strong class="${totMargin >= 0 ? 'text-success' : 'text-danger'}">${fmtMoney(totMargin)} (${fmtPct(totMarginPct)})</strong>
+        </div>
+        <div style="margin-top:8px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">MARGEN GLOBAL</div>
+          <div class="progress-bar" style="height:12px">
+            <div class="progress-fill ${totMarginPct >= 20 ? 'green' : totMarginPct >= 10 ? '' : totMarginPct >= 0 ? 'yellow' : 'red'}" style="width:${Math.max(0,Math.min(100,totMarginPct))}%"></div>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted)">${fmtPct(totMarginPct)}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title"><i class="fas fa-table text-primary"></i> Análisis Detallado de Rentabilidad</span>
+  </div>
+  <div class="card-body" style="padding:0"><div class="table-wrap">
+    <table><thead><tr>
+      <th>Proyecto</th><th>Estado</th>
+      <th class="text-right">Presupuesto</th>
+      <th class="text-right">Costo Real</th>
+      <th class="text-right">Var. Ppto.</th>
+      <th class="text-right">Facturado</th>
+      <th class="text-right">Cobrado</th>
+      <th class="text-right">Margen $</th>
+      <th class="text-right">Margen %</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r => `<tr>
+        <td><strong>${r.p.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${r.p.client || ''}</span></td>
+        <td>${statusBadge(r.p.status)}</td>
+        <td class="number-cell text-right">${fmtMoney(r.budget)}</td>
+        <td class="number-cell text-right">${fmtMoney(r.costs)}</td>
+        <td class="number-cell text-right ${r.budgetVar >= 0 ? 'text-success' : 'text-danger'}">
+          ${r.budgetVar >= 0 ? '+' : ''}${fmtPct(r.budgetVar)}
+        </td>
+        <td class="number-cell text-right">${fmtMoney(r.billed)}</td>
+        <td class="number-cell text-right text-success">${fmtMoney(r.collected)}</td>
+        <td class="number-cell text-right ${r.margin >= 0 ? 'text-success' : 'text-danger'}">${fmtMoney(r.margin)}</td>
+        <td class="text-right">
+          <div class="progress-bar" style="width:80px;display:inline-block;vertical-align:middle">
+            <div class="progress-fill ${r.marginPct >= 20 ? 'green' : r.marginPct >= 10 ? '' : r.marginPct >= 0 ? 'yellow' : 'red'}" style="width:${Math.max(0, Math.min(100, r.marginPct))}%"></div>
+          </div>
+          <span style="font-size:11px;margin-left:4px;color:${r.marginPct >= 0 ? 'var(--success)' : 'var(--danger)'}">${fmtPct(r.marginPct)}</span>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+    <tfoot><tr class="total-row">
+      <td colspan="2"><strong>TOTALES</strong></td>
+      <td class="number-cell text-right"><strong>${fmtMoney(rows.reduce((s,r)=>s+r.budget,0))}</strong></td>
+      <td class="number-cell text-right"><strong>${fmtMoney(totCosts)}</strong></td>
+      <td></td>
+      <td class="number-cell text-right"><strong>${fmtMoney(totBilled)}</strong></td>
+      <td class="number-cell text-right"><strong>${fmtMoney(rows.reduce((s,r)=>s+r.collected,0))}</strong></td>
+      <td class="number-cell text-right ${totMargin >= 0 ? 'text-success' : 'text-danger'}"><strong>${fmtMoney(totMargin)}</strong></td>
+      <td class="text-right ${totMarginPct >= 0 ? 'text-success' : 'text-danger'}"><strong>${fmtPct(totMarginPct)}</strong></td>
+    </tr></tfoot>
+  </table></div></div>
+</div>`;
+}
+
+function renderRentabilidadChart() {
+  const ctx = document.getElementById('chart-rentabilidad');
+  if (!ctx) return;
+  const projects = DB.getAll('projects');
+  const invoices = DB.getAll('invoices');
+  const actualCosts = DB.getAll('actualCosts');
+
+  const data = projects.map(p => {
+    const billed = invoices.filter(i => i.project_id === p.id).reduce((s, i) => s + (i.total || 0), 0);
+    const costs = actualCosts.filter(a => a.project_id === p.id).reduce((s, a) => s + (a.amount || 0), 0);
+    return { name: p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name, pct: billed > 0 ? (billed - costs) / billed * 100 : 0 };
+  }).sort((a, b) => b.pct - a.pct);
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.name),
+      datasets: [{
+        label: 'Margen %',
+        data: data.map(d => parseFloat(d.pct.toFixed(1))),
+        backgroundColor: data.map(d => d.pct >= 20 ? 'rgba(16,185,129,.75)' : d.pct >= 10 ? 'rgba(37,99,235,.65)' : d.pct >= 0 ? 'rgba(245,158,11,.75)' : 'rgba(239,68,68,.75)'),
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.x.toFixed(1) + '%' } }
+      },
+      scales: {
+        x: { ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+        y: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ---- EXPORT FUNCTIONS ----
+function exportReporteProyecto() {
+  const projects = DB.getAll('projects');
+  const boqItems = DB.getAll('boqItems');
+  const actualCosts = DB.getAll('actualCosts');
+  const invoices = DB.getAll('invoices');
+  const collections = DB.getAll('collections');
+  const certificates = DB.getAll('certificates');
+  exportCSV('reporte_proyectos.csv',
+    ['Proyecto', 'Cliente', 'Estado', 'Presupuesto', 'Costo Real', 'Desviacion', 'Certificado', 'Facturado', 'Cobrado'],
+    projects.map(p => {
+      const boqTotal = boqItems.filter(b=>b.project_id===p.id).reduce((s,b)=>s+b.total,0);
+      const actualTotal = actualCosts.filter(a=>a.project_id===p.id).reduce((s,a)=>s+a.amount,0);
+      const certTotal = certificates.filter(c=>c.project_id===p.id&&c.status==='approved').reduce((s,c)=>s+c.subtotal,0);
+      const invTotal = invoices.filter(i=>i.project_id===p.id).reduce((s,i)=>s+i.total,0);
+      const budget = p.budget || boqTotal;
+      const invIds = invoices.filter(i=>i.project_id===p.id).map(i=>i.id);
+      const collected = collections.filter(c=>invIds.includes(c.invoice_id)).reduce((s,c)=>s+c.amount,0);
+      return [p.name, p.client||'', p.status, budget, actualTotal, actualTotal-budget, certTotal, invTotal, collected];
+    })
+  );
+}
+
+function exportReporteCertificaciones() {
+  const projects = DB.getAll('projects');
+  const certs = DB.getAll('certificates');
+  const byProject = {};
+  certs.forEach(c => {
+    if (!byProject[c.project_id]) byProject[c.project_id] = { approved:0, pending:0, totalCert:0, totalRet:0 };
+    if (c.status==='approved') { byProject[c.project_id].approved++; byProject[c.project_id].totalCert+=c.subtotal; byProject[c.project_id].totalRet+=c.retention_amount||0; }
+    if (c.status==='pending') byProject[c.project_id].pending++;
+  });
+  exportCSV('reporte_certificaciones.csv',
+    ['Proyecto', 'Presupuesto', 'Certificados Aprobados', 'Pendientes', 'Total Certificado', 'Fondo Reparo', 'Avance %'],
+    projects.map(p => {
+      const d = byProject[p.id] || { approved:0,pending:0,totalCert:0,totalRet:0 };
+      const pct = p.budget ? Math.min(100, d.totalCert/p.budget*100) : 0;
+      return [p.name, p.budget||0, d.approved, d.pending, d.totalCert, d.totalRet, pct.toFixed(1)+'%'];
+    })
+  );
+}
+
+function exportReporteAging() {
+  const invoices = DB.getAll('invoices');
+  const collections = DB.getAll('collections');
+  const projects = DB.getAll('projects');
+  const today = todayStr();
+  const open = invoices.filter(i => ['sent','overdue'].includes(i.status));
+  exportCSV('reporte_aging.csv',
+    ['Factura', 'Proyecto', 'Cliente', 'Total', 'Cobrado', 'Saldo', 'Vencimiento', 'Dias Mora'],
+    open.map(inv => {
+      const cobrado = collections.filter(c=>c.invoice_id===inv.id).reduce((s,c)=>s+c.amount,0);
+      const balance = inv.total - cobrado;
+      const proj = projects.find(p=>p.id===inv.project_id);
+      const days = inv.due_date < today ? daysBetween(inv.due_date, today) : 0;
+      return [inv.number, proj?.name||'', inv.client_name||'', inv.total, cobrado, balance, inv.due_date, days];
+    })
+  );
+}
+
+function exportReporteCompras() {
+  const pos = DB.getAll('purchaseOrders');
+  const suppliers = DB.getAll('suppliers');
+  const projects = DB.getAll('projects');
+  exportCSV('reporte_compras.csv',
+    ['OC Numero', 'Proveedor', 'Proyecto', 'Estado', 'Fecha', 'Total'],
+    pos.map(o => {
+      const sup = suppliers.find(s=>s.id===o.supplier_id);
+      const proj = projects.find(p=>p.id===o.project_id);
+      return [o.number||'', sup?.name||'', proj?.name||'', o.status, o.date||'', o.total];
+    })
+  );
+}
+
+function exportReporteRentabilidad() {
+  const projects = DB.getAll('projects');
+  const invoices = DB.getAll('invoices');
+  const collections = DB.getAll('collections');
+  const actualCosts = DB.getAll('actualCosts');
+  exportCSV('reporte_rentabilidad.csv',
+    ['Proyecto', 'Cliente', 'Estado', 'Presupuesto', 'Costo Real', 'Var Ppto %', 'Facturado', 'Cobrado', 'Margen $', 'Margen %'],
+    projects.map(p => {
+      const invs = invoices.filter(i=>i.project_id===p.id);
+      const billed = invs.reduce((s,i)=>s+i.total,0);
+      const invIds = invs.map(i=>i.id);
+      const collected = collections.filter(c=>invIds.includes(c.invoice_id)).reduce((s,c)=>s+c.amount,0);
+      const costs = actualCosts.filter(a=>a.project_id===p.id).reduce((s,a)=>s+a.amount,0);
+      const margin = billed - costs;
+      const marginPct = billed > 0 ? margin/billed*100 : 0;
+      const budgetVar = p.budget > 0 ? (p.budget-costs)/p.budget*100 : 0;
+      return [p.name, p.client||'', p.status, p.budget||0, costs, budgetVar.toFixed(1)+'%', billed, collected, margin, marginPct.toFixed(1)+'%'];
+    })
+  );
 }
