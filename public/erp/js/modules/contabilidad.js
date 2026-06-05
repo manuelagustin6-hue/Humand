@@ -593,7 +593,7 @@ function exportJournal() {
       rows.push([e.number, e.date, e.description, l.account_code, l.account_name, l.debit, l.credit, l.description]);
     });
   });
-  exportCSV('libro_diario.csv',
+  exportXLSX('libro_diario.xlsx',
     ['Asiento','Fecha','Descripción','Cód.Cuenta','Cuenta','Débito','Crédito','Detalle'],
     rows
   );
@@ -670,7 +670,7 @@ function exportSumasContabilidad() {
     debits[l.account_code] = (debits[l.account_code]||0)+(l.debit||0);
     credits[l.account_code] = (credits[l.account_code]||0)+(l.credit||0);
   }));
-  exportCSV('sumas_y_saldos.csv',
+  exportXLSX('sumas_y_saldos.xlsx',
     ['Código','Cuenta','Tipo','Debe Acum.','Haber Acum.','Saldo Deudor','Saldo Acreedor'],
     accounts.filter(a=>debits[a.code]||credits[a.code]).sort((a,b)=>a.code.localeCompare(b.code)).map(a=>{
       const d=debits[a.code]||0,c=credits[a.code]||0;

@@ -169,7 +169,15 @@ function openPaymentOrderForm(id = null) {
   const projects = DB.getAll('projects');
   const accounts = DB.getAll('bankAccounts');
   const retentions = DB.getAll('retentions').filter(r => r.active && r.applies_to === 'payment');
+  const allSIs = DB.getAll('supplierInvoices');
   const nextNum = `OP-${new Date().getFullYear()}-${String(DB.getAll('paymentOrders').length + 1).padStart(3,'0')}`;
+
+  // Build supplier invoice options filtered by current supplier if editing
+  function buildSIOpts(supplierId) {
+    const filtered = allSIs.filter(si => si.status !== 'cancelled' && (!supplierId || si.supplier_id === supplierId));
+    const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
+    return filtered.map(si => '<option value="' + si.id + '" ' + (o?.supplier_invoice_id===si.id?'selected':'') + '>' + si.number + ' — ' + fmtMoney(si.total) + ' [' + (statusLabel[si.status]||si.status) + ']</option>').join('');
+  }
 
   openModal(o ? 'Editar Orden de Pago' : 'Nueva Orden de Pago', `
 <div class="form-grid form-grid-2">
@@ -188,9 +196,16 @@ function openPaymentOrderForm(id = null) {
   </div>
   <div class="form-group full">
     <label class="form-label">Proveedor *</label>
-    <select class="form-control" id="op-supplier">
+    <select class="form-control" id="op-supplier" onchange="reloadPOInvoiceSelect(this.value)">
       <option value="">Seleccionar...</option>
       ${suppliers.map(s => `<option value="${s.id}" ${o?.supplier_id===s.id?'selected':''}>${s.name}</option>`).join('')}
+    </select>
+  </div>
+  <div class="form-group full">
+    <label class="form-label">Factura del Proveedor</label>
+    <select class="form-control" id="op-invoice" onchange="prefillPOFromInvoice(this.value)">
+      <option value="">Sin factura de referencia</option>
+      ${buildSIOpts(o?.supplier_id || '')}
     </select>
   </div>
   <div class="form-group">
@@ -210,10 +225,6 @@ function openPaymentOrderForm(id = null) {
   <div class="form-group">
     <label class="form-label">Fecha</label>
     <input class="form-control" id="op-date" type="date" value="${o?.date || todayStr()}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Referencia (N° factura/OC)</label>
-    <input class="form-control" id="op-ref" value="${o?.reference_doc || ''}" placeholder="FAC-001, OC-2025-001">
   </div>
   <div class="form-group full">
     <label class="form-label">Concepto *</label>
@@ -243,6 +254,29 @@ function openPaymentOrderForm(id = null) {
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="savePaymentOrder('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
 `);
+}
+
+function reloadPOInvoiceSelect(supplierId) {
+  const allSIs = DB.getAll('supplierInvoices');
+  const sel = document.getElementById('op-invoice');
+  if (!sel) return;
+  const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
+  const filtered = allSIs.filter(si => si.status !== 'cancelled' && (!supplierId || si.supplier_id === supplierId));
+  sel.innerHTML = '<option value="">Sin factura de referencia</option>' +
+    filtered.map(si => '<option value="' + si.id + '">' + si.number + ' — ' + fmtMoney(si.total) + ' [' + (statusLabel[si.status]||si.status) + ']</option>').join('');
+}
+
+function prefillPOFromInvoice(invoiceId) {
+  if (!invoiceId) return;
+  const si = DB.getById('supplierInvoices', invoiceId);
+  if (!si) return;
+  const grossEl = document.getElementById('op-gross');
+  const conceptEl = document.getElementById('op-concept');
+  const projEl = document.getElementById('op-project');
+  if (grossEl && !grossEl.value) grossEl.value = si.total;
+  if (conceptEl && !conceptEl.value) conceptEl.value = 'Pago factura ' + si.number;
+  if (projEl && si.project_id) projEl.value = si.project_id;
+  recalcPORetentions();
 }
 
 function recalcPORetentions() {
@@ -279,13 +313,16 @@ function savePaymentOrder(id) {
   }));
   const totalRet = retentions.reduce((s,r) => s + r.amount, 0);
 
+  const invoiceId = document.getElementById('op-invoice')?.value || '';
+  const invoiceRef = invoiceId ? (DB.getById('supplierInvoices', invoiceId)?.number || '') : '';
   const data = {
     number: document.getElementById('op-num').value,
     supplier_id: supplierId,
     project_id: document.getElementById('op-project').value || '',
     account_id: document.getElementById('op-account').value || '',
     date: document.getElementById('op-date').value,
-    reference_doc: document.getElementById('op-ref').value.trim(),
+    supplier_invoice_id: invoiceId,
+    reference_doc: invoiceRef,
     concept,
     gross_amount: gross,
     retentions,
@@ -319,7 +356,7 @@ function exportPaymentOrders() {
   const orders = DB.getAll('paymentOrders');
   const suppliers = DB.getAll('suppliers');
   const projects = DB.getAll('projects');
-  exportCSV('ordenes_de_pago.csv',
+  exportXLSX('ordenes_de_pago.xlsx',
     ['Número','Proveedor','Proyecto','Fecha','Concepto','Bruto','Retenciones','Neto','Estado'],
     orders.map(o => [o.number, suppliers.find(s=>s.id===o.supplier_id)?.name||'', projects.find(p=>p.id===o.project_id)?.name||'', o.date, o.concept, o.gross_amount, o.total_retentions||0, o.net_amount, o.status])
   );

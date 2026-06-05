@@ -374,7 +374,7 @@ function deleteCert(id) {
 function exportCertificates() {
   const certs = DB.getAll('certificates');
   const projects = DB.getAll('projects');
-  exportCSV('certificaciones.csv',
+  exportXLSX('certificaciones.xlsx',
     ['Número','Proyecto','Período Desde','Período Hasta','Fecha','Subtotal','Retención','Neto','Estado'],
     certs.map(c => [c.number, projects.find(p=>p.id===c.project_id)?.name||'', c.period_from, c.period_to, c.date, c.subtotal, c.retention_amount||0, c.net_amount, c.status])
   );

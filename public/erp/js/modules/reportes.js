@@ -155,7 +155,7 @@ function exportSumasYSaldos() {
     debits[l.account_code] = (debits[l.account_code]||0) + (l.debit||0);
     credits[l.account_code] = (credits[l.account_code]||0) + (l.credit||0);
   }));
-  exportCSV('sumas_y_saldos.csv',
+  exportXLSX('sumas_y_saldos.xlsx',
     ['Código','Cuenta','Tipo','Débitos Acum.','Créditos Acum.','Saldo Deudor','Saldo Acreedor'],
     accounts.sort((a,b)=>a.code.localeCompare(b.code)).filter(a=>debits[a.code]||credits[a.code]).map(a => {
       const d = debits[a.code]||0, c = credits[a.code]||0;
@@ -695,7 +695,7 @@ function exportReporteProyecto() {
   const invoices = DB.getAll('invoices');
   const collections = DB.getAll('collections');
   const certificates = DB.getAll('certificates');
-  exportCSV('reporte_proyectos.csv',
+  exportXLSX('reporte_proyectos.xlsx',
     ['Proyecto', 'Cliente', 'Estado', 'Presupuesto', 'Costo Real', 'Desviacion', 'Certificado', 'Facturado', 'Cobrado'],
     projects.map(p => {
       const boqTotal = boqItems.filter(b=>b.project_id===p.id).reduce((s,b)=>s+b.total,0);
@@ -719,7 +719,7 @@ function exportReporteCertificaciones() {
     if (c.status==='approved') { byProject[c.project_id].approved++; byProject[c.project_id].totalCert+=c.subtotal; byProject[c.project_id].totalRet+=c.retention_amount||0; }
     if (c.status==='pending') byProject[c.project_id].pending++;
   });
-  exportCSV('reporte_certificaciones.csv',
+  exportXLSX('reporte_certificaciones.xlsx',
     ['Proyecto', 'Presupuesto', 'Certificados Aprobados', 'Pendientes', 'Total Certificado', 'Fondo Reparo', 'Avance %'],
     projects.map(p => {
       const d = byProject[p.id] || { approved:0,pending:0,totalCert:0,totalRet:0 };
@@ -735,7 +735,7 @@ function exportReporteAging() {
   const projects = DB.getAll('projects');
   const today = todayStr();
   const open = invoices.filter(i => ['sent','overdue'].includes(i.status));
-  exportCSV('reporte_aging.csv',
+  exportXLSX('reporte_aging.xlsx',
     ['Factura', 'Proyecto', 'Cliente', 'Total', 'Cobrado', 'Saldo', 'Vencimiento', 'Dias Mora'],
     open.map(inv => {
       const cobrado = collections.filter(c=>c.invoice_id===inv.id).reduce((s,c)=>s+c.amount,0);
@@ -751,7 +751,7 @@ function exportReporteCompras() {
   const pos = DB.getAll('purchaseOrders');
   const suppliers = DB.getAll('suppliers');
   const projects = DB.getAll('projects');
-  exportCSV('reporte_compras.csv',
+  exportXLSX('reporte_compras.xlsx',
     ['OC Numero', 'Proveedor', 'Proyecto', 'Estado', 'Fecha', 'Total'],
     pos.map(o => {
       const sup = suppliers.find(s=>s.id===o.supplier_id);
@@ -766,7 +766,7 @@ function exportReporteRentabilidad() {
   const invoices = DB.getAll('invoices');
   const collections = DB.getAll('collections');
   const actualCosts = DB.getAll('actualCosts');
-  exportCSV('reporte_rentabilidad.csv',
+  exportXLSX('reporte_rentabilidad.xlsx',
     ['Proyecto', 'Cliente', 'Estado', 'Presupuesto', 'Costo Real', 'Var Ppto %', 'Facturado', 'Cobrado', 'Margen $', 'Margen %'],
     projects.map(p => {
       const invs = invoices.filter(i=>i.project_id===p.id);

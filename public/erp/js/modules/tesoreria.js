@@ -401,7 +401,7 @@ function exportTx() {
   const txs = DB.getAll('treasuryTx');
   const accounts = DB.getAll('bankAccounts');
   const projects = DB.getAll('projects');
-  exportCSV('movimientos_tesoreria.csv',
+  exportXLSX('movimientos_tesoreria.xlsx',
     ['Fecha','Cuenta','Tipo','Categoría','Descripción','Proyecto','Referencia','Importe'],
     txs.map(t => [
       t.date,

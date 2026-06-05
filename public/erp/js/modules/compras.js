@@ -17,6 +17,7 @@ function renderCompras() {
   <div class="tabs">
     <button class="tab-btn" data-tab="tab-pedidos">Pedidos de Materiales</button>
     <button class="tab-btn" data-tab="tab-oc">Órdenes de Compra</button>
+    <button class="tab-btn" data-tab="tab-fact-prov">Facturas Proveedor</button>
     <button class="tab-btn" data-tab="tab-suppliers">Proveedores</button>
   </div>
   <div id="tab-pedidos" class="tab-content">
@@ -24,6 +25,9 @@ function renderCompras() {
   </div>
   <div id="tab-oc" class="tab-content">
     ${renderPOTable()}
+  </div>
+  <div id="tab-fact-prov" class="tab-content">
+    ${renderSupplierInvoicesTab()}
   </div>
   <div id="tab-suppliers" class="tab-content">
     ${renderSuppliersTable()}
@@ -479,7 +483,7 @@ function deleteRequisition(id) {
 function exportRequisitions() {
   const reqs = DB.getAll('purchaseRequisitions');
   const projects = DB.getAll('projects');
-  exportCSV('pedidos_materiales.csv',
+  exportXLSX('pedidos_materiales.xlsx',
     ['Número', 'Proyecto', 'Solicitado por', 'Prioridad', 'Fecha Necesidad', 'Total Est.', 'Estado'],
     reqs.map(r => [
       r.number,
@@ -557,6 +561,7 @@ function buildPORows(pos, projects, suppliers) {
         <button class="btn-ghost btn btn-sm" onclick="viewPO('${po.id}')"><i class="fas fa-eye"></i></button>
         <button class="btn-ghost btn btn-sm" onclick="openPOForm('${po.id}')"><i class="fas fa-edit"></i></button>
         ${po.status === 'sent' ? `<button class="btn btn-sm btn-success" onclick="receivePO('${po.id}')"><i class="fas fa-check"></i> Recibir</button>` : ''}
+        ${po.status === 'received' ? `<button class="btn btn-sm btn-primary" onclick="generateSIFromPO('${po.id}')"><i class="fas fa-file-invoice"></i> Factura</button>` : ''}
         <button class="btn-ghost btn btn-sm danger" onclick="deletePO('${po.id}')"><i class="fas fa-trash"></i></button>
       </div></td>
     </tr>`;
@@ -794,7 +799,7 @@ function exportPOs() {
   const pos = DB.getAll('purchaseOrders');
   const projects = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
-  exportCSV('ordenes_compra.csv',
+  exportXLSX('ordenes_compra.xlsx',
     ['Número','Proyecto','Proveedor','Fecha','Entrega','Subtotal','IVA','Total','Estado'],
     pos.map(po => [
       po.number,
@@ -926,4 +931,264 @@ function deleteSupplier(id) {
     toast('Proveedor eliminado', 'warning');
     renderCompras();
   });
+}
+
+// ==== FACTURAS DE PROVEEDORES ====
+
+function renderSupplierInvoicesTab() {
+  const sis = DB.getAll('supplierInvoices');
+  const suppliers = DB.getAll('suppliers');
+  const projects = DB.getAll('projects');
+  const pos = DB.getAll('purchaseOrders');
+
+  const totalPending = sis.filter(s => s.status === 'pending').reduce((acc, s) => acc + s.total, 0);
+  const totalPaid = sis.filter(s => s.status === 'paid').reduce((acc, s) => acc + s.total, 0);
+  const pending = sis.filter(s => s.status === 'pending').length;
+
+  return `
+<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice"></i></div><div>
+    <div class="stat-value">${sis.length}</div><div class="stat-label">Total Facturas</div></div></div>
+  <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-clock"></i></div><div>
+    <div class="stat-value">${pending}</div><div class="stat-label">Pendientes de Pago</div></div></div>
+  <div class="stat-card"><div class="stat-icon red"><i class="fas fa-dollar-sign"></i></div><div>
+    <div class="stat-value">${fmtMoney(totalPending)}</div><div class="stat-label">Monto Pendiente</div></div></div>
+  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div><div>
+    <div class="stat-value">${fmtMoney(totalPaid)}</div><div class="stat-label">Monto Pagado</div></div></div>
+</div>
+<div class="filter-bar">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" placeholder="Buscar factura, proveedor..." oninput="filterSIs(this.value)">
+  </div>
+  <select class="form-control" style="width:160px" onchange="filterSIs(undefined, this.value)">
+    <option value="">Todos los estados</option>
+    <option value="pending">Pendiente</option>
+    <option value="paid">Pagada</option>
+    <option value="cancelled">Cancelada</option>
+  </select>
+  <button class="btn btn-secondary" onclick="exportSIs()"><i class="fas fa-download"></i> Exportar</button>
+  <button class="btn btn-primary" onclick="openSIForm()"><i class="fas fa-plus"></i> Nueva Factura</button>
+</div>
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap" id="si-table-wrap">
+      ${buildSITable(sis, suppliers, projects, pos)}
+    </div>
+  </div>
+</div>`;
+}
+
+function buildSITable(sis, suppliers, projects, pos) {
+  if (!sis.length) return `<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas de proveedores. Generalas desde una OC recibida o creá una manualmente.</p></div>`;
+  const statusColor = { pending: 'badge-yellow', paid: 'badge-green', cancelled: 'badge-red' };
+  const statusLabel = { pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
+  return `<table><thead><tr>
+    <th>N° Factura</th><th>OC Origen</th><th>Proveedor</th><th>Proyecto</th><th>Fecha</th><th>Vencimiento</th>
+    <th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>
+    <th>Estado</th><th>Acciones</th>
+  </tr></thead>
+  <tbody>
+  ${sis.sort((a,b)=>b.date.localeCompare(a.date)).map(si => {
+    const sup = suppliers.find(s => s.id === si.supplier_id);
+    const proj = projects.find(p => p.id === si.project_id);
+    const po = pos.find(p => p.id === si.po_id);
+    return `<tr>
+      <td><strong>${si.number}</strong></td>
+      <td style="font-size:11px;color:var(--text-muted)">${po?.number || '-'}</td>
+      <td>${sup?.name || '-'}</td>
+      <td style="font-size:11px">${proj?.name || '-'}</td>
+      <td>${fmtDate(si.date)}</td>
+      <td style="${si.due_date && si.due_date < todayStr() && si.status==='pending' ? 'color:var(--danger);font-weight:600' : ''}">${fmtDate(si.due_date)}</td>
+      <td class="number-cell text-right">${fmtMoney(si.subtotal)}</td>
+      <td class="number-cell text-right">${fmtMoney(si.tax)}</td>
+      <td class="number-cell text-right"><strong>${fmtMoney(si.total)}</strong></td>
+      <td><span class="badge ${statusColor[si.status]||'badge-gray'}">${statusLabel[si.status]||si.status}</span></td>
+      <td><div class="table-actions">
+        <button class="btn-ghost btn btn-sm" onclick="openSIForm('${si.id}')"><i class="fas fa-edit"></i></button>
+        ${si.status === 'pending' ? `<button class="btn btn-sm btn-success" onclick="markSIPaid('${si.id}')"><i class="fas fa-check"></i> Pagar</button>` : ''}
+        <button class="btn-ghost btn btn-sm danger" onclick="deleteSI('${si.id}')"><i class="fas fa-trash"></i></button>
+      </div></td>
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+
+window._siFilters = { q: '', status: '' };
+function filterSIs(q, status) {
+  if (q !== undefined) window._siFilters.q = q.toLowerCase();
+  if (status !== undefined) window._siFilters.status = status;
+  let sis = DB.getAll('supplierInvoices');
+  const suppliers = DB.getAll('suppliers');
+  const f = window._siFilters;
+  if (f.q) sis = sis.filter(si => {
+    const sup = suppliers.find(s => s.id === si.supplier_id);
+    return si.number.toLowerCase().includes(f.q) || (sup && sup.name.toLowerCase().includes(f.q));
+  });
+  if (f.status) sis = sis.filter(si => si.status === f.status);
+  const wrap = document.getElementById('si-table-wrap');
+  if (wrap) wrap.innerHTML = buildSITable(sis, suppliers, DB.getAll('projects'), DB.getAll('purchaseOrders'));
+}
+
+function generateSIFromPO(poId) {
+  openSIForm(null, poId);
+}
+
+function openSIForm(id = null, prefillPoId = null) {
+  const si = id ? DB.getById('supplierInvoices', id) : null;
+  const pos = DB.getAll('purchaseOrders').filter(p => p.status === 'received');
+  const suppliers = DB.getAll('suppliers');
+  const projects = DB.getAll('projects');
+  const nextNum = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
+
+  const prefillPO = prefillPoId ? DB.getById('purchaseOrders', prefillPoId) : null;
+  const selectedPoId = si?.po_id || prefillPoId || '';
+  const selectedSupplierId = si?.supplier_id || prefillPO?.supplier_id || '';
+  const selectedProjectId = si?.project_id || prefillPO?.project_id || '';
+  const defaultSubtotal = si?.subtotal ?? (prefillPO?.subtotal ?? '');
+  const defaultTax = si?.tax ?? (prefillPO?.tax ?? '');
+  const defaultTotal = si?.total ?? (prefillPO?.total ?? '');
+
+  openModal(si ? 'Editar Factura Proveedor' : 'Nueva Factura de Proveedor', `
+<div class="form-grid form-grid-2">
+  <div class="form-group">
+    <label class="form-label">N° Factura Proveedor</label>
+    <input class="form-control" id="si-num" value="${si?.number || nextNum}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Estado</label>
+    <select class="form-control" id="si-status">
+      <option value="pending" ${si?.status==='pending'||!si?'selected':''}>Pendiente de Pago</option>
+      <option value="paid" ${si?.status==='paid'?'selected':''}>Pagada</option>
+      <option value="cancelled" ${si?.status==='cancelled'?'selected':''}>Cancelada</option>
+    </select>
+  </div>
+  <div class="form-group full">
+    <label class="form-label">OC de Origen</label>
+    <select class="form-control" id="si-po" onchange="prefillSIFromPO(this.value)">
+      <option value="">Sin OC de referencia</option>
+      ${pos.map(p => '<option value="' + p.id + '" ' + (selectedPoId===p.id?'selected':'') + '>' + p.number + ' — ' + (suppliers.find(s=>s.id===p.supplier_id)?.name||'') + '</option>').join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Proveedor *</label>
+    <select class="form-control" id="si-supplier">
+      <option value="">Seleccionar...</option>
+      ${suppliers.map(s => '<option value="' + s.id + '" ' + (selectedSupplierId===s.id?'selected':'') + '>' + s.name + '</option>').join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Proyecto</label>
+    <select class="form-control" id="si-project">
+      <option value="">Sin proyecto</option>
+      ${projects.map(p => '<option value="' + p.id + '" ' + (selectedProjectId===p.id?'selected':'') + '>' + p.name + '</option>').join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Fecha Factura</label>
+    <input class="form-control" id="si-date" type="date" value="${si?.date || todayStr()}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Fecha Vencimiento</label>
+    <input class="form-control" id="si-due" type="date" value="${si?.due_date || addDays(todayStr(), 30)}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Subtotal (sin IVA)</label>
+    <input class="form-control" id="si-subtotal" type="number" min="0" value="${defaultSubtotal}" oninput="recalcSI()">
+  </div>
+  <div class="form-group">
+    <label class="form-label">IVA 21%</label>
+    <input class="form-control" id="si-tax" type="number" min="0" value="${defaultTax}" oninput="recalcSI()">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Total</label>
+    <input class="form-control" id="si-total" type="number" min="0" value="${defaultTotal}" style="font-weight:700;color:var(--primary)">
+  </div>
+  <div class="form-group full">
+    <label class="form-label">Notas</label>
+    <textarea class="form-control" id="si-notes" rows="2">${si?.notes || ''}</textarea>
+  </div>
+</div>
+`, 'modal-lg', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-primary" onclick="saveSI('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
+`);
+}
+
+function prefillSIFromPO(poId) {
+  if (!poId) return;
+  const po = DB.getById('purchaseOrders', poId);
+  if (!po) return;
+  const subEl = document.getElementById('si-subtotal');
+  const taxEl = document.getElementById('si-tax');
+  const totEl = document.getElementById('si-total');
+  const supEl = document.getElementById('si-supplier');
+  const projEl = document.getElementById('si-project');
+  if (subEl) subEl.value = po.subtotal || 0;
+  if (taxEl) taxEl.value = po.tax || 0;
+  if (totEl) totEl.value = po.total || 0;
+  if (supEl) supEl.value = po.supplier_id || '';
+  if (projEl) projEl.value = po.project_id || '';
+}
+
+function recalcSI() {
+  const sub = parseFloat(document.getElementById('si-subtotal')?.value) || 0;
+  const tax = parseFloat(document.getElementById('si-tax')?.value) || sub * 0.21;
+  const totEl = document.getElementById('si-total');
+  if (totEl) totEl.value = (sub + tax).toFixed(2);
+}
+
+function saveSI(id) {
+  const supplierId = document.getElementById('si-supplier').value;
+  if (!supplierId) { toast('El proveedor es obligatorio', 'error'); return; }
+  const sub = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  const tax = parseFloat(document.getElementById('si-tax').value) || 0;
+  const data = {
+    number: document.getElementById('si-num').value,
+    po_id: document.getElementById('si-po').value || '',
+    supplier_id: supplierId,
+    project_id: document.getElementById('si-project').value || '',
+    date: document.getElementById('si-date').value,
+    due_date: document.getElementById('si-due').value,
+    subtotal: sub,
+    tax,
+    total: parseFloat(document.getElementById('si-total').value) || sub + tax,
+    status: document.getElementById('si-status').value,
+    notes: document.getElementById('si-notes').value.trim(),
+  };
+  if (id) { DB.update('supplierInvoices', id, data); toast('Factura actualizada', 'success'); }
+  else { DB.insert('supplierInvoices', data); toast('Factura creada', 'success'); }
+  closeModal();
+  renderCompras();
+}
+
+function markSIPaid(id) {
+  DB.update('supplierInvoices', id, { status: 'paid' });
+  toast('Factura marcada como pagada', 'success');
+  renderCompras();
+}
+
+function deleteSI(id) {
+  confirmDialog('¿Eliminar esta factura de proveedor?', () => {
+    DB.remove('supplierInvoices', id);
+    toast('Factura eliminada', 'warning');
+    renderCompras();
+  });
+}
+
+function exportSIs() {
+  const sis = DB.getAll('supplierInvoices');
+  const suppliers = DB.getAll('suppliers');
+  const projects = DB.getAll('projects');
+  const pos = DB.getAll('purchaseOrders');
+  exportXLSX('facturas_proveedores.xlsx',
+    ['N° Factura', 'OC Origen', 'Proveedor', 'Proyecto', 'Fecha', 'Vencimiento', 'Subtotal', 'IVA', 'Total', 'Estado'],
+    sis.map(si => [
+      si.number,
+      pos.find(p=>p.id===si.po_id)?.number || '',
+      suppliers.find(s=>s.id===si.supplier_id)?.name || '',
+      projects.find(p=>p.id===si.project_id)?.name || '',
+      si.date, si.due_date, si.subtotal, si.tax, si.total, si.status,
+    ])
+  );
 }

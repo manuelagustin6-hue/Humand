@@ -300,7 +300,7 @@ function exportBOQ() {
   if (!projectId) { toast('Seleccioná un proyecto', 'error'); return; }
   const items = DB.getAll('boqItems').filter(b => b.project_id === projectId);
   const proj = DB.getById('projects', projectId);
-  exportCSV(`BOQ_${proj?.name?.replace(/\s+/g,'_') || projectId}.csv`,
+  exportXLSX(`BOQ_${proj?.name?.replace(/\s+/g,'_') || projectId}.xlsx`,
     ['Capítulo','Ítem','Categoría','Descripción','Unidad','Cantidad','P.Unitario','Total'],
     items.map(b => [b.chapter, b.item, b.category, b.description, b.unit, b.quantity, b.unit_price, b.total])
   );

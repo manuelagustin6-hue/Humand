@@ -177,6 +177,15 @@ function exportCSV(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
+// ---- EXPORT EXCEL (.xlsx) ----
+function exportXLSX(filename, headers, rows, sheetName) {
+  const data = [headers, ...rows.map(r => r.map(c => c ?? ''))];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Datos');
+  XLSX.writeFile(wb, filename);
+}
+
 // ---- PAGINATION ----
 class Paginator {
   constructor(items, perPage = 20) {

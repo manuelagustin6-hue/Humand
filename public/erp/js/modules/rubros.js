@@ -203,7 +203,7 @@ function deleteRubro(id) {
 
 function exportRubros() {
   const rubros = DB.getAll('rubros');
-  exportCSV('rubros_de_obra.csv',
+  exportXLSX('rubros_de_obra.xlsx',
     ['Código', 'Nombre', 'Categoría', 'Unidad', 'Descripción', 'Estado'],
     rubros.map(r => [r.code, r.name, r.category, r.unit, r.description || '', r.active !== false ? 'Activo' : 'Inactivo'])
   );

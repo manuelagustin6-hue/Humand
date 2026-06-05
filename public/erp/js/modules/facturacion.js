@@ -362,7 +362,7 @@ function deleteInvoice(id) {
 function exportInvoices() {
   const invs = DB.getAll('invoices');
   const projects = DB.getAll('projects');
-  exportCSV('facturas.csv',
+  exportXLSX('facturas.xlsx',
     ['Número','Tipo','Proyecto','Cliente','CUIT','Fecha','Vencimiento','Subtotal','IVA','Total','Estado'],
     invs.map(i => [i.number, i.type, projects.find(p=>p.id===i.project_id)?.name||'', i.client_name, i.client_cuit, i.date, i.due_date, i.subtotal, i.tax, i.total, i.status])
   );
