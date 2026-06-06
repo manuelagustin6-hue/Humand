@@ -212,6 +212,18 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .topbar-right {
   display: flex; align-items: center; gap: 12px;
 }
+#company-selector-wrap {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+}
+#company-selector-wrap label { color: var(--primary); }
+#global-company {
+  background: none; border: none; outline: none;
+  font-size: 12px; color: var(--text); min-width: 150px; font-weight: 600;
+}
 #project-selector-wrap {
   display: flex; align-items: center; gap: 6px;
   background: var(--bg);

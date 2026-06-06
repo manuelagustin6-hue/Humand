@@ -1,9 +1,27 @@
 /* ===== UTILITIES ===== */
 
 // ---- FORMATTERS ----
-function fmtMoney(n, currency = 'ARS') {
+function _activeCurrency() {
+  try {
+    var companies = DB.getAllCompanies();
+    var activeId = (window.APP_STATE && window.APP_STATE.activeCompany) || 'comp-001';
+    var company = companies.find(function(c) { return c.id === activeId; });
+    return (company && company.currency) ? company.currency : 'ARS';
+  } catch(e) {
+    return 'ARS';
+  }
+}
+
+function fmtMoney(n, currency) {
   if (n == null || isNaN(n)) return '$0';
-  return new Intl.NumberFormat('es-AR', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+  var cur = currency || _activeCurrency();
+  var decimals = 0;
+  try {
+    var currencies = DB.getAllCurrencies();
+    var currencyObj = currencies.find(function(c) { return c.id === cur; });
+    if (currencyObj) decimals = currencyObj.decimals || 0;
+  } catch(e) {}
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur, minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
 }
 
 function fmtNum(n) {
