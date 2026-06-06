@@ -17,6 +17,22 @@ function formaPagoSelect(id, current) {
     '</select>';
 }
 
+const CONTRACT_STATUS = {
+  draft:            { label: 'Borrador',          cls: 'badge-gray'   },
+  pending_approval: { label: 'Pend. Aprobación',  cls: 'badge-yellow' },
+  approved:         { label: 'Aprobado',          cls: 'badge-cyan'   },
+  active:           { label: 'Activo',            cls: 'badge-green'  },
+  completed:        { label: 'Completado',        cls: 'badge-blue'   },
+  cancelled:        { label: 'Cancelado',         cls: 'badge-red'    },
+  rejected:         { label: 'Rechazado',         cls: 'badge-red'    },
+};
+const CERT_STATUS_CFG = {
+  draft:    { label: 'Borrador',   cls: 'badge-gray'   },
+  pending:  { label: 'Pendiente',  cls: 'badge-yellow' },
+  approved: { label: 'Aprobado',   cls: 'badge-green'  },
+  rejected: { label: 'Rechazado',  cls: 'badge-red'    },
+};
+
 function renderContratos() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -45,6 +61,7 @@ function renderContratos() {
   `;
   initTabs('contratos-tabs');
   window._contractFilters = { q: '', project: '', status: '' };
+  document.getElementById('breadcrumb').innerHTML = '<i class="fas fa-file-contract"></i><span>Contratos</span>';
 }
 
 function renderContractsListTab() {
@@ -80,12 +97,9 @@ function renderContractsListTab() {
     <option value="">Todos los proyectos</option>
     ${projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('')}
   </select>
-  <select class="form-control" style="width:150px" onchange="filterContracts(undefined, undefined, this.value)">
+  <select class="form-control" style="width:190px" onchange="filterContracts(undefined, undefined, this.value)">
     <option value="">Todos los estados</option>
-    <option value="draft">Borrador</option>
-    <option value="active">Activo</option>
-    <option value="completed">Completado</option>
-    <option value="cancelled">Cancelado</option>
+    ${Object.keys(CONTRACT_STATUS).map(k => '<option value="' + k + '">' + CONTRACT_STATUS[k].label + '</option>').join('')}
   </select>
 </div>
 
@@ -101,9 +115,6 @@ function renderContractsListTab() {
 function buildContractsTable(contracts, projects, suppliers, allCerts) {
   if (!contracts.length) return '<div class="empty-state"><i class="fas fa-file-contract"></i><p>No hay contratos registrados. Crea el primero.</p></div>';
 
-  const statusColor = { draft: 'badge-gray', active: 'badge-green', completed: 'badge-blue', cancelled: 'badge-red' };
-  const statusLabel = { draft: 'Borrador', active: 'Activo', completed: 'Completado', cancelled: 'Cancelado' };
-
   return '<table><thead><tr>' +
     '<th>N° Contrato</th><th>Proyecto</th><th>Contratista</th><th>Tipo</th><th>Inicio</th><th>Fin</th>' +
     '<th class="text-right">Monto</th><th class="text-right">Certificado</th><th>Avance</th>' +
@@ -112,10 +123,11 @@ function buildContractsTable(contracts, projects, suppliers, allCerts) {
   contracts.sort((a, b) => (b.start_date || '').localeCompare(a.start_date || '')).map(c => {
     const proj  = projects.find(p => p.id === c.project_id);
     const sup   = suppliers.find(s => s.id === c.contractor_id);
-    const certified = allCerts.filter(cert => cert.contract_id === c.id).reduce((s, cert) => s + (cert.subtotal || 0), 0);
+    const certified = allCerts.filter(cert => cert.contract_id === c.id && cert.status !== 'rejected').reduce((s, cert) => s + (cert.subtotal || 0), 0);
     const avance = c.total_amount > 0 ? certified / c.total_amount * 100 : 0;
+    const sCfg = CONTRACT_STATUS[c.status] || { label: c.status || '-', cls: 'badge-gray' };
     return '<tr>' +
-      '<td><strong>' + c.number + '</strong></td>' +
+      '<td><a href="#" onclick="renderContractDetail(\'' + c.id + '\');return false" style="color:var(--primary);font-weight:700">' + c.number + '</a></td>' +
       '<td>' + (proj ? proj.name : '-') + '</td>' +
       '<td>' + (sup ? sup.name : '-') + '</td>' +
       '<td style="font-size:11px">' + (CONTRACT_TYPES[c.type] || c.type || '-') + '</td>' +
@@ -124,16 +136,10 @@ function buildContractsTable(contracts, projects, suppliers, allCerts) {
       '<td class="number-cell text-right"><strong>' + fmtMoney(c.total_amount || 0) + '</strong></td>' +
       '<td class="number-cell text-right">' + fmtMoney(certified) + '</td>' +
       '<td style="min-width:120px">' + progressBar(avance) + '</td>' +
-      '<td><span class="badge ' + (statusColor[c.status] || 'badge-gray') + '">' + (statusLabel[c.status] || c.status) + '</span></td>' +
+      '<td><span class="badge ' + sCfg.cls + '">' + sCfg.label + '</span></td>' +
       '<td><div class="table-actions">' +
-        '<button class="btn-ghost btn btn-sm" title="Ver detalle" onclick="viewContract(\'' + c.id + '\')"><i class="fas fa-eye"></i></button>' +
-        '<button class="btn-ghost btn btn-sm" title="Editar" onclick="openContractForm(\'' + c.id + '\')"><i class="fas fa-edit"></i></button>' +
-        (c.status === 'draft'
-          ? '<button class="btn btn-sm btn-success" title="Dar inicio al contrato" onclick="startContract(\'' + c.id + '\')"><i class="fas fa-play"></i> Iniciar</button>'
-          : '') +
-        (c.status === 'active'
-          ? '<button class="btn btn-sm btn-primary" title="Nueva Certificación" onclick="openContractCertForm(\'' + c.id + '\')"><i class="fas fa-certificate"></i> Certif.</button>'
-          : '') +
+        '<button class="btn btn-sm btn-primary" onclick="renderContractDetail(\'' + c.id + '\')"><i class="fas fa-eye"></i> Ver</button>' +
+        '<button class="btn-ghost btn btn-sm" onclick="openContractForm(\'' + c.id + '\')"><i class="fas fa-edit"></i></button>' +
         '<button class="btn-ghost btn btn-sm danger" onclick="deleteContract(\'' + c.id + '\')"><i class="fas fa-trash"></i></button>' +
       '</div></td>' +
     '</tr>';
@@ -247,202 +253,326 @@ function exportCertSchedule() {
   );
 }
 
-// ---- CONTRACT DETAIL VIEW ----
-function viewContract(id) {
+// ---- CONTRACT DETAIL PAGE (full page, not modal) ----
+function renderContractDetail(id) {
   const contract = DB.getById('contracts', id);
-  if (!contract) return;
+  if (!contract) { renderContratos(); return; }
   const proj  = DB.getById('projects',  contract.project_id);
   const sup   = DB.getById('suppliers', contract.contractor_id);
-  const idx   = contract.indice_id ? DB.getById('priceIndices', contract.indice_id) : null;
-  const certs = DB.getAll('certificates').filter(c => c.contract_id === id);
-  const totalCertified = certs.reduce((s, c) => s + (c.subtotal || 0), 0);
-  const avance = contract.total_amount > 0 ? totalCertified / contract.total_amount * 100 : 0;
+  const certs = DB.getAll('certificates').filter(function(c) { return c.contract_id === id; });
+  const certified = certs.filter(function(c) { return c.status !== 'rejected'; }).reduce(function(s, c) { return s + (c.subtotal || 0); }, 0);
+  const avance = contract.total_amount > 0 ? certified / contract.total_amount * 100 : 0;
+  const sCfg  = CONTRACT_STATUS[contract.status] || { label: contract.status || '-', cls: 'badge-gray' };
 
-  // accumulated certified qty per partida (by description, excluding rejected)
+  var btns = '<button class="btn btn-secondary" onclick="openContractForm(\'' + id + '\')"><i class="fas fa-edit"></i> Editar</button>';
+  if (contract.status === 'draft' || contract.status === 'rejected') {
+    btns += '<button class="btn btn-warning" onclick="submitContractForApproval(\'' + id + '\')"><i class="fas fa-paper-plane"></i> Enviar a Aprobación</button>';
+    if ((contract.items || []).length > 0)
+      btns += '<button class="btn btn-success" onclick="startContract(\'' + id + '\')"><i class="fas fa-play"></i> Dar Inicio</button>';
+  }
+  if (contract.status === 'pending_approval') {
+    btns += '<button class="btn btn-success" onclick="openApproveContractModal(\'' + id + '\')"><i class="fas fa-check"></i> Aprobar</button>';
+    btns += '<button class="btn btn-danger"  onclick="openRejectContractModal(\'' + id + '\')"><i class="fas fa-times"></i> Rechazar</button>';
+  }
+  if (contract.status === 'approved')
+    btns += '<button class="btn btn-success" onclick="startContract(\'' + id + '\')"><i class="fas fa-play"></i> Dar Inicio</button>';
+  if (contract.status === 'active') {
+    btns += '<button class="btn btn-primary" onclick="openContractCertForm(\'' + id + '\')"><i class="fas fa-certificate"></i> Nueva Certificación</button>';
+    btns += '<button class="btn btn-secondary" onclick="finishContract(\'' + id + '\')"><i class="fas fa-flag-checkered"></i> Finalizar</button>';
+  }
+
+  var alogHtml = '';
+  var alog = contract.approval_log || [];
+  if (alog.length) {
+    var alLabels = { submitted: 'Enviado', approved: 'Aprobado', rejected: 'Rechazado', started: 'Iniciado', completed: 'Completado' };
+    var alCls    = { submitted: 'badge-yellow', approved: 'badge-green', rejected: 'badge-red', started: 'badge-blue', completed: 'badge-blue' };
+    alogHtml = '<div style="margin-bottom:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px">' +
+      '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px"><i class="fas fa-history"></i> Historial de aprobaciones</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+      alog.map(function(e) {
+        return '<div style="display:flex;align-items:center;gap:5px;font-size:11px;background:var(--surface);padding:4px 8px;border-radius:6px;border:1px solid var(--border)">' +
+          '<span class="badge ' + (alCls[e.action] || 'badge-gray') + '" style="font-size:9px">' + (alLabels[e.action] || e.action) + '</span>' +
+          '<span style="color:var(--text-muted)">' + fmtDate(e.date) + '</span>' +
+          '<span style="font-weight:600">' + (e.user || 'Sistema') + '</span>' +
+          (e.comment ? '<span style="color:var(--text-muted);font-style:italic">"' + e.comment + '"</span>' : '') +
+          '</div>';
+      }).join('') + '</div></div>';
+  }
+
+  document.getElementById('content').innerHTML =
+    '<div class="page-header">' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<button class="btn btn-secondary btn-sm" onclick="renderContratos()"><i class="fas fa-arrow-left"></i> Contratos</button>' +
+        '<div>' +
+          '<div class="page-title" style="display:flex;align-items:center;gap:8px">' + contract.number +
+            ' <span class="badge ' + sCfg.cls + '">' + sCfg.label + '</span></div>' +
+          '<div class="page-subtitle">' + (proj ? proj.name : '-') + ' · ' + (sup ? sup.name : '-') +
+            ' · ' + (CONTRACT_TYPES[contract.type] || '-') +
+            ' · ' + fmtDate(contract.start_date) + ' → ' + fmtDate(contract.end_date) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="page-actions">' + btns + '</div>' +
+    '</div>' +
+
+    '<div class="stats-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:16px">' +
+      '<div class="stat-card"><div class="stat-icon blue"><i class="fas fa-dollar-sign"></i></div><div>' +
+        '<div class="stat-value" style="font-size:15px">' + fmtMoney(contract.total_amount || 0) + '</div><div class="stat-label">Monto Contrato</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon green"><i class="fas fa-certificate"></i></div><div>' +
+        '<div class="stat-value" style="font-size:15px">' + fmtMoney(certified) + '</div><div class="stat-label">Certificado</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-balance-scale"></i></div><div>' +
+        '<div class="stat-value" style="font-size:15px">' + fmtMoney((contract.total_amount || 0) - certified) + '</div><div class="stat-label">Saldo</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-percentage"></i></div><div>' +
+        '<div class="stat-value" style="font-size:15px">' + fmtPct(avance) + '</div><div class="stat-label">Avance</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon purple"><i class="fas fa-handshake"></i></div><div>' +
+        '<div class="stat-value" style="font-size:15px">' + fmtPct(contract.anticipo_pct || 0) + '</div><div class="stat-label">Anticipo</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon gray"><i class="fas fa-shield-alt"></i></div><div>' +
+        '<div class="stat-value" style="font-size:15px">' + fmtPct(contract.fondo_reparo_pct || 0) + '</div><div class="stat-label">Fondo Reparo</div></div></div>' +
+    '</div>' +
+
+    alogHtml +
+
+    '<div id="contract-detail-page-tabs">' +
+      '<div class="tabs">' +
+        '<button class="tab-btn" data-tab="cdp-dashboard">Dashboard</button>' +
+        '<button class="tab-btn" data-tab="cdp-partidas">Partidas (' + (contract.items || []).length + ')</button>' +
+        '<button class="tab-btn" data-tab="cdp-crono">Cronograma</button>' +
+        '<button class="tab-btn" data-tab="cdp-certs">Certificaciones (' + certs.length + ')</button>' +
+        '<button class="tab-btn" data-tab="cdp-adic">Adicionales (' + (contract.adicionales || []).length + ')</button>' +
+        '<button class="tab-btn" data-tab="cdp-cf">Cash Flow</button>' +
+      '</div>' +
+      '<div id="cdp-dashboard" class="tab-content">' + _cdpDashboard(contract, certs) + '</div>' +
+      '<div id="cdp-partidas" class="tab-content">' + _cdpPartidas(contract, certs) + '</div>' +
+      '<div id="cdp-crono" class="tab-content">' + _cdpCronoHtml(id) + '</div>' +
+      '<div id="cdp-certs" class="tab-content">' + _cdpCerts(contract, certs) + '</div>' +
+      '<div id="cdp-adic" class="tab-content">' + _cdpAdic(contract) + '</div>' +
+      '<div id="cdp-cf" class="tab-content">' + _cdpCashFlow(contract) + '</div>' +
+    '</div>';
+
+  document.getElementById('breadcrumb').innerHTML =
+    '<i class="fas fa-file-contract"></i>' +
+    '<span onclick="renderContratos()" style="cursor:pointer;color:var(--primary)">Contratos</span>' +
+    '<i class="fas fa-chevron-right" style="margin:0 6px;font-size:10px;color:var(--text-muted)"></i>' +
+    '<span>' + contract.number + '</span>';
+
+  setTimeout(function() {
+    initTabs('contract-detail-page-tabs');
+    renderCronograma(id, 'real');
+  }, 50);
+}
+
+function _cdpDashboard(contract, certs) {
+  const idx = contract.indice_id ? DB.getById('priceIndices', contract.indice_id) : null;
+  const approved = certs.filter(function(c) { return c.status !== 'rejected'; });
+  const totalCert = approved.reduce(function(s, c) { return s + (c.subtotal || 0); }, 0);
+  const avance = contract.total_amount > 0 ? totalCert / contract.total_amount * 100 : 0;
+  const recent = certs.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).slice(0, 4);
   const accumByDesc = {};
-  certs.filter(c => c.status !== 'rejected').forEach(c => {
-    (c.items || []).forEach(it => {
-      const k = (it.description || '').trim();
+  approved.forEach(function(c) {
+    (c.items || []).forEach(function(it) {
+      var k = (it.description || '').trim();
       accumByDesc[k] = (accumByDesc[k] || 0) + (it.quantity_period || 0);
     });
   });
+  var partidasHtml = (contract.items || []).map(function(it) {
+    var accum = accumByDesc[(it.description || '').trim()] || 0;
+    var pct = it.quantity > 0 ? accum / it.quantity * 100 : 0;
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+      '<div style="min-width:180px;max-width:180px;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="' + (it.description || '') + '">' + (it.description || '-') + '</div>' +
+      '<div style="flex:1">' + progressBar(pct) + '</div>' +
+      '<div style="min-width:55px;text-align:right;font-size:11px;color:var(--text-muted)">' + fmtMoney(it.total) + '</div>' +
+      '</div>';
+  }).join('');
 
-  const itemsHtml = (contract.items || []).length
-    ? '<div class="table-wrap" style="margin-bottom:16px"><table><thead><tr>' +
-        '<th>Partida</th><th>Unidad</th><th class="text-right">Cant.Contrato</th><th class="text-right">Cant.Certif.</th>' +
-        '<th class="text-right">P.Unit.</th><th class="text-right">Total</th><th>Avance</th><th>Vínculo Presupuesto</th>' +
-      '</tr></thead><tbody>' +
-      (contract.items || []).map(it => {
-        const boqItem = it.boq_item_id ? DB.getById('boqItems', it.boq_item_id) : null;
-        const accum = accumByDesc[(it.description || '').trim()] || 0;
-        const pct = it.quantity > 0 ? accum / it.quantity * 100 : 0;
-        return '<tr>' +
-          '<td>' + it.description + '</td>' +
-          '<td>' + it.unit + '</td>' +
-          '<td class="number-cell text-right">' + fmtNum(it.quantity) + '</td>' +
-          '<td class="number-cell text-right">' + fmtNum(accum) + '</td>' +
-          '<td class="number-cell text-right">' + fmtMoney(it.unit_price) + '</td>' +
-          '<td class="number-cell text-right"><strong>' + fmtMoney(it.total) + '</strong></td>' +
-          '<td style="min-width:110px">' + progressBar(pct) + '</td>' +
-          '<td style="font-size:11px;color:var(--text-muted)">' + (boqItem ? boqItem.description : '<span style="color:var(--danger)">sin vincular</span>') + '</td>' +
-          '</tr>';
-      }).join('') +
-      '<tr class="total-row"><td colspan="5" class="text-right"><strong>TOTAL</strong></td>' +
-        '<td class="number-cell text-right"><strong>' + fmtMoney(contract.total_amount || 0) + '</strong></td><td colspan="2"></td></tr>' +
-      '</tbody></table></div>'
-    : '<div class="empty-state" style="padding:20px"><p>Sin partidas de obra cargadas</p></div>';
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">' +
+    '<div class="card"><div class="card-header"><h3 class="card-title">Avance General</h3></div><div class="card-body">' +
+      '<div style="margin-bottom:14px">' + progressBar(avance) + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">' +
+        '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px">' +
+          '<div style="font-size:10px;color:var(--text-muted)">Anticipo</div>' +
+          '<div style="font-weight:700">' + fmtPct(contract.anticipo_pct || 0) + '</div>' +
+          '<div style="font-size:10px;color:var(--text-muted)">' + fmtMoney((contract.total_amount || 0) * (contract.anticipo_pct || 0) / 100) + '</div>' +
+        '</div>' +
+        '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px">' +
+          '<div style="font-size:10px;color:var(--text-muted)">Fondo Reparo</div>' +
+          '<div style="font-weight:700">' + fmtPct(contract.fondo_reparo_pct || 0) + '</div>' +
+        '</div>' +
+        '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px">' +
+          '<div style="font-size:10px;color:var(--text-muted)">Dep. Garantía</div>' +
+          '<div style="font-weight:700">' + fmtPct(contract.deposito_garantia_pct || 0) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:12px;display:flex;flex-direction:column;gap:4px">' +
+        '<div><strong>Forma de Pago:</strong> ' + (contract.forma_pago || '-') + '</div>' +
+        '<div><strong>Índice:</strong> ' + (idx ? idx.code + ' — ' + idx.name : 'Sin índice') + '</div>' +
+        (contract.notes ? '<div style="color:var(--text-muted)"><strong>Notas:</strong> ' + contract.notes + '</div>' : '') +
+      '</div>' +
+    '</div></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title">Últimas Certificaciones</h3></div><div class="card-body">' +
+      (recent.length
+        ? '<div class="table-wrap"><table style="font-size:12px"><thead><tr><th>N°</th><th>Fecha</th><th class="text-right">Monto</th><th class="text-right">Neto</th><th>Estado</th></tr></thead><tbody>' +
+          recent.map(function(c) {
+            var sc = CERT_STATUS_CFG[c.status] || { label: c.status, cls: 'badge-gray' };
+            return '<tr><td><strong>' + c.number + '</strong></td><td>' + fmtDate(c.date) + '</td>' +
+              '<td class="text-right">' + fmtMoney(c.subtotal || 0) + '</td>' +
+              '<td class="text-right">' + fmtMoney(c.net_amount || 0) + '</td>' +
+              '<td><span class="badge ' + sc.cls + '">' + sc.label + '</span></td></tr>';
+          }).join('') + '</tbody></table></div>'
+        : '<div class="empty-state" style="padding:20px"><p>Sin certificaciones aún</p></div>') +
+    '</div></div>' +
+  '</div>' +
+  (partidasHtml
+    ? '<div class="card"><div class="card-header"><h3 class="card-title">Avance por Partida</h3></div><div class="card-body">' + partidasHtml + '</div></div>'
+    : '');
+}
 
-  const statusColor = { draft: 'badge-gray', pending: 'badge-yellow', approved: 'badge-green', rejected: 'badge-red' };
-  const statusLabel = { draft: 'Borrador', pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado' };
+function _cdpPartidas(contract, certs) {
+  const approved = certs.filter(function(c) { return c.status !== 'rejected'; });
+  const accumByDesc = {};
+  approved.forEach(function(c) {
+    (c.items || []).forEach(function(it) {
+      var k = (it.description || '').trim();
+      accumByDesc[k] = (accumByDesc[k] || 0) + (it.quantity_period || 0);
+    });
+  });
+  if (!(contract.items || []).length) return '<div class="empty-state"><p>Sin partidas cargadas</p></div>';
+  return '<div class="table-wrap"><table><thead><tr>' +
+    '<th>Partida</th><th>Unidad</th><th class="text-right">Cant.Contrato</th><th class="text-right">Cant.Certif.</th>' +
+    '<th class="text-right">P.Unit.</th><th class="text-right">Total</th><th>Avance</th><th>Vínculo BOQ</th>' +
+  '</tr></thead><tbody>' +
+  (contract.items || []).map(function(it) {
+    var boqItem = it.boq_item_id ? DB.getById('boqItems', it.boq_item_id) : null;
+    var accum = accumByDesc[(it.description || '').trim()] || 0;
+    var pct = it.quantity > 0 ? accum / it.quantity * 100 : 0;
+    return '<tr><td>' + it.description + '</td><td>' + it.unit + '</td>' +
+      '<td class="number-cell text-right">' + fmtNum(it.quantity) + '</td>' +
+      '<td class="number-cell text-right">' + fmtNum(accum) + '</td>' +
+      '<td class="number-cell text-right">' + fmtMoney(it.unit_price) + '</td>' +
+      '<td class="number-cell text-right"><strong>' + fmtMoney(it.total) + '</strong></td>' +
+      '<td style="min-width:110px">' + progressBar(pct) + '</td>' +
+      '<td style="font-size:11px;color:var(--text-muted)">' +
+        (boqItem ? boqItem.description : '<span style="color:var(--danger)">sin vincular</span>') + '</td></tr>';
+  }).join('') +
+  '<tr class="total-row"><td colspan="5" class="text-right"><strong>TOTAL</strong></td>' +
+    '<td class="number-cell text-right"><strong>' + fmtMoney(contract.total_amount || 0) + '</strong></td><td colspan="2"></td></tr>' +
+  '</tbody></table></div>';
+}
+
+function _cdpCronoHtml(contractId) {
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+    '<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-info-circle"></i> Barra = período · relleno = avance certificado · línea roja = hoy</span>' +
+    '<div style="display:flex;gap:6px">' +
+      '<button id="crono-btn-proyectado" class="btn btn-sm btn-secondary" onclick="renderCronograma(\'' + contractId + '\',\'proyectado\')">Proyectado</button>' +
+      '<button id="crono-btn-real" class="btn btn-sm btn-primary" onclick="renderCronograma(\'' + contractId + '\',\'real\')">Real</button>' +
+      '<button id="crono-btn-desvio" class="btn btn-sm btn-secondary" onclick="renderCronograma(\'' + contractId + '\',\'desvio\')">Desvío</button>' +
+    '</div></div>' +
+    '<div id="crono-bars"></div>';
+}
+
+function _cdpCerts(contract, certs) {
   const supInvoices = DB.getAll('supplierInvoices');
+  const pending  = certs.filter(function(c) { return c.status === 'pending'; }).length;
+  const approved = certs.filter(function(c) { return c.status === 'approved'; }).length;
+  const totalAmt = certs.filter(function(c) { return c.status !== 'rejected'; }).reduce(function(s, c) { return s + (c.subtotal || 0); }, 0);
 
-  const certsHtml = certs.length
+  var tableHtml = certs.length
     ? '<div class="table-wrap"><table><thead><tr>' +
         '<th>N° Cert.</th><th>Fecha</th><th>Período</th><th class="text-right">Monto</th>' +
-        '<th class="text-right">Fondo Rep.</th><th class="text-right">Neto</th><th>Contab.</th><th>F.Pago</th><th>Factura</th><th>Estado</th><th>Acciones</th>' +
+        '<th class="text-right">F.Reparo</th><th class="text-right">Neto</th><th>Contab.</th><th>F.Pago</th><th>Factura</th><th>Estado</th><th>Acciones</th>' +
       '</tr></thead><tbody>' +
-      certs.sort((a, b) => b.date.localeCompare(a.date)).map(c => {
-        const contabTxt = c.contab_tipo === 'AB'
-          ? 'A ' + (c.contab_pct_a || 0) + '% / B'
-          : (c.contab_tipo || 'A');
-        const si = c.supplier_invoice_id ? supInvoices.find(x => x.id === c.supplier_invoice_id) : null;
-        const facturaCell = si
-          ? '<span class="badge badge-green" title="Factura vinculada">' + si.number + '</span>'
+      certs.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).map(function(c) {
+        var sc = CERT_STATUS_CFG[c.status] || { label: c.status, cls: 'badge-gray' };
+        var contabTxt = c.contab_tipo === 'AB' ? 'A ' + (c.contab_pct_a || 0) + '% / B' : (c.contab_tipo || 'A');
+        var si = c.supplier_invoice_id ? supInvoices.find(function(x) { return x.id === c.supplier_invoice_id; }) : null;
+        var facturaCell = si
+          ? '<span class="badge badge-green">' + si.number + '</span>'
           : (c.status === 'approved'
               ? '<button class="btn btn-sm btn-secondary" onclick="generateInvoiceFromCert(\'' + c.id + '\')"><i class="fas fa-file-invoice"></i> Vincular</button>'
               : '<span style="color:var(--text-muted);font-size:11px">—</span>');
+        var clog = (c.approval_log || []);
+        var logHtml = clog.length
+          ? '<div style="font-size:10px;color:var(--text-muted);font-style:italic;margin-top:2px">' +
+            (function(e) { return (e.action === 'approved' ? '✓' : e.action === 'rejected' ? '✗' : '→') + ' ' + (e.comment || e.action) + ' · ' + fmtDate(e.date); })(clog[clog.length - 1]) +
+            '</div>'
+          : '';
         return '<tr>' +
-          '<td><strong>' + c.number + '</strong></td>' +
+          '<td><div><strong>' + c.number + '</strong>' + logHtml + '</div></td>' +
           '<td style="font-size:11px">' + fmtDate(c.date) + '</td>' +
           '<td style="font-size:11px">' + fmtDate(c.period_from) + ' — ' + fmtDate(c.period_to) + '</td>' +
-          '<td class="number-cell text-right">' + fmtMoney(c.subtotal) + '</td>' +
+          '<td class="number-cell text-right">' + fmtMoney(c.subtotal || 0) + '</td>' +
           '<td class="number-cell text-right text-warning">' + fmtMoney(c.retention_amount || 0) + '</td>' +
-          '<td class="number-cell text-right"><strong>' + fmtMoney(c.net_amount) + '</strong></td>' +
+          '<td class="number-cell text-right"><strong>' + fmtMoney(c.net_amount || 0) + '</strong></td>' +
           '<td style="font-size:11px">' + contabTxt + '</td>' +
           '<td style="font-size:11px">' + (c.forma_pago || '-') + '</td>' +
           '<td>' + facturaCell + '</td>' +
-          '<td><span class="badge ' + (statusColor[c.status] || 'badge-gray') + '">' + (statusLabel[c.status] || c.status) + '</span></td>' +
+          '<td><span class="badge ' + sc.cls + '">' + sc.label + '</span></td>' +
           '<td><div class="table-actions">' +
             '<button class="btn-ghost btn btn-sm" onclick="viewCert(\'' + c.id + '\')"><i class="fas fa-eye"></i></button>' +
-            (c.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="approveCert(\'' + c.id + '\');closeModal();viewContract(\'' + id + '\')"><i class="fas fa-check"></i></button>' : '') +
-          '</div></td>' +
-          '</tr>';
+            (c.status === 'pending'
+              ? '<button class="btn btn-sm btn-success" title="Aprobar" onclick="openApproveCertModal(\'' + c.id + '\',\'' + contract.id + '\')"><i class="fas fa-check"></i></button>' +
+                '<button class="btn btn-sm btn-danger"  title="Rechazar" onclick="openRejectCertModal(\'' + c.id + '\',\'' + contract.id + '\')"><i class="fas fa-times"></i></button>'
+              : '') +
+          '</div></td></tr>';
       }).join('') +
       '</tbody></table>' +
-      '<div style="padding:12px;text-align:right;font-size:13px;border-top:2px solid var(--border)">' +
-        'Total Certificado: <strong style="color:var(--primary)">' + fmtMoney(totalCertified) + '</strong> &nbsp;|&nbsp; ' +
-        'Avance: <strong>' + fmtPct(avance) + '</strong>' +
-      '</div></div>'
-    : '<div class="empty-state" style="padding:20px"><i class="fas fa-certificate"></i><p>Sin certificaciones para este contrato</p></div>';
+      '<div style="padding:10px;text-align:right;font-size:13px;border-top:2px solid var(--border)">Total: <strong style="color:var(--primary)">' + fmtMoney(totalAmt) + '</strong></div>' +
+      '</div>'
+    : '<div class="empty-state" style="padding:30px"><i class="fas fa-certificate"></i><p>Sin certificaciones para este contrato</p></div>';
 
-  // cash flow
-  const cashflow = contract.cash_flow || [];
-  const cfTotal = cashflow.reduce((s, r) => s + (r.amount || 0), 0);
-  const cashflowHtml = cashflow.length
-    ? '<div class="table-wrap"><table><thead><tr><th>Mes</th><th class="text-right">Monto Previsto</th></tr></thead><tbody>' +
-      cashflow.slice().sort((a, b) => (a.month || '').localeCompare(b.month || '')).map(r =>
-        '<tr><td>' + (r.month || '-') + '</td><td class="number-cell text-right">' + fmtMoney(r.amount || 0) + '</td></tr>'
-      ).join('') +
-      '<tr class="total-row"><td class="text-right"><strong>TOTAL CASH FLOW</strong></td>' +
-        '<td class="number-cell text-right"><strong>' + fmtMoney(cfTotal) + '</strong></td></tr>' +
-      '</tbody></table></div>'
-    : '<div class="empty-state" style="padding:20px"><p>Sin cash flow cargado</p></div>';
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
+    '<div style="display:flex;gap:12px;font-size:12px">' +
+      '<span><strong>' + certs.length + '</strong> total</span>' +
+      '<span style="color:var(--warning)"><strong>' + pending + '</strong> pendientes</span>' +
+      '<span style="color:var(--success)"><strong>' + approved + '</strong> aprobadas</span>' +
+    '</div>' +
+    (contract.status === 'active'
+      ? '<button class="btn btn-primary btn-sm" onclick="openContractCertForm(\'' + contract.id + '\')"><i class="fas fa-plus"></i> Nueva Certificación</button>'
+      : '') +
+  '</div>' + tableHtml;
+}
 
-  // adicionales
-  const adicionales = contract.adicionales || [];
-  const adicNet = adicionalesNet(adicionales);
-  const baseTotal = contract.base_total != null ? contract.base_total : ((contract.total_amount || 0) - adicNet);
-  const adicionalesHtml = adicionales.length
-    ? '<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Descripción</th><th>Fecha</th><th class="text-right">Monto</th></tr></thead><tbody>' +
-      adicionales.map(function(a) {
-        const isEco = a.type === 'economia';
+function _cdpAdic(contract) {
+  var adicionales = contract.adicionales || [];
+  var net = adicionalesNet(adicionales);
+  var baseTotal = contract.base_total != null ? contract.base_total : ((contract.total_amount || 0) - net);
+  var tableHtml = adicionales.length
+    ? '<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Descripción</th><th>Fecha</th><th class="text-right">Monto</th><th></th></tr></thead><tbody>' +
+      adicionales.map(function(a, i) {
+        var isEco = a.type === 'economia';
         return '<tr>' +
           '<td><span class="badge ' + (isEco ? 'badge-red' : 'badge-green') + '">' + (isEco ? 'Economía' : 'Demasía') + '</span></td>' +
           '<td>' + (a.description || '-') + '</td>' +
           '<td>' + fmtDate(a.date) + '</td>' +
           '<td class="number-cell text-right ' + (isEco ? 'text-danger' : 'text-success') + '">' + (isEco ? '−' : '+') + fmtMoney(a.amount || 0) + '</td>' +
-          '</tr>';
+          '<td><button class="btn-ghost btn btn-sm danger" onclick="deleteAdicionalFromContract(\'' + contract.id + '\',' + i + ')"><i class="fas fa-trash"></i></button></td></tr>';
       }).join('') +
-      '<tr class="total-row"><td colspan="3" class="text-right"><strong>Monto base ' + fmtMoney(baseTotal) + ' + adicionales netos</strong></td>' +
-        '<td class="number-cell text-right"><strong>' + fmtMoney(adicNet) + '</strong></td></tr>' +
+      '<tr class="total-row"><td colspan="3" class="text-right"><strong>Base ' + fmtMoney(baseTotal) + ' + adicionales</strong></td>' +
+        '<td class="number-cell text-right"><strong>' + fmtMoney(net) + '</strong></td><td></td></tr>' +
       '<tr class="total-row"><td colspan="3" class="text-right"><strong>MONTO VIGENTE</strong></td>' +
-        '<td class="number-cell text-right"><strong style="color:var(--primary)">' + fmtMoney(contract.total_amount || 0) + '</strong></td></tr>' +
+        '<td class="number-cell text-right"><strong style="color:var(--primary)">' + fmtMoney(contract.total_amount || 0) + '</strong></td><td></td></tr>' +
       '</tbody></table></div>'
-    : '<div class="empty-state" style="padding:20px"><p>Sin adicionales cargados (economías ni demasías)</p></div>';
+    : '<div class="empty-state"><i class="fas fa-exchange-alt"></i><p>Sin adicionales. Las demasías suman al contrato y las economías lo reducen.</p></div>';
 
-  // cronograma (Gantt) — bars filled by renderCronograma after init
-  const cronoHtml =
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
-      '<span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-info-circle"></i> Barra = período de la partida · relleno = avance certificado · línea roja = hoy · marcador negro (Desvío) = avance esperado</span>' +
-      '<div style="display:flex;gap:6px">' +
-        '<button id="crono-btn-proyectado" class="btn btn-sm btn-secondary" onclick="renderCronograma(\'' + id + '\',\'proyectado\')">Proyectado</button>' +
-        '<button id="crono-btn-real" class="btn btn-sm btn-primary" onclick="renderCronograma(\'' + id + '\',\'real\')">Real</button>' +
-        '<button id="crono-btn-desvio" class="btn btn-sm btn-secondary" onclick="renderCronograma(\'' + id + '\',\'desvio\')">Desvío</button>' +
-      '</div>' +
-    '</div>' +
-    '<div id="crono-bars"></div>';
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+    '<strong style="font-size:13px">Demasías (+) y Economías (−)</strong>' +
+    '<button class="btn btn-primary btn-sm" onclick="openAddAdicionalModal(\'' + contract.id + '\')"><i class="fas fa-plus"></i> Agregar Adicional</button>' +
+  '</div>' + tableHtml;
+}
 
-  const condHtml =
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:12px">' +
-      '<div style="background:var(--bg);padding:10px;border-radius:6px"><div class="form-label">Anticipo</div><strong>' + fmtPct(contract.anticipo_pct || 0) + '</strong></div>' +
-      '<div style="background:var(--bg);padding:10px;border-radius:6px"><div class="form-label">Fondo de Reparo</div><strong>' + fmtPct(contract.fondo_reparo_pct || 0) + '</strong></div>' +
-      '<div style="background:var(--bg);padding:10px;border-radius:6px"><div class="form-label">Depósito en Garantía</div><strong>' + fmtPct(contract.deposito_garantia_pct || 0) + '</strong></div>' +
-      '<div style="background:var(--bg);padding:10px;border-radius:6px"><div class="form-label">Índice de Actualización</div><strong>' + (idx ? (idx.code + ' — ' + idx.name) : 'Ninguno') + '</strong></div>' +
-      '<div style="background:var(--bg);padding:10px;border-radius:6px"><div class="form-label">Forma de Pago</div><strong>' + (contract.forma_pago || '-') + '</strong></div>' +
-      '<div style="background:var(--bg);padding:10px;border-radius:6px"><div class="form-label">Anticipo $</div><strong>' + fmtMoney((contract.total_amount || 0) * (contract.anticipo_pct || 0) / 100) + '</strong></div>' +
+function _cdpCashFlow(contract) {
+  var cashflow = contract.cash_flow || [];
+  var cfTotal  = cashflow.reduce(function(s, r) { return s + (r.amount || 0); }, 0);
+  if (!cashflow.length) return '<div class="empty-state"><p>Sin cash flow cargado. Podés cargarlo editando el contrato.</p></div>';
+  var diff = (contract.total_amount || 0) - cfTotal;
+  var diffColor = Math.abs(diff) < 1 ? 'var(--success)' : 'var(--danger)';
+  return '<div class="table-wrap"><table><thead><tr><th>Mes</th><th class="text-right">Monto Previsto</th></tr></thead><tbody>' +
+    cashflow.slice().sort(function(a, b) { return (a.month || '').localeCompare(b.month || ''); }).map(function(r) {
+      return '<tr><td>' + (r.month || '-') + '</td><td class="number-cell text-right">' + fmtMoney(r.amount || 0) + '</td></tr>';
+    }).join('') +
+    '<tr class="total-row"><td class="text-right"><strong>TOTAL</strong></td><td class="number-cell text-right"><strong>' + fmtMoney(cfTotal) + '</strong></td></tr>' +
+    '</tbody></table></div>' +
+    '<div style="margin-top:10px;text-align:right;font-size:13px">' +
+      'Contrato: <strong>' + fmtMoney(contract.total_amount || 0) + '</strong> &nbsp;|&nbsp; Diferencia: <strong style="color:' + diffColor + '">' + fmtMoney(diff) + '</strong>' +
     '</div>';
-
-  openModal('Contrato ' + contract.number,
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;font-size:12px">' +
-      '<div style="background:var(--bg);padding:12px;border-radius:8px">' +
-        '<div style="font-weight:700;margin-bottom:8px;font-size:13px">DATOS DEL CONTRATO</div>' +
-        '<div><strong>Proyecto:</strong> ' + (proj ? proj.name : '-') + '</div>' +
-        '<div><strong>Contratista:</strong> ' + (sup ? sup.name : '-') + '</div>' +
-        '<div><strong>Tipo:</strong> ' + (CONTRACT_TYPES[contract.type] || '-') + '</div>' +
-        '<div><strong>Estado:</strong> ' + (statusLabel[contract.status] || contract.status || '-') + '</div>' +
-        (contract.notes ? '<div style="margin-top:6px;color:var(--text-muted)"><strong>Notas:</strong> ' + contract.notes + '</div>' : '') +
-      '</div>' +
-      '<div style="background:var(--bg);padding:12px;border-radius:8px">' +
-        '<div style="font-weight:700;margin-bottom:8px;font-size:13px">PLAZOS Y MONTOS</div>' +
-        '<div><strong>Inicio:</strong> ' + fmtDate(contract.start_date) + '</div>' +
-        '<div><strong>Fin:</strong> ' + fmtDate(contract.end_date) + '</div>' +
-        '<div><strong>Monto Total:</strong> ' + fmtMoney(contract.total_amount || 0) + '</div>' +
-        '<div><strong>Certificado:</strong> ' + fmtMoney(totalCertified) + ' (' + fmtPct(avance) + ')</div>' +
-        '<div><strong>Saldo:</strong> ' + fmtMoney((contract.total_amount || 0) - totalCertified) + '</div>' +
-        '<div style="margin-top:8px">' + progressBar(avance) + '</div>' +
-      '</div>' +
-    '</div>' +
-    '<div id="contract-detail-tabs">' +
-      '<div class="tabs">' +
-        '<button class="tab-btn" data-tab="ctab-cond">Condiciones</button>' +
-        '<button class="tab-btn" data-tab="ctab-items">Partidas (' + (contract.items || []).length + ')</button>' +
-        '<button class="tab-btn" data-tab="ctab-crono">Cronograma</button>' +
-        '<button class="tab-btn" data-tab="ctab-certs">Certificaciones (' + certs.length + ')</button>' +
-        '<button class="tab-btn" data-tab="ctab-adic">Adicionales (' + (contract.adicionales || []).length + ')</button>' +
-        '<button class="tab-btn" data-tab="ctab-cf">Cash Flow</button>' +
-      '</div>' +
-      '<div id="ctab-cond" class="tab-content">' + condHtml + '</div>' +
-      '<div id="ctab-items" class="tab-content">' + itemsHtml + '</div>' +
-      '<div id="ctab-crono" class="tab-content">' + cronoHtml + '</div>' +
-      '<div id="ctab-certs" class="tab-content">' + certsHtml + '</div>' +
-      '<div id="ctab-adic" class="tab-content">' + adicionalesHtml + '</div>' +
-      '<div id="ctab-cf" class="tab-content">' + cashflowHtml + '</div>' +
-    '</div>',
-  'modal-xl',
-    '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>' +
-    '<button class="btn btn-secondary" onclick="closeModal();openContractForm(\'' + id + '\')"><i class="fas fa-edit"></i> Editar</button>' +
-    (contract.status === 'draft'
-      ? '<button class="btn btn-success" onclick="closeModal();startContract(\'' + id + '\')"><i class="fas fa-play"></i> Dar Inicio</button>'
-      : '') +
-    (contract.status === 'active'
-      ? '<button class="btn btn-primary" onclick="closeModal();openContractCertForm(\'' + id + '\')"><i class="fas fa-certificate"></i> Nueva Certificación</button>' +
-        '<button class="btn btn-success" onclick="closeModal();finishContract(\'' + id + '\')"><i class="fas fa-flag-checkered"></i> Finalizar Contrato</button>'
-      : '')
-  );
-  setTimeout(function() {
-    initTabs('contract-detail-tabs');
-    renderCronograma(id, 'real');
-  }, 50);
 }
 
 // ---- FINALIZAR CONTRATO ----
@@ -450,9 +580,169 @@ function finishContract(id) {
   const contract = DB.getById('contracts', id);
   if (!contract) return;
   confirmDialog('¿Finalizar el contrato ' + contract.number + '? Pasará a estado Completado.', function() {
-    DB.update('contracts', id, { status: 'completed', completed_date: todayStr() });
+    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'completed', comment: '', user: 'Administrador' }]);
+    DB.update('contracts', id, { status: 'completed', completed_date: todayStr(), approval_log: log });
     toast('Contrato finalizado', 'success');
-    renderContratos();
+    renderContractDetail(id);
+  });
+}
+
+// ---- APPROVAL: CONTRACTS ----
+function submitContractForApproval(id) {
+  var contract = DB.getById('contracts', id);
+  if (!contract) return;
+  if (!(contract.items || []).length) { toast('Cargá al menos una partida antes de enviar a aprobación', 'error'); return; }
+  confirmDialog('¿Enviar el contrato ' + contract.number + ' a aprobación?', function() {
+    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'submitted', comment: '', user: 'Administrador' }]);
+    DB.update('contracts', id, { status: 'pending_approval', approval_log: log });
+    toast('Contrato enviado a aprobación', 'success');
+    renderContractDetail(id);
+  });
+}
+
+function openApproveContractModal(id) {
+  var contract = DB.getById('contracts', id);
+  if (!contract) return;
+  openModal('Aprobar Contrato — ' + contract.number,
+    '<div class="form-group"><label class="form-label">Comentario (opcional)</label>' +
+      '<textarea class="form-control" id="cont-approve-comment" rows="3" placeholder="Ej: Revisado y aprobado por Dirección..."></textarea></div>',
+    'modal-sm',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-success" onclick="doApproveContract(\'' + id + '\')"><i class="fas fa-check"></i> Confirmar Aprobación</button>'
+  );
+}
+function doApproveContract(id) {
+  var comment = (document.getElementById('cont-approve-comment').value || '').trim();
+  var contract = DB.getById('contracts', id);
+  if (!contract) return;
+  var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'approved', comment: comment, user: 'Administrador' }]);
+  DB.update('contracts', id, { status: 'approved', approval_log: log });
+  toast('Contrato aprobado', 'success');
+  closeModal();
+  renderContractDetail(id);
+}
+
+function openRejectContractModal(id) {
+  var contract = DB.getById('contracts', id);
+  if (!contract) return;
+  openModal('Rechazar Contrato — ' + contract.number,
+    '<div class="form-group"><label class="form-label">Motivo del rechazo <span style="color:var(--danger)">*</span></label>' +
+      '<textarea class="form-control" id="cont-reject-comment" rows="3" placeholder="Indicá los motivos del rechazo..."></textarea></div>',
+    'modal-sm',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-danger" onclick="doRejectContract(\'' + id + '\')"><i class="fas fa-times"></i> Rechazar</button>'
+  );
+}
+function doRejectContract(id) {
+  var comment = (document.getElementById('cont-reject-comment').value || '').trim();
+  if (!comment) { toast('Ingresá el motivo del rechazo', 'error'); return; }
+  var contract = DB.getById('contracts', id);
+  if (!contract) return;
+  var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'rejected', comment: comment, user: 'Administrador' }]);
+  DB.update('contracts', id, { status: 'rejected', approval_log: log });
+  toast('Contrato rechazado', 'warning');
+  closeModal();
+  renderContractDetail(id);
+}
+
+// ---- APPROVAL: CERTIFICATES ----
+function openApproveCertModal(certId, contractId) {
+  var cert = DB.getById('certificates', certId);
+  if (!cert) return;
+  openModal('Aprobar Certificación — ' + cert.number,
+    '<div style="background:var(--bg);padding:8px;border-radius:6px;margin-bottom:12px;font-size:12px">' +
+      'Monto: <strong>' + fmtMoney(cert.subtotal || 0) + '</strong> &nbsp;|&nbsp; Neto: <strong>' + fmtMoney(cert.net_amount || 0) + '</strong></div>' +
+    '<div class="form-group"><label class="form-label">Comentario (opcional)</label>' +
+      '<textarea class="form-control" id="cert-approve-comment" rows="3" placeholder="Ej: Aprobado por Director de Obra..."></textarea></div>',
+    'modal-sm',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-success" onclick="doApproveCert(\'' + certId + '\',\'' + contractId + '\')"><i class="fas fa-check"></i> Aprobar</button>'
+  );
+}
+function doApproveCert(certId, contractId) {
+  var comment = (document.getElementById('cert-approve-comment').value || '').trim();
+  var cert = DB.getById('certificates', certId);
+  if (!cert) return;
+  var log = (cert.approval_log || []).concat([{ date: todayStr(), action: 'approved', comment: comment, user: 'Administrador' }]);
+  DB.update('certificates', certId, { status: 'approved', approval_log: log });
+  toast('Certificación aprobada', 'success');
+  closeModal();
+  renderContractDetail(contractId);
+}
+
+function openRejectCertModal(certId, contractId) {
+  var cert = DB.getById('certificates', certId);
+  if (!cert) return;
+  openModal('Rechazar Certificación — ' + cert.number,
+    '<div class="form-group"><label class="form-label">Motivo del rechazo <span style="color:var(--danger)">*</span></label>' +
+      '<textarea class="form-control" id="cert-reject-comment" rows="3" placeholder="Indicá los motivos del rechazo..."></textarea></div>',
+    'modal-sm',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-danger" onclick="doRejectCert(\'' + certId + '\',\'' + contractId + '\')"><i class="fas fa-times"></i> Rechazar</button>'
+  );
+}
+function doRejectCert(certId, contractId) {
+  var comment = (document.getElementById('cert-reject-comment').value || '').trim();
+  if (!comment) { toast('Ingresá el motivo del rechazo', 'error'); return; }
+  var cert = DB.getById('certificates', certId);
+  if (!cert) return;
+  var log = (cert.approval_log || []).concat([{ date: todayStr(), action: 'rejected', comment: comment, user: 'Administrador' }]);
+  DB.update('certificates', certId, { status: 'rejected', approval_log: log });
+  toast('Certificación rechazada', 'warning');
+  closeModal();
+  renderContractDetail(contractId);
+}
+
+// ---- ADICIONALES INTERACTIVOS ----
+function openAddAdicionalModal(contractId) {
+  openModal('Agregar Adicional al Contrato',
+    '<div class="form-grid form-grid-2">' +
+      '<div class="form-group"><label class="form-label">Tipo</label>' +
+        '<select class="form-control" id="adic-new-type">' +
+          '<option value="demasia">Demasía (+) — aumenta el contrato</option>' +
+          '<option value="economia">Economía (−) — reduce el contrato</option>' +
+        '</select></div>' +
+      '<div class="form-group"><label class="form-label">Fecha</label>' +
+        '<input class="form-control" id="adic-new-date" type="date" value="' + todayStr() + '"></div>' +
+      '<div class="form-group full"><label class="form-label">Descripción *</label>' +
+        '<input class="form-control" id="adic-new-desc" placeholder="Descripción del adicional"></div>' +
+      '<div class="form-group"><label class="form-label">Monto *</label>' +
+        '<input class="form-control" id="adic-new-amount" type="number" min="0" step="0.01" placeholder="0"></div>' +
+    '</div>',
+    'modal-md',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="doAddAdicionalToContract(\'' + contractId + '\')"><i class="fas fa-save"></i> Guardar</button>'
+  );
+}
+function doAddAdicionalToContract(contractId) {
+  var desc   = (document.getElementById('adic-new-desc').value || '').trim();
+  var amount = parseFloat(document.getElementById('adic-new-amount').value) || 0;
+  if (!desc)      { toast('La descripción es obligatoria', 'error'); return; }
+  if (amount <= 0) { toast('El monto debe ser mayor a 0', 'error'); return; }
+  var contract = DB.getById('contracts', contractId);
+  if (!contract) return;
+  var newAdic = {
+    type:        document.getElementById('adic-new-type').value,
+    description: desc,
+    date:        document.getElementById('adic-new-date').value,
+    amount:      amount,
+  };
+  var adicionales = (contract.adicionales || []).concat([newAdic]);
+  var baseTotal = contract.base_total != null ? contract.base_total : ((contract.total_amount || 0) - adicionalesNet(contract.adicionales || []));
+  DB.update('contracts', contractId, { adicionales: adicionales, base_total: baseTotal, total_amount: baseTotal + adicionalesNet(adicionales) });
+  toast('Adicional guardado', 'success');
+  closeModal();
+  renderContractDetail(contractId);
+}
+function deleteAdicionalFromContract(contractId, idx) {
+  confirmDialog('¿Eliminar este adicional? El monto vigente se actualizará.', function() {
+    var contract = DB.getById('contracts', contractId);
+    if (!contract) return;
+    var adicionales = (contract.adicionales || []).filter(function(_, i) { return i !== idx; });
+    var baseTotal = contract.base_total != null ? contract.base_total : ((contract.total_amount || 0) - adicionalesNet(contract.adicionales || []));
+    DB.update('contracts', contractId, { adicionales: adicionales, base_total: baseTotal, total_amount: baseTotal + adicionalesNet(adicionales) });
+    toast('Adicional eliminado', 'warning');
+    renderContractDetail(contractId);
   });
 }
 
@@ -527,7 +817,7 @@ function doGenerateInvoiceFromCert(certId) {
   DB.update('certificates', certId, { supplier_invoice_id: si.id });
   toast('Factura ' + nextNum + ' generada y vinculada al certificado', 'success');
   closeModal();
-  if (cert.contract_id) viewContract(cert.contract_id);
+  if (cert.contract_id) renderContractDetail(cert.contract_id);
   else renderContratos();
 }
 
@@ -539,7 +829,7 @@ function linkCertToExistingInvoice(certId) {
   DB.update('supplierInvoices', siId, { cert_id: certId });
   toast('Certificado vinculado a la factura', 'success');
   closeModal();
-  if (cert.contract_id) viewContract(cert.contract_id);
+  if (cert.contract_id) renderContractDetail(cert.contract_id);
   else renderContratos();
 }
 
@@ -549,9 +839,10 @@ function startContract(id) {
   if (!contract) return;
   if (!(contract.items || []).length) { toast('Cargá al menos una partida antes de iniciar el contrato', 'error'); return; }
   confirmDialog('¿Dar inicio al contrato ' + contract.number + '? Una vez iniciado podrás cargar certificaciones.', function() {
-    DB.update('contracts', id, { status: 'active', started_date: todayStr() });
+    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'started', comment: '', user: 'Administrador' }]);
+    DB.update('contracts', id, { status: 'active', started_date: todayStr(), approval_log: log });
     toast('Contrato iniciado — ya podés certificar', 'success');
-    renderContratos();
+    renderContractDetail(id);
   });
 }
 
@@ -1033,14 +1324,15 @@ function saveContract(id) {
     total_amount:          total,
   };
 
-  if (id) { DB.update('contracts', id, data); toast('Contrato actualizado', 'success'); }
-  else    { DB.insert('contracts', data);      toast('Contrato creado', 'success'); }
+  var savedId;
+  if (id) { DB.update('contracts', id, data); toast('Contrato actualizado', 'success'); savedId = id; }
+  else    { var nc = DB.insert('contracts', data); toast('Contrato creado', 'success'); savedId = nc.id; }
 
   window._contractItems = [];
   window._contractCashflow = [];
   window._contractAdicionales = [];
   closeModal();
-  renderContratos();
+  renderContractDetail(savedId);
 }
 
 function deleteContract(id) {
@@ -1276,7 +1568,7 @@ function saveContractCert(contractId) {
   toast('Certificación creada correctamente', 'success');
   window._ccertItems = [];
   closeModal();
-  renderContratos();
+  renderContractDetail(contractId);
 }
 
 // ---- EXPORT CONTRACTS ----
