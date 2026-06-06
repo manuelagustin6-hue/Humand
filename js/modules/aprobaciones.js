@@ -172,6 +172,33 @@ function _apprBuildPendingList() {
     if (currentStep.approver_name) html += ' &mdash; Aprobador: <strong>' + escHtml(currentStep.approver_name) + '</strong>';
     html += '</div>';
     html += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px">Flujo: ' + escHtml(inst.workflow_name || '-') + ' &nbsp;|&nbsp; Enviado: ' + fmtDate(inst.created_at) + '</div>';
+
+    // ---- HISTORIAL DE PASOS ANTERIORES ----
+    const doneSteps = inst.steps.filter(function(s) { return s.status === 'approved' || s.status === 'rejected'; });
+    if (doneSteps.length) {
+      html += '<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:6px">';
+      doneSteps.forEach(function(s) {
+        const isAppr = s.status === 'approved';
+        const iconColor = isAppr ? 'var(--success)' : 'var(--danger)';
+        const icon = isAppr ? 'fa-check-circle' : 'fa-times-circle';
+        html += '<div style="display:flex;gap:8px;align-items:flex-start">';
+        html += '<i class="fas ' + icon + '" style="color:' + iconColor + ';font-size:13px;margin-top:2px;flex-shrink:0"></i>';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="font-size:11px;font-weight:600;color:var(--text)">';
+        html += escHtml(s.name);
+        if (s.approver_name) html += ' <span style="font-weight:400;color:var(--text-muted)">(' + escHtml(s.approver_name) + ')</span>';
+        if (s.date) html += ' <span style="font-weight:400;color:var(--text-muted)">&mdash; ' + fmtDate(s.date) + '</span>';
+        html += '</div>';
+        if (s.comment) {
+          html += '<div style="font-size:12px;color:var(--text-muted);font-style:italic;margin-top:2px">&ldquo;' + escHtml(s.comment) + '&rdquo;</div>';
+        } else {
+          html += '<div style="font-size:11px;color:var(--text-muted);opacity:.6">Sin comentarios</div>';
+        }
+        html += '</div></div>';
+      });
+      html += '</div>';
+    }
+
     html += '</div>';
 
     // Right: action buttons
