@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>ERP Construcción</title>
-  <link rel="stylesheet" href="css/main.css?v=6">
+  <link rel="stylesheet" href="css/main.css?v=7">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -39,160 +39,233 @@
           </a>
         </li>
 
-        <li class="nav-section">COMPRAS</li>
-        <li class="nav-item" data-module="pedidos">
-          <a href="#" onclick="navigate('pedidos')">
-            <i class="fas fa-clipboard-list"></i><span>Órdenes de Pedido</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="ordenes_compra">
-          <a href="#" onclick="navigate('ordenes_compra')">
-            <i class="fas fa-file-alt"></i><span>Órdenes de Compra</span>
-          </a>
-        </li>
-
-        <li class="nav-section">PROVEEDORES</li>
-        <li class="nav-item" data-module="cuentas_prov">
-          <a href="#" onclick="navigate('cuentas_prov')">
-            <i class="fas fa-building-columns"></i><span>Cuentas Corrientes</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="documentos_prov">
-          <a href="#" onclick="navigate('documentos_prov')">
-            <i class="fas fa-file-lines"></i><span>Documentos</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="ordenes_pago">
-          <a href="#" onclick="navigate('ordenes_pago')">
-            <i class="fas fa-file-invoice"></i><span>Órdenes de Pago</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="retenciones">
-          <a href="#" onclick="navigate('retenciones')">
-            <i class="fas fa-percentage"></i><span>Retenciones</span>
-          </a>
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>COMPRAS</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="pedidos">
+              <a href="#" onclick="navigate('pedidos')">
+                <i class="fas fa-clipboard-list"></i><span>Órdenes de Pedido</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="ordenes_compra">
+              <a href="#" onclick="navigate('ordenes_compra')">
+                <i class="fas fa-file-alt"></i><span>Órdenes de Compra</span>
+              </a>
+            </li>
+          </ul>
         </li>
 
-        <li class="nav-section">GESTIÓN DE OBRA</li>
-        <li class="nav-item" data-module="projects">
-          <a href="#" onclick="navigate('projects')">
-            <i class="fas fa-building"></i><span>Proyectos</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="contratos">
-          <a href="#" onclick="navigate('contratos')">
-            <i class="fas fa-file-contract"></i><span>Contratos</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="certificaciones">
-          <a href="#" onclick="navigate('certificaciones')">
-            <i class="fas fa-certificate"></i><span>Certificaciones</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="presupuesto">
-          <a href="#" onclick="navigate('presupuesto')">
-            <i class="fas fa-calculator"></i><span>Cómputo y Presupuesto</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="seguimiento">
-          <a href="#" onclick="navigate('seguimiento')">
-            <i class="fas fa-chart-line"></i><span>Control Presupuestal</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="gantt">
-          <a href="#" onclick="navigate('gantt')">
-            <i class="fas fa-stream"></i><span>Diagrama de Gantt</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="rubros">
-          <a href="#" onclick="navigate('rubros')">
-            <i class="fas fa-list-ol"></i><span>Rubros de Obra</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="indices">
-          <a href="#" onclick="navigate('indices')">
-            <i class="fas fa-percent"></i><span>Índices de Ajuste</span>
-          </a>
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>PROVEEDORES</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="cuentas_prov">
+              <a href="#" onclick="navigate('cuentas_prov')">
+                <i class="fas fa-building-columns"></i><span>Cuentas Corrientes</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="documentos_prov">
+              <a href="#" onclick="navigate('documentos_prov')">
+                <i class="fas fa-file-lines"></i><span>Documentos</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="ordenes_pago">
+              <a href="#" onclick="navigate('ordenes_pago')">
+                <i class="fas fa-file-invoice"></i><span>Órdenes de Pago</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="retenciones">
+              <a href="#" onclick="navigate('retenciones')">
+                <i class="fas fa-percentage"></i><span>Retenciones</span>
+              </a>
+            </li>
+          </ul>
         </li>
 
-        <li class="nav-section">CLIENTES</li>
-        <li class="nav-item" data-module="facturacion">
-          <a href="#" onclick="navigate('facturacion')">
-            <i class="fas fa-file-invoice-dollar"></i><span>Facturas</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="cobranzas">
-          <a href="#" onclick="navigate('cobranzas')">
-            <i class="fas fa-hand-holding-dollar"></i><span>Ingresos</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="cuentas_cli">
-          <a href="#" onclick="navigate('cuentas_cli')">
-            <i class="fas fa-users"></i><span>Cuentas Corrientes</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="cashflow_cli">
-          <a href="#" onclick="navigate('cashflow_cli')">
-            <i class="fas fa-money-bill-trend-up"></i><span>Cash Flow</span>
-          </a>
-        </li>
-
-        <li class="nav-section">COMERCIAL</li>
-        <li class="nav-item" data-module="leads">
-          <a href="#" onclick="navigate('leads')">
-            <i class="fas fa-handshake"></i><span>Leads</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="unidades">
-          <a href="#" onclick="navigate('unidades')">
-            <i class="fas fa-house-chimney"></i><span>Detalle de Unidades</span>
-          </a>
-        </li>
-
-        <li class="nav-section">TESORERÍA</li>
-        <li class="nav-item" data-module="cuentas_banco">
-          <a href="#" onclick="navigate('cuentas_banco')">
-            <i class="fas fa-landmark"></i><span>Cuentas Bancarias y Cajas</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="tesoreria">
-          <a href="#" onclick="navigate('tesoreria')">
-            <i class="fas fa-arrows-left-right"></i><span>Operaciones</span>
-          </a>
-        </li>
-        <li class="nav-item" data-module="cheques">
-          <a href="#" onclick="navigate('cheques')">
-            <i class="fas fa-money-check"></i><span>Cheques</span>
-          </a>
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>GESTIÓN DE OBRA</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="projects">
+              <a href="#" onclick="navigate('projects')">
+                <i class="fas fa-building"></i><span>Proyectos</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="contratos">
+              <a href="#" onclick="navigate('contratos')">
+                <i class="fas fa-file-contract"></i><span>Contratos</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="certificaciones">
+              <a href="#" onclick="navigate('certificaciones')">
+                <i class="fas fa-certificate"></i><span>Certificaciones</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="presupuesto">
+              <a href="#" onclick="navigate('presupuesto')">
+                <i class="fas fa-calculator"></i><span>Cómputo y Presupuesto</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="seguimiento">
+              <a href="#" onclick="navigate('seguimiento')">
+                <i class="fas fa-chart-line"></i><span>Control Presupuestal</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="gantt">
+              <a href="#" onclick="navigate('gantt')">
+                <i class="fas fa-stream"></i><span>Diagrama de Gantt</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="rubros">
+              <a href="#" onclick="navigate('rubros')">
+                <i class="fas fa-list-ol"></i><span>Rubros de Obra</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="indices">
+              <a href="#" onclick="navigate('indices')">
+                <i class="fas fa-percent"></i><span>Índices de Ajuste</span>
+              </a>
+            </li>
+          </ul>
         </li>
 
-        <li class="nav-section">CONTABILIDAD</li>
-        <li class="nav-item" data-module="contabilidad">
-          <a href="#" onclick="navigate('contabilidad')">
-            <i class="fas fa-book-open"></i><span>Contabilidad</span>
-          </a>
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>CLIENTES</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="facturacion">
+              <a href="#" onclick="navigate('facturacion')">
+                <i class="fas fa-file-invoice-dollar"></i><span>Facturas</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="cobranzas">
+              <a href="#" onclick="navigate('cobranzas')">
+                <i class="fas fa-hand-holding-dollar"></i><span>Ingresos</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="cuentas_cli">
+              <a href="#" onclick="navigate('cuentas_cli')">
+                <i class="fas fa-users"></i><span>Cuentas Corrientes</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="cashflow_cli">
+              <a href="#" onclick="navigate('cashflow_cli')">
+                <i class="fas fa-money-bill-trend-up"></i><span>Cash Flow</span>
+              </a>
+            </li>
+          </ul>
         </li>
 
-        <li class="nav-section">CONFIGURACIÓN</li>
-        <li class="nav-item" data-module="aprobaciones">
-          <a href="#" onclick="navigate('aprobaciones')">
-            <i class="fas fa-check-double"></i><span>Aprobaciones</span>
-          </a>
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>COMERCIAL</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="leads">
+              <a href="#" onclick="navigate('leads')">
+                <i class="fas fa-handshake"></i><span>Leads</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="unidades">
+              <a href="#" onclick="navigate('unidades')">
+                <i class="fas fa-house-chimney"></i><span>Detalle de Unidades</span>
+              </a>
+            </li>
+          </ul>
         </li>
-        <li class="nav-item" data-module="reportes">
-          <a href="#" onclick="navigate('reportes')">
-            <i class="fas fa-chart-bar"></i><span>Reportes</span>
-          </a>
+
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>TESORERÍA</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="cuentas_banco">
+              <a href="#" onclick="navigate('cuentas_banco')">
+                <i class="fas fa-landmark"></i><span>Cuentas Bancarias y Cajas</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="tesoreria">
+              <a href="#" onclick="navigate('tesoreria')">
+                <i class="fas fa-arrows-left-right"></i><span>Operaciones</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="cheques">
+              <a href="#" onclick="navigate('cheques')">
+                <i class="fas fa-money-check"></i><span>Cheques</span>
+              </a>
+            </li>
+          </ul>
         </li>
-        <li class="nav-item" data-module="usuarios">
-          <a href="#" onclick="navigate('usuarios')">
-            <i class="fas fa-users-cog"></i><span>Usuarios</span>
-          </a>
+
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>CONTABILIDAD</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="conta_diario">
+              <a href="#" onclick="navigate('conta_diario')">
+                <i class="fas fa-book"></i><span>Libro Diario</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="conta_mayores">
+              <a href="#" onclick="navigate('conta_mayores')">
+                <i class="fas fa-book-open"></i><span>Libro Mayor</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="conta_sumas">
+              <a href="#" onclick="navigate('conta_sumas')">
+                <i class="fas fa-table-columns"></i><span>Sumas y Saldos</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="conta_balance">
+              <a href="#" onclick="navigate('conta_balance')">
+                <i class="fas fa-scale-balanced"></i><span>Balance General</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="conta_resultados">
+              <a href="#" onclick="navigate('conta_resultados')">
+                <i class="fas fa-chart-bar"></i><span>Estado de Resultados</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="conta_plan">
+              <a href="#" onclick="navigate('conta_plan')">
+                <i class="fas fa-sitemap"></i><span>Plan de Cuentas</span>
+              </a>
+            </li>
+          </ul>
         </li>
-        <li class="nav-item" data-module="ajustes">
-          <a href="#" onclick="navigate('ajustes')">
-            <i class="fas fa-cog"></i><span>Configuración General</span>
-          </a>
+
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
+            <span>CONFIGURACIÓN</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="aprobaciones">
+              <a href="#" onclick="navigate('aprobaciones')">
+                <i class="fas fa-check-double"></i><span>Aprobaciones</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="reportes">
+              <a href="#" onclick="navigate('reportes')">
+                <i class="fas fa-chart-bar"></i><span>Reportes</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="usuarios">
+              <a href="#" onclick="navigate('usuarios')">
+                <i class="fas fa-users-cog"></i><span>Usuarios</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="ajustes">
+              <a href="#" onclick="navigate('ajustes')">
+                <i class="fas fa-cog"></i><span>Configuración General</span>
+              </a>
+            </li>
+          </ul>
         </li>
       </ul>
     </nav>
@@ -273,7 +346,7 @@
 <script src="js/modules/reportes.js?v=6"></script>
 <script src="js/modules/usuarios.js?v=6"></script>
 <script src="js/modules/ajustes.js?v=6"></script>
-<script src="js/modules/nuevos.js?v=1"></script>
-<script src="js/app.js?v=8"></script>
+<script src="js/modules/nuevos.js?v=2"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>

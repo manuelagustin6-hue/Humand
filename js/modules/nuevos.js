@@ -114,6 +114,32 @@ function renderUnidades() {
   );
 }
 
+// ---- CONTABILIDAD: WRAPPERS DE TABS ----
+function _contaTab(tabId) {
+  renderContabilidad();
+  setTimeout(function() {
+    var btn = document.querySelector('#conta-tabs .tab-btn[data-tab="' + tabId + '"]');
+    if (btn) btn.click();
+  }, 120);
+}
+function renderContaDiario()     { _contaTab('tab-diario'); }
+function renderContaSumas()      { _contaTab('tab-sumas-conta'); }
+function renderContaBalance()    { _contaTab('tab-balance'); }
+function renderContaResultados() { _contaTab('tab-resultados'); }
+function renderContaPlan()       { _contaTab('tab-cuentas'); }
+function renderContaMayores() {
+  _renderStub('fa-book', 'Libro Mayor',
+    'Movimientos agrupados por cuenta contable',
+    [
+      'Saldo inicial y final por cuenta',
+      'Detalle de débitos y créditos',
+      'Filtro por período y cuenta',
+      'Saldos acumulados por ejercicio',
+      'Exportación a Excel'
+    ]
+  );
+}
+
 // ---- TESORERÍA ----
 function renderCheques() {
   _renderStub('fa-money-check', 'Cheques',
@@ -140,3 +166,58 @@ function renderCuentasBanco() {
     ]
   );
 }
+
+// ---- NAV COLLAPSE ----
+var _NAV_COLLAPSE_KEY = 'erp_nav_sections_v1';
+
+function toggleSection(el) {
+  var group = el.closest('.nav-group');
+  if (!group) return;
+  group.classList.toggle('collapsed');
+  var states = {};
+  try { states = JSON.parse(localStorage.getItem(_NAV_COLLAPSE_KEY) || '{}'); } catch(e) {}
+  var name = el.querySelector('span') ? el.querySelector('span').textContent.trim() : el.textContent.trim();
+  states[name] = group.classList.contains('collapsed');
+  localStorage.setItem(_NAV_COLLAPSE_KEY, JSON.stringify(states));
+}
+
+function initNavCollapse() {
+  var states = {};
+  try { states = JSON.parse(localStorage.getItem(_NAV_COLLAPSE_KEY) || '{}'); } catch(e) {}
+  document.querySelectorAll('#sidebar-nav .nav-group').forEach(function(group) {
+    var sec = group.querySelector('.nav-section');
+    if (!sec) return;
+    var name = sec.querySelector('span') ? sec.querySelector('span').textContent.trim() : sec.textContent.trim();
+    if (states[name]) group.classList.add('collapsed');
+  });
+}
+
+// Override utils.js filterNav to handle grouped structure
+function filterNav(q) {
+  q = (q || '').toLowerCase();
+  var nav = document.getElementById('sidebar-nav');
+  if (!q) {
+    nav.classList.remove('nav-searching');
+    document.querySelectorAll('#sidebar-nav .nav-item').forEach(function(li) { li.style.display = ''; });
+    document.querySelectorAll('#sidebar-nav .nav-group').forEach(function(g) { g.style.display = ''; });
+    return;
+  }
+  nav.classList.add('nav-searching');
+  // standalone dashboard item
+  var dash = document.querySelector('#sidebar-nav > ul > li.nav-item');
+  if (dash) dash.style.display = dash.textContent.toLowerCase().includes(q) ? '' : 'none';
+  // grouped items
+  document.querySelectorAll('#sidebar-nav .nav-group').forEach(function(group) {
+    var anyMatch = false;
+    group.querySelectorAll('.nav-item').forEach(function(li) {
+      var matches = li.textContent.toLowerCase().includes(q);
+      li.style.display = matches ? '' : 'none';
+      if (matches) anyMatch = true;
+    });
+    group.style.display = anyMatch ? '' : 'none';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  initNavCollapse();
+});
