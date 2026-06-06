@@ -980,38 +980,45 @@ function renderSupplierInvoicesTab() {
 }
 
 function buildSITable(sis, suppliers, projects, pos) {
-  if (!sis.length) return `<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas de proveedores. Generalas desde una OC recibida o creá una manualmente.</p></div>`;
+  if (!sis.length) return '<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas de proveedores. Generalas desde una OC recibida, desde una certificación aprobada o creá una manualmente.</p></div>';
   const statusColor = { pending: 'badge-yellow', paid: 'badge-green', cancelled: 'badge-red' };
   const statusLabel = { pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
-  return `<table><thead><tr>
-    <th>N° Factura</th><th>OC Origen</th><th>Proveedor</th><th>Proyecto</th><th>Fecha</th><th>Vencimiento</th>
-    <th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>
-    <th>Estado</th><th>Acciones</th>
-  </tr></thead>
-  <tbody>
-  ${sis.sort((a,b)=>b.date.localeCompare(a.date)).map(si => {
-    const sup = suppliers.find(s => s.id === si.supplier_id);
-    const proj = projects.find(p => p.id === si.project_id);
-    const po = pos.find(p => p.id === si.po_id);
-    return `<tr>
-      <td><strong>${si.number}</strong></td>
-      <td style="font-size:11px;color:var(--text-muted)">${po?.number || '-'}</td>
-      <td>${sup?.name || '-'}</td>
-      <td style="font-size:11px">${proj?.name || '-'}</td>
-      <td>${fmtDate(si.date)}</td>
-      <td style="${si.due_date && si.due_date < todayStr() && si.status==='pending' ? 'color:var(--danger);font-weight:600' : ''}">${fmtDate(si.due_date)}</td>
-      <td class="number-cell text-right">${fmtMoney(si.subtotal)}</td>
-      <td class="number-cell text-right">${fmtMoney(si.tax)}</td>
-      <td class="number-cell text-right"><strong>${fmtMoney(si.total)}</strong></td>
-      <td><span class="badge ${statusColor[si.status]||'badge-gray'}">${statusLabel[si.status]||si.status}</span></td>
-      <td><div class="table-actions">
-        <button class="btn-ghost btn btn-sm" onclick="openSIForm('${si.id}')"><i class="fas fa-edit"></i></button>
-        ${si.status === 'pending' ? `<button class="btn btn-sm btn-success" onclick="markSIPaid('${si.id}')"><i class="fas fa-check"></i> Pagar</button>` : ''}
-        <button class="btn-ghost btn btn-sm danger" onclick="deleteSI('${si.id}')"><i class="fas fa-trash"></i></button>
-      </div></td>
-    </tr>`;
-  }).join('')}
-  </tbody></table>`;
+  const certs = DB.getAll('certificates');
+  const contracts = DB.getAll('contracts');
+  return '<table><thead><tr>' +
+    '<th>N° Factura</th><th>Origen</th><th>Proveedor</th><th>Proyecto</th><th>Fecha</th><th>Vencimiento</th>' +
+    '<th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>' +
+    '<th>Estado</th><th>Acciones</th>' +
+  '</tr></thead><tbody>' +
+  sis.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).map(function(si) {
+    var sup  = suppliers.find(function(s) { return s.id === si.supplier_id; });
+    var proj = projects.find(function(p) { return p.id === si.project_id; });
+    var po   = si.po_id   ? pos.find(function(p) { return p.id === si.po_id; }) : null;
+    var cert = si.cert_id ? certs.find(function(c) { return c.id === si.cert_id; }) : null;
+    var contract = cert && cert.contract_id ? contracts.find(function(ct) { return ct.id === cert.contract_id; }) : null;
+    var origenHtml = '';
+    if (po)   origenHtml += '<div style="font-size:11px;color:var(--text-muted)"><i class="fas fa-shopping-cart" style="font-size:9px"></i> ' + po.number + '</div>';
+    if (cert) origenHtml += '<div style="font-size:11px;color:var(--primary)"><i class="fas fa-certificate" style="font-size:9px"></i> ' + cert.number + (contract ? ' (' + contract.number + ')' : '') + '</div>';
+    if (!origenHtml) origenHtml = '<span style="font-size:11px;color:var(--text-muted)">—</span>';
+    var isOverdueFlag = si.due_date && si.due_date < todayStr() && si.status === 'pending';
+    return '<tr>' +
+      '<td><strong>' + si.number + '</strong></td>' +
+      '<td>' + origenHtml + '</td>' +
+      '<td>' + (sup ? sup.name : '-') + '</td>' +
+      '<td style="font-size:11px">' + (proj ? proj.name : '-') + '</td>' +
+      '<td>' + fmtDate(si.date) + '</td>' +
+      '<td style="' + (isOverdueFlag ? 'color:var(--danger);font-weight:600' : '') + '">' + fmtDate(si.due_date) + '</td>' +
+      '<td class="number-cell text-right">' + fmtMoney(si.subtotal) + '</td>' +
+      '<td class="number-cell text-right">' + fmtMoney(si.tax) + '</td>' +
+      '<td class="number-cell text-right"><strong>' + fmtMoney(si.total) + '</strong></td>' +
+      '<td><span class="badge ' + (statusColor[si.status] || 'badge-gray') + '">' + (statusLabel[si.status] || si.status) + '</span></td>' +
+      '<td><div class="table-actions">' +
+        '<button class="btn-ghost btn btn-sm" onclick="openSIForm(\'' + si.id + '\')"><i class="fas fa-edit"></i></button>' +
+        (si.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="markSIPaid(\'' + si.id + '\')"><i class="fas fa-check"></i> Pagar</button>' : '') +
+        '<button class="btn-ghost btn btn-sm danger" onclick="deleteSI(\'' + si.id + '\')"><i class="fas fa-trash"></i></button>' +
+      '</div></td>' +
+    '</tr>';
+  }).join('') + '</tbody></table>';
 }
 
 window._siFilters = { q: '', status: '' };
@@ -1034,101 +1041,134 @@ function generateSIFromPO(poId) {
   openSIForm(null, poId);
 }
 
-function openSIForm(id = null, prefillPoId = null) {
-  const si = id ? DB.getById('supplierInvoices', id) : null;
-  const pos = DB.getAll('purchaseOrders').filter(p => p.status === 'received');
+function openSIForm(id, prefillPoId, prefillCertId) {
+  id = id || null; prefillPoId = prefillPoId || null; prefillCertId = prefillCertId || null;
+  const si        = id ? DB.getById('supplierInvoices', id) : null;
+  const pos       = DB.getAll('purchaseOrders').filter(function(p) { return p.status === 'received'; });
   const suppliers = DB.getAll('suppliers');
-  const projects = DB.getAll('projects');
-  const nextNum = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
+  const projects  = DB.getAll('projects');
+  const nextNum   = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
 
-  const prefillPO = prefillPoId ? DB.getById('purchaseOrders', prefillPoId) : null;
-  const selectedPoId = si?.po_id || prefillPoId || '';
-  const selectedSupplierId = si?.supplier_id || prefillPO?.supplier_id || '';
-  const selectedProjectId = si?.project_id || prefillPO?.project_id || '';
-  const defaultSubtotal = si?.subtotal ?? (prefillPO?.subtotal ?? '');
-  const defaultTax = si?.tax ?? (prefillPO?.tax ?? '');
-  const defaultTotal = si?.total ?? (prefillPO?.total ?? '');
+  // certs that are approved and either not linked or are the current si's cert
+  const certs     = DB.getAll('certificates').filter(function(c) {
+    return c.status === 'approved' && (!c.supplier_invoice_id || c.supplier_invoice_id === id);
+  });
+  const contracts = DB.getAll('contracts');
 
-  openModal(si ? 'Editar Factura Proveedor' : 'Nueva Factura de Proveedor', `
-<div class="form-grid form-grid-2">
-  <div class="form-group">
-    <label class="form-label">N° Factura Proveedor</label>
-    <input class="form-control" id="si-num" value="${si?.number || nextNum}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Estado</label>
-    <select class="form-control" id="si-status">
-      <option value="pending" ${si?.status==='pending'||!si?'selected':''}>Pendiente de Pago</option>
-      <option value="paid" ${si?.status==='paid'?'selected':''}>Pagada</option>
-      <option value="cancelled" ${si?.status==='cancelled'?'selected':''}>Cancelada</option>
-    </select>
-  </div>
-  <div class="form-group full">
-    <label class="form-label">OC de Origen</label>
-    <select class="form-control" id="si-po" onchange="prefillSIFromPO(this.value)">
-      <option value="">Sin OC de referencia</option>
-      ${pos.map(p => '<option value="' + p.id + '" ' + (selectedPoId===p.id?'selected':'') + '>' + p.number + ' — ' + (suppliers.find(s=>s.id===p.supplier_id)?.name||'') + '</option>').join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Proveedor *</label>
-    <select class="form-control" id="si-supplier">
-      <option value="">Seleccionar...</option>
-      ${suppliers.map(s => '<option value="' + s.id + '" ' + (selectedSupplierId===s.id?'selected':'') + '>' + s.name + '</option>').join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Proyecto</label>
-    <select class="form-control" id="si-project">
-      <option value="">Sin proyecto</option>
-      ${projects.map(p => '<option value="' + p.id + '" ' + (selectedProjectId===p.id?'selected':'') + '>' + p.name + '</option>').join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Fecha Factura</label>
-    <input class="form-control" id="si-date" type="date" value="${si?.date || todayStr()}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Fecha Vencimiento</label>
-    <input class="form-control" id="si-due" type="date" value="${si?.due_date || addDays(todayStr(), 30)}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Subtotal (sin IVA)</label>
-    <input class="form-control" id="si-subtotal" type="number" min="0" value="${defaultSubtotal}" oninput="recalcSI()">
-  </div>
-  <div class="form-group">
-    <label class="form-label">IVA 21%</label>
-    <input class="form-control" id="si-tax" type="number" min="0" value="${defaultTax}" oninput="recalcSI()">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Total</label>
-    <input class="form-control" id="si-total" type="number" min="0" value="${defaultTotal}" style="font-weight:700;color:var(--primary)">
-  </div>
-  <div class="form-group full">
-    <label class="form-label">Notas</label>
-    <textarea class="form-control" id="si-notes" rows="2">${si?.notes || ''}</textarea>
-  </div>
-</div>
-`, 'modal-lg', `
-<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-<button class="btn btn-primary" onclick="saveSI('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
-`);
+  const prefillPO   = prefillPoId   ? DB.getById('purchaseOrders', prefillPoId)   : null;
+  const prefillCert = prefillCertId ? DB.getById('certificates',   prefillCertId) : null;
+  const prefillContractForCert = prefillCert && prefillCert.contract_id ? DB.getById('contracts', prefillCert.contract_id) : null;
+
+  const selectedPoId       = (si && si.po_id)       || prefillPoId       || '';
+  const selectedCertId     = (si && si.cert_id)      || prefillCertId     || '';
+  const selectedSupplierId = (si && si.supplier_id)  || (prefillPO && prefillPO.supplier_id) || (prefillContractForCert && prefillContractForCert.contractor_id) || '';
+  const selectedProjectId  = (si && si.project_id)   || (prefillPO && prefillPO.project_id)  || (prefillCert && prefillCert.project_id) || '';
+  const defaultSubtotal    = si ? si.subtotal : (prefillPO ? (prefillPO.subtotal || '') : (prefillCert ? (prefillCert.net_amount || '') : ''));
+  const defaultTax         = si ? si.tax      : (prefillPO ? (prefillPO.tax || '')      : (prefillCert ? ((prefillCert.net_amount || 0) * 0.21) : ''));
+  const defaultTotal       = si ? si.total    : (prefillPO ? (prefillPO.total || '')    : (prefillCert ? ((prefillCert.net_amount || 0) * 1.21) : ''));
+
+  openModal(si ? 'Editar Factura Proveedor' : 'Nueva Factura de Proveedor',
+    '<div class="form-grid form-grid-2">' +
+      '<div class="form-group"><label class="form-label">N° Factura Proveedor</label>' +
+        '<input class="form-control" id="si-num" value="' + ((si && si.number) || nextNum) + '"></div>' +
+      '<div class="form-group"><label class="form-label">Estado</label>' +
+        '<select class="form-control" id="si-status">' +
+          '<option value="pending" ' + ((!si || si.status === 'pending') ? 'selected' : '') + '>Pendiente de Pago</option>' +
+          '<option value="paid" '    + ((si && si.status === 'paid')      ? 'selected' : '') + '>Pagada</option>' +
+          '<option value="cancelled" '+ ((si && si.status === 'cancelled') ? 'selected' : '') + '>Cancelada</option>' +
+        '</select></div>' +
+      // OC reference
+      '<div class="form-group"><label class="form-label"><i class="fas fa-shopping-cart" style="font-size:10px;color:var(--text-muted)"></i> OC de Origen</label>' +
+        '<select class="form-control" id="si-po" onchange="prefillSIFromPO(this.value)">' +
+          '<option value="">Sin OC de referencia</option>' +
+          pos.map(function(p) {
+            var sName = (suppliers.find(function(s) { return s.id === p.supplier_id; }) || {}).name || '';
+            return '<option value="' + p.id + '" ' + (selectedPoId === p.id ? 'selected' : '') + '>' + p.number + ' — ' + sName + '</option>';
+          }).join('') +
+        '</select></div>' +
+      // Cert reference
+      '<div class="form-group"><label class="form-label"><i class="fas fa-certificate" style="font-size:10px;color:var(--primary)"></i> Certificado de Obra</label>' +
+        '<select class="form-control" id="si-cert" onchange="prefillSIFromCert(this.value)">' +
+          '<option value="">Sin certificado de referencia</option>' +
+          certs.map(function(c) {
+            var ct = c.contract_id ? contracts.find(function(ct) { return ct.id === c.contract_id; }) : null;
+            return '<option value="' + c.id + '" ' + (selectedCertId === c.id ? 'selected' : '') + '>' +
+              c.number + ' — ' + fmtMoney(c.net_amount || 0) + (ct ? ' [' + ct.number + ']' : '') + '</option>';
+          }).join('') +
+        '</select></div>' +
+      '<div class="form-group"><label class="form-label">Proveedor *</label>' +
+        '<select class="form-control" id="si-supplier">' +
+          '<option value="">Seleccionar...</option>' +
+          suppliers.map(function(s) { return '<option value="' + s.id + '" ' + (selectedSupplierId === s.id ? 'selected' : '') + '>' + s.name + '</option>'; }).join('') +
+        '</select></div>' +
+      '<div class="form-group"><label class="form-label">Proyecto</label>' +
+        '<select class="form-control" id="si-project">' +
+          '<option value="">Sin proyecto</option>' +
+          projects.map(function(p) { return '<option value="' + p.id + '" ' + (selectedProjectId === p.id ? 'selected' : '') + '>' + p.name + '</option>'; }).join('') +
+        '</select></div>' +
+      '<div class="form-group"><label class="form-label">Fecha Factura</label>' +
+        '<input class="form-control" id="si-date" type="date" value="' + ((si && si.date) || todayStr()) + '"></div>' +
+      '<div class="form-group"><label class="form-label">Fecha Vencimiento</label>' +
+        '<input class="form-control" id="si-due" type="date" value="' + ((si && si.due_date) || addDays(todayStr(), 30)) + '"></div>' +
+      '<div class="form-group"><label class="form-label">Subtotal (sin IVA)</label>' +
+        '<input class="form-control" id="si-subtotal" type="number" min="0" value="' + defaultSubtotal + '" oninput="recalcSI()"></div>' +
+      '<div class="form-group"><label class="form-label">IVA 21%</label>' +
+        '<input class="form-control" id="si-tax" type="number" min="0" value="' + defaultTax + '" oninput="recalcSI()"></div>' +
+      '<div class="form-group"><label class="form-label">Total</label>' +
+        '<input class="form-control" id="si-total" type="number" min="0" value="' + defaultTotal + '" style="font-weight:700;color:var(--primary)"></div>' +
+      '<div class="form-group full"><label class="form-label">Notas</label>' +
+        '<textarea class="form-control" id="si-notes" rows="2">' + ((si && si.notes) || '') + '</textarea></div>' +
+    '</div>',
+  'modal-lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="saveSI(\'' + (id || '') + '\')"><i class="fas fa-save"></i> Guardar</button>'
+  );
 }
 
 function prefillSIFromPO(poId) {
   if (!poId) return;
   const po = DB.getById('purchaseOrders', poId);
   if (!po) return;
-  const subEl = document.getElementById('si-subtotal');
-  const taxEl = document.getElementById('si-tax');
-  const totEl = document.getElementById('si-total');
-  const supEl = document.getElementById('si-supplier');
+  // clear cert selection if PO selected
+  const certEl = document.getElementById('si-cert');
+  if (certEl) certEl.value = '';
+  const subEl  = document.getElementById('si-subtotal');
+  const taxEl  = document.getElementById('si-tax');
+  const totEl  = document.getElementById('si-total');
+  const supEl  = document.getElementById('si-supplier');
   const projEl = document.getElementById('si-project');
-  if (subEl) subEl.value = po.subtotal || 0;
-  if (taxEl) taxEl.value = po.tax || 0;
-  if (totEl) totEl.value = po.total || 0;
-  if (supEl) supEl.value = po.supplier_id || '';
+  if (subEl)  subEl.value  = po.subtotal || 0;
+  if (taxEl)  taxEl.value  = po.tax || 0;
+  if (totEl)  totEl.value  = po.total || 0;
+  if (supEl)  supEl.value  = po.supplier_id || '';
   if (projEl) projEl.value = po.project_id || '';
+}
+
+function prefillSIFromCert(certId) {
+  if (!certId) return;
+  const cert = DB.getById('certificates', certId);
+  if (!cert) return;
+  const contract = cert.contract_id ? DB.getById('contracts', cert.contract_id) : null;
+  // clear PO selection if cert selected
+  const poEl   = document.getElementById('si-po');
+  if (poEl) poEl.value = '';
+  const net    = cert.net_amount || 0;
+  const tax    = Math.round(net * 21) / 100;
+  const subEl  = document.getElementById('si-subtotal');
+  const taxEl  = document.getElementById('si-tax');
+  const totEl  = document.getElementById('si-total');
+  const supEl  = document.getElementById('si-supplier');
+  const projEl = document.getElementById('si-project');
+  if (subEl)  subEl.value  = net;
+  if (taxEl)  taxEl.value  = tax;
+  if (totEl)  totEl.value  = (net + tax).toFixed(2);
+  if (supEl  && contract && contract.contractor_id) supEl.value  = contract.contractor_id;
+  if (projEl && cert.project_id)                    projEl.value = cert.project_id;
+  // prefill notes
+  const notesEl = document.getElementById('si-notes');
+  if (notesEl && !notesEl.value) {
+    notesEl.value = 'Factura de certificación ' + cert.number + (contract ? ' — Contrato ' + contract.number : '');
+  }
 }
 
 function recalcSI() {
@@ -1141,23 +1181,31 @@ function recalcSI() {
 function saveSI(id) {
   const supplierId = document.getElementById('si-supplier').value;
   if (!supplierId) { toast('El proveedor es obligatorio', 'error'); return; }
-  const sub = parseFloat(document.getElementById('si-subtotal').value) || 0;
-  const tax = parseFloat(document.getElementById('si-tax').value) || 0;
+  const sub    = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  const tax    = parseFloat(document.getElementById('si-tax').value) || 0;
+  const certId = document.getElementById('si-cert').value || '';
   const data = {
-    number: document.getElementById('si-num').value,
-    po_id: document.getElementById('si-po').value || '',
+    number:      document.getElementById('si-num').value,
+    po_id:       document.getElementById('si-po').value || '',
+    cert_id:     certId,
     supplier_id: supplierId,
-    project_id: document.getElementById('si-project').value || '',
-    date: document.getElementById('si-date').value,
-    due_date: document.getElementById('si-due').value,
-    subtotal: sub,
+    project_id:  document.getElementById('si-project').value || '',
+    date:        document.getElementById('si-date').value,
+    due_date:    document.getElementById('si-due').value,
+    subtotal:    sub,
     tax,
-    total: parseFloat(document.getElementById('si-total').value) || sub + tax,
-    status: document.getElementById('si-status').value,
-    notes: document.getElementById('si-notes').value.trim(),
+    total:       parseFloat(document.getElementById('si-total').value) || sub + tax,
+    status:      document.getElementById('si-status').value,
+    notes:       document.getElementById('si-notes').value.trim(),
   };
-  if (id) { DB.update('supplierInvoices', id, data); toast('Factura actualizada', 'success'); }
-  else { DB.insert('supplierInvoices', data); toast('Factura creada', 'success'); }
+  var savedId;
+  if (id) { DB.update('supplierInvoices', id, data); toast('Factura actualizada', 'success'); savedId = id; }
+  else    { var nsi = DB.insert('supplierInvoices', data); toast('Factura creada', 'success'); savedId = nsi.id; }
+
+  // bidirectional link: update cert with supplier_invoice_id
+  if (certId) {
+    DB.update('certificates', certId, { supplier_invoice_id: savedId });
+  }
   closeModal();
   renderCompras();
 }

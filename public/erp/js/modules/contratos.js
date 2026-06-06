@@ -747,78 +747,9 @@ function deleteAdicionalFromContract(contractId, idx) {
 }
 
 // ---- CERTIFICADO → FACTURA DE PROVEEDOR ----
+// Opens the unified supplier-invoice form (compras.js) pre-filled with this cert
 function generateInvoiceFromCert(certId) {
-  const cert = DB.getById('certificates', certId);
-  if (!cert) return;
-  const contract = cert.contract_id ? DB.getById('contracts', cert.contract_id) : null;
-  const supplierId = contract ? contract.contractor_id : '';
-  const sup = supplierId ? DB.getById('suppliers', supplierId) : null;
-
-  // existing unlinked supplier invoices for this contractor
-  const existing = DB.getAll('supplierInvoices').filter(function(si) {
-    return !si.cert_id && si.status !== 'cancelled' && (!supplierId || si.supplier_id === supplierId);
-  });
-  const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
-
-  openModal('Relacionar Certificado ' + cert.number + ' con Factura',
-    '<div style="background:var(--bg);padding:10px;border-radius:8px;margin-bottom:14px;font-size:12px">' +
-      '<strong>' + cert.number + '</strong>' + (contract ? ' — Contrato ' + contract.number : '') +
-      ' &nbsp;|&nbsp; Proveedor: ' + (sup ? sup.name : '-') +
-      ' &nbsp;|&nbsp; Monto certificado: <strong>' + fmtMoney(cert.subtotal || 0) + '</strong>' +
-      ' &nbsp;|&nbsp; Neto: <strong>' + fmtMoney(cert.net_amount || 0) + '</strong>' +
-    '</div>' +
-    '<div style="display:flex;flex-direction:column;gap:14px">' +
-      '<div style="border:1px solid var(--border);border-radius:8px;padding:12px">' +
-        '<div style="font-weight:600;font-size:13px;margin-bottom:6px"><i class="fas fa-plus-circle text-primary"></i> Generar nueva factura</div>' +
-        '<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Crea una factura de proveedor con el monto del certificado (más IVA 21%), vinculada a este certificado.</p>' +
-        '<button class="btn btn-primary" onclick="doGenerateInvoiceFromCert(\'' + certId + '\')"><i class="fas fa-file-invoice"></i> Generar y Vincular Factura</button>' +
-      '</div>' +
-      '<div style="border:1px solid var(--border);border-radius:8px;padding:12px">' +
-        '<div style="font-weight:600;font-size:13px;margin-bottom:6px"><i class="fas fa-link text-primary"></i> Vincular a factura existente</div>' +
-        (existing.length
-          ? '<div style="display:flex;gap:8px;align-items:center">' +
-            '<select class="form-control" id="cert-link-si">' +
-              existing.map(function(si) { return '<option value="' + si.id + '">' + si.number + ' — ' + fmtMoney(si.total) + ' [' + (statusLabel[si.status] || si.status) + ']</option>'; }).join('') +
-            '</select>' +
-            '<button class="btn btn-secondary" onclick="linkCertToExistingInvoice(\'' + certId + '\')"><i class="fas fa-link"></i> Vincular</button>' +
-          '</div>'
-          : '<p style="font-size:12px;color:var(--text-muted)">No hay facturas de proveedor sin vincular para este proveedor.</p>') +
-      '</div>' +
-    '</div>',
-  'modal-lg',
-    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>'
-  );
-}
-
-function doGenerateInvoiceFromCert(certId) {
-  const cert = DB.getById('certificates', certId);
-  if (!cert) return;
-  const contract = cert.contract_id ? DB.getById('contracts', cert.contract_id) : null;
-  const supplierId = contract ? contract.contractor_id : '';
-  const sub = cert.subtotal || 0;
-  const tax = sub * 0.21;
-  const nextNum = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
-
-  const si = DB.insert('supplierInvoices', {
-    number:      nextNum,
-    po_id:       '',
-    cert_id:     certId,
-    supplier_id: supplierId,
-    project_id:  cert.project_id,
-    date:        todayStr(),
-    due_date:    addDays(todayStr(), 30),
-    subtotal:    sub,
-    tax:         tax,
-    total:       sub + tax,
-    status:      'pending',
-    notes:       'Generada desde certificado ' + cert.number + (contract ? ' (contrato ' + contract.number + ')' : ''),
-  });
-
-  DB.update('certificates', certId, { supplier_invoice_id: si.id });
-  toast('Factura ' + nextNum + ' generada y vinculada al certificado', 'success');
-  closeModal();
-  if (cert.contract_id) renderContractDetail(cert.contract_id);
-  else renderContratos();
+  openSIForm(null, null, certId);
 }
 
 function linkCertToExistingInvoice(certId) {
