@@ -19,6 +19,7 @@ const MODULES = {
   ordenes_pago:   { title: 'Órdenes de Pago',        icon: 'fa-file-invoice',          render: renderOrdenesPago },
   retenciones:    { title: 'Retenciones',            icon: 'fa-percentage',            render: renderRetenciones },
   indices:        { title: 'Índices de Ajuste',      icon: 'fa-chart-line',            render: renderIndices },
+  aprobaciones:  { title: 'Aprobaciones',            icon: 'fa-check-double',          render: renderAprobaciones },
   reportes:       { title: 'Reportes',               icon: 'fa-chart-bar',             render: renderReportes },
   usuarios:       { title: 'Usuarios',               icon: 'fa-users',                 render: renderUsuarios },
   ajustes:        { title: 'Ajustes del Sistema',    icon: 'fa-cog',                   render: renderAjustes },
