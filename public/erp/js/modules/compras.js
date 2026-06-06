@@ -365,13 +365,19 @@ function saveRequisition(id) {
 // ---- WORKFLOW ACTIONS ----
 function submitRequisition(id) {
   confirmDialog('¿Enviar el pedido para aprobación?', () => {
-    DB.update('purchaseRequisitions', id, { status: 'submitted', submitted_date: todayStr() });
-    toast('Pedido enviado para aprobación', 'success');
+    DB.update('purchaseRequisitions', id, { submitted_date: todayStr() });
+    submitForApproval('purchase_requisition', id); // engine sets status + creates instance if workflow configured
     renderCompras();
   });
 }
 
 function approveRequisition(id) {
+  // If a workflow instance exists, route through the engine; otherwise direct approve
+  const inst = getApprovalInstance('purchase_requisition', id);
+  if (inst && inst.status === 'pending') {
+    openApproveApprModal(inst.id);
+    return;
+  }
   DB.update('purchaseRequisitions', id, {
     status: 'approved',
     approved_by: 'Administrador',
@@ -455,6 +461,7 @@ function doConvertToOC(reqId) {
     number: nextNum,
     project_id: req.project_id,
     supplier_id: supplierId,
+    req_id: reqId,         // link back to purchase requisition (used in approval conditions)
     status: 'draft',
     date: todayStr(),
     expected_date: expectedDate,
@@ -467,7 +474,14 @@ function doConvertToOC(reqId) {
 
   DB.update('purchaseRequisitions', reqId, { status: 'converted', po_id: po.id });
 
-  toast(`OC ${nextNum} creada correctamente`, 'success');
+  // Auto-submit PO for approval if a workflow is configured
+  const poDoc = DB.getById('purchaseOrders', po.id);
+  if (poDoc && apprGetWorkflow('purchase_order', poDoc)) {
+    submitForApproval('purchase_order', po.id);
+    toast(`OC ${nextNum} creada y enviada a aprobación`, 'success');
+  } else {
+    toast(`OC ${nextNum} creada correctamente`, 'success');
+  }
   closeModal();
   renderCompras();
 }

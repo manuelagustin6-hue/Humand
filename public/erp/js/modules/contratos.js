@@ -593,9 +593,7 @@ function submitContractForApproval(id) {
   if (!contract) return;
   if (!(contract.items || []).length) { toast('Cargá al menos una partida antes de enviar a aprobación', 'error'); return; }
   confirmDialog('¿Enviar el contrato ' + contract.number + ' a aprobación?', function() {
-    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'submitted', comment: '', user: 'Administrador' }]);
-    DB.update('contracts', id, { status: 'pending_approval', approval_log: log });
-    toast('Contrato enviado a aprobación', 'success');
+    submitForApproval('contract', id);  // engine handles status + log + instance creation
     renderContractDetail(id);
   });
 }
@@ -613,11 +611,17 @@ function openApproveContractModal(id) {
 }
 function doApproveContract(id) {
   var comment = (document.getElementById('cont-approve-comment').value || '').trim();
-  var contract = DB.getById('contracts', id);
-  if (!contract) return;
-  var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'approved', comment: comment, user: 'Administrador' }]);
-  DB.update('contracts', id, { status: 'approved', approval_log: log });
-  toast('Contrato aprobado', 'success');
+  var inst = getApprovalInstance('contract', id);
+  if (inst && inst.status === 'pending') {
+    apprDoApprove(inst.id, comment);  // route through workflow engine
+  } else {
+    // No instance (no workflow configured) — direct approve
+    var contract = DB.getById('contracts', id);
+    if (!contract) return;
+    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'approved', comment: comment, user: 'Administrador' }]);
+    DB.update('contracts', id, { status: 'approved', approval_log: log });
+    toast('Contrato aprobado', 'success');
+  }
   closeModal();
   renderContractDetail(id);
 }
@@ -636,11 +640,16 @@ function openRejectContractModal(id) {
 function doRejectContract(id) {
   var comment = (document.getElementById('cont-reject-comment').value || '').trim();
   if (!comment) { toast('Ingresá el motivo del rechazo', 'error'); return; }
-  var contract = DB.getById('contracts', id);
-  if (!contract) return;
-  var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'rejected', comment: comment, user: 'Administrador' }]);
-  DB.update('contracts', id, { status: 'rejected', approval_log: log });
-  toast('Contrato rechazado', 'warning');
+  var inst = getApprovalInstance('contract', id);
+  if (inst && inst.status === 'pending') {
+    apprDoReject(inst.id, comment);
+  } else {
+    var contract = DB.getById('contracts', id);
+    if (!contract) return;
+    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'rejected', comment: comment, user: 'Administrador' }]);
+    DB.update('contracts', id, { status: 'rejected', approval_log: log });
+    toast('Contrato rechazado', 'warning');
+  }
   closeModal();
   renderContractDetail(id);
 }
@@ -649,9 +658,18 @@ function doRejectContract(id) {
 function openApproveCertModal(certId, contractId) {
   var cert = DB.getById('certificates', certId);
   if (!cert) return;
+  // If workflow is configured and no instance exists yet, create one now
+  var inst = getApprovalInstance('certificate', certId);
+  if (!inst) {
+    var doc = DB.getById('certificates', certId);
+    var wf = doc ? apprGetWorkflow('certificate', doc) : null;
+    if (wf) { submitForApproval('certificate', certId); inst = getApprovalInstance('certificate', certId); }
+  }
   openModal('Aprobar Certificación — ' + cert.number,
     '<div style="background:var(--bg);padding:8px;border-radius:6px;margin-bottom:12px;font-size:12px">' +
-      'Monto: <strong>' + fmtMoney(cert.subtotal || 0) + '</strong> &nbsp;|&nbsp; Neto: <strong>' + fmtMoney(cert.net_amount || 0) + '</strong></div>' +
+      'Monto: <strong>' + fmtMoney(cert.subtotal || 0) + '</strong> &nbsp;|&nbsp; Neto: <strong>' + fmtMoney(cert.net_amount || 0) + '</strong>' +
+      (inst && inst.status === 'pending' ? '<br><span style="color:var(--warning)">Flujo: ' + (inst.workflow_name || '') + ' — Paso ' + (inst.current_step_index + 1) + '/' + inst.steps.length + '</span>' : '') +
+    '</div>' +
     '<div class="form-group"><label class="form-label">Comentario (opcional)</label>' +
       '<textarea class="form-control" id="cert-approve-comment" rows="3" placeholder="Ej: Aprobado por Director de Obra..."></textarea></div>',
     'modal-sm',
@@ -661,11 +679,16 @@ function openApproveCertModal(certId, contractId) {
 }
 function doApproveCert(certId, contractId) {
   var comment = (document.getElementById('cert-approve-comment').value || '').trim();
-  var cert = DB.getById('certificates', certId);
-  if (!cert) return;
-  var log = (cert.approval_log || []).concat([{ date: todayStr(), action: 'approved', comment: comment, user: 'Administrador' }]);
-  DB.update('certificates', certId, { status: 'approved', approval_log: log });
-  toast('Certificación aprobada', 'success');
+  var inst = getApprovalInstance('certificate', certId);
+  if (inst && inst.status === 'pending') {
+    apprDoApprove(inst.id, comment);
+  } else {
+    var cert = DB.getById('certificates', certId);
+    if (!cert) return;
+    var log = (cert.approval_log || []).concat([{ date: todayStr(), action: 'approved', comment: comment, user: 'Administrador' }]);
+    DB.update('certificates', certId, { status: 'approved', approval_log: log });
+    toast('Certificación aprobada', 'success');
+  }
   closeModal();
   renderContractDetail(contractId);
 }
@@ -684,11 +707,16 @@ function openRejectCertModal(certId, contractId) {
 function doRejectCert(certId, contractId) {
   var comment = (document.getElementById('cert-reject-comment').value || '').trim();
   if (!comment) { toast('Ingresá el motivo del rechazo', 'error'); return; }
-  var cert = DB.getById('certificates', certId);
-  if (!cert) return;
-  var log = (cert.approval_log || []).concat([{ date: todayStr(), action: 'rejected', comment: comment, user: 'Administrador' }]);
-  DB.update('certificates', certId, { status: 'rejected', approval_log: log });
-  toast('Certificación rechazada', 'warning');
+  var inst = getApprovalInstance('certificate', certId);
+  if (inst && inst.status === 'pending') {
+    apprDoReject(inst.id, comment);
+  } else {
+    var cert = DB.getById('certificates', certId);
+    if (!cert) return;
+    var log = (cert.approval_log || []).concat([{ date: todayStr(), action: 'rejected', comment: comment, user: 'Administrador' }]);
+    DB.update('certificates', certId, { status: 'rejected', approval_log: log });
+    toast('Certificación rechazada', 'warning');
+  }
   closeModal();
   renderContractDetail(contractId);
 }
@@ -747,8 +775,12 @@ function deleteAdicionalFromContract(contractId, idx) {
 }
 
 // ---- CERTIFICADO → FACTURA DE PROVEEDOR ----
-// Opens the unified supplier-invoice form (compras.js) pre-filled with this cert
+// Opens the unified supplier-invoice form pre-filled with this cert
 function generateInvoiceFromCert(certId) {
+  if (!isApproved('certificate', certId)) {
+    toast('La certificación debe estar aprobada antes de generar una factura', 'error');
+    return;
+  }
   openSIForm(null, null, certId);
 }
 

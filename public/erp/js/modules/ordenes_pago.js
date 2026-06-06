@@ -339,6 +339,10 @@ function savePaymentOrder(id) {
 }
 
 function markPOPaid(id) {
+  if (!isApproved('payment_order', id)) {
+    toast('La orden de pago debe estar aprobada antes de ejecutarla', 'error');
+    return;
+  }
   DB.update('paymentOrders', id, { status: 'paid' });
   toast('Orden marcada como pagada', 'success');
   renderOrdenesPago();
