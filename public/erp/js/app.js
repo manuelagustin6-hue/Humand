@@ -44,6 +44,12 @@ const MODULES = {
 
   // Contabilidad
   contabilidad:    { title: 'Contabilidad',                  icon: 'fa-book-open',              render: renderContabilidad },
+  conta_diario:    { title: 'Libro Diario',                  icon: 'fa-book',                   render: renderContaDiario },
+  conta_sumas:     { title: 'Sumas y Saldos',                icon: 'fa-table-columns',          render: renderContaSumas },
+  conta_balance:   { title: 'Balance General',               icon: 'fa-scale-balanced',         render: renderContaBalance },
+  conta_resultados:{ title: 'Estado de Resultados',          icon: 'fa-chart-bar',              render: renderContaResultados },
+  conta_plan:      { title: 'Plan de Cuentas',               icon: 'fa-sitemap',                render: renderContaPlan },
+  conta_mayores:   { title: 'Libro Mayor',                   icon: 'fa-book',                   render: renderContaMayores },
 
   // Administración
   aprobaciones:    { title: 'Aprobaciones',                  icon: 'fa-check-double',           render: renderAprobaciones },
