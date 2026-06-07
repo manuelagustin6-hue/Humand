@@ -198,219 +198,403 @@ function cprovShowMovements(supplierId) {
 }
 
 // =====================================================================
-// CUENTAS CORRIENTES CLIENTES
-// Collections: invoices, collections, projects
+// CUENTAS CORRIENTES CLIENTES (COMPRADORES INMOBILIARIOS)
+// Collections: ventasUnidades, cobrosVentas, unidades, projects
 // =====================================================================
 
+var _ccliSelectedId = null;
+
 function renderCuentasCli() {
-  var invoices = DB.getAll('invoices');
-  var collections = DB.getAll('collections');
+  _ccliSelectedId = null;
+  var ventas = DB.getAll('ventasUnidades');
+  var cobros = DB.getAll('cobrosVentas');
+  var units  = DB.getAll('unidades');
   var projects = DB.getAll('projects');
 
-  // Group by client name
-  var clientMap = {};
-  invoices.forEach(function(inv) {
-    var key = inv.client_name || 'Sin cliente';
-    if (!clientMap[key]) {
-      clientMap[key] = { name: key, cuit: inv.client_cuit || '', invoices: [], collections: [] };
-    }
-    clientMap[key].invoices.push(inv);
-  });
-
-  // Match collections to clients via invoice
-  collections.forEach(function(col) {
-    var inv = invoices.find(function(i) { return i.id === col.invoice_id; });
-    if (inv) {
-      var key = inv.client_name || 'Sin cliente';
-      if (clientMap[key]) {
-        clientMap[key].collections.push(col);
-      }
-    }
-  });
-
-  var totalFacturado = 0;
-  var totalCobrado = 0;
+  var totalVendido = 0, totalCobrado = 0;
   var rows = '';
+  var today = todayStr();
 
-  Object.keys(clientMap).forEach(function(key) {
-    var cl = clientMap[key];
-    var facturado = cl.invoices.reduce(function(s, i) { return s + (i.total || 0); }, 0);
-    var cobrado = cl.collections.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
-    var saldo = facturado - cobrado;
-    totalFacturado += facturado;
+  ventas.forEach(function(v) {
+    var unit = units.find(function(u) { return u.id === v.unit_id; });
+    var proj = unit ? projects.find(function(p) { return p.id === unit.project_id; }) : null;
+    var ventaCobros = cobros.filter(function(c) { return c.sale_id === v.id; });
+    var cobrado = ventaCobros.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+    var saldo = (v.sale_price || 0) - cobrado;
+    totalVendido += v.sale_price || 0;
     totalCobrado += cobrado;
 
-    var overdueCount = cl.invoices.filter(function(i) { return i.status === 'overdue'; }).length;
-    var pendingCount = cl.invoices.filter(function(i) { return i.status === 'sent'; }).length;
+    var insts = v.installments || [];
+    var vencidas = insts.filter(function(i) { return i.status !== 'paid' && i.due_date < today; }).length;
+    var proximas = insts.filter(function(i) { return i.status !== 'paid' && i.due_date >= today; }).length;
 
-    var saldoBadge = saldo > 0
-      ? '<span class="badge badge-' + (overdueCount > 0 ? 'red' : 'yellow') + '">' + fmtMoney(saldo) + '</span>'
-      : '<span class="badge badge-green">Al dia</span>';
+    var stBadge = saldo <= 0
+      ? '<span class="badge badge-green">Saldado</span>'
+      : (vencidas > 0
+          ? '<span class="badge badge-red">' + vencidas + ' vencida' + (vencidas > 1 ? 's' : '') + '</span>'
+          : '<span class="badge badge-yellow">' + proximas + ' pendiente' + (proximas !== 1 ? 's' : '') + '</span>');
 
-    // Find project names
-    var projNames = [];
-    cl.invoices.forEach(function(inv) {
-      var proj = projects.find(function(p) { return p.id === inv.project_id; });
-      if (proj && projNames.indexOf(proj.name) < 0) projNames.push(proj.name);
-    });
-
+    var isSelected = _ccliSelectedId === v.id;
     rows +=
-      '<tr>' +
-        '<td>' +
-          '<strong>' + cl.name + '</strong>' +
-          '<div style="font-size:11px;color:var(--text-muted)">' + cl.cuit + '</div>' +
+      '<tr style="cursor:pointer;' + (isSelected ? 'background:var(--primary-light,rgba(59,130,246,0.06))' : '') + '" onclick="ccliSelectRow(\'' + v.id + '\')">' +
+        '<td><b>' + (v.buyer_name || '—') + '</b>' +
+          '<div style="font-size:11px;color:var(--text-muted)">' + (v.buyer_doc_type || '') + ' ' + (v.buyer_doc || '') + '</div>' +
         '</td>' +
-        '<td style="font-size:11px;color:var(--text-muted)">' + projNames.join(', ') + '</td>' +
-        '<td class="number-cell">' + fmtMoney(facturado) + '</td>' +
-        '<td class="number-cell">' + fmtMoney(cobrado) + '</td>' +
-        '<td class="number-cell">' + saldoBadge + '</td>' +
-        '<td>' +
-          (overdueCount > 0 ? '<span class="badge badge-red" style="margin-right:4px">' + overdueCount + ' vencidas</span>' : '') +
-          (pendingCount > 0 ? '<span class="badge badge-yellow">' + pendingCount + ' pendientes</span>' : '') +
-          (overdueCount === 0 && pendingCount === 0 ? '<span class="badge badge-green">OK</span>' : '') +
-        '</td>' +
-        '<td>' +
-          '<button class="btn btn-sm btn-secondary" onclick="ccliShowMovements(\'' + encodeURIComponent(key) + '\')">' +
-            '<i class="fas fa-list"></i> Movimientos' +
+        '<td>' + (unit ? unit.number : '—') + '<div style="font-size:11px;color:var(--text-muted)">' + (proj ? proj.name : '') + '</div></td>' +
+        '<td>' + fmtMoney(v.list_price || 0, v.currency) + '</td>' +
+        '<td><b>' + fmtMoney(v.sale_price || 0, v.currency) + '</b></td>' +
+        '<td style="color:var(--success)">' + fmtMoney(cobrado, v.currency) + '</td>' +
+        '<td style="color:' + (saldo > 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmtMoney(saldo, v.currency) + '</td>' +
+        '<td>' + stBadge + '</td>' +
+        '<td style="white-space:nowrap;">' +
+          '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ccliSelectRow(\'' + v.id + '\')">' +
+            '<i class="fas fa-list-ol"></i>' +
           '</button>' +
         '</td>' +
       '</tr>';
   });
 
   if (!rows) {
-    rows = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-users"></i><p>No hay clientes con movimientos</p></div></td></tr>';
+    rows = '<tr><td colspan="8"><div class="empty-state" style="padding:40px"><i class="fas fa-users"></i><p>No hay cuentas corrientes. Crea una nueva.</p></div></td></tr>';
   }
 
-  var totalSaldo = totalFacturado - totalCobrado;
+  var totalSaldo = totalVendido - totalCobrado;
 
   document.getElementById('content').innerHTML =
-    '<div class="page-header">' +
-      '<div>' +
-        '<div class="page-title"><i class="fas fa-users-between-lines" style="margin-right:8px;color:var(--primary)"></i>Cuentas Corrientes Clientes</div>' +
-        '<div class="page-subtitle">Saldos, facturacion y cobranzas por cliente</div>' +
+    '<div class="page-header"><div>' +
+      '<div class="page-title"><i class="fas fa-users-between-lines" style="margin-right:8px;color:var(--primary)"></i>Cuentas Corrientes Clientes</div>' +
+      '<div class="page-subtitle">Ventas de unidades, condiciones de pago y cobranzas</div>' +
+    '</div>' +
+    '<button class="btn btn-primary" onclick="ccliNuevaCuenta()"><i class="fas fa-plus"></i> Nueva Cuenta Corriente</button>' +
+    '</div>' +
+
+    '<div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">' +
+      '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
+        '<div style="font-size:22px;font-weight:700;color:var(--primary)">' + ventas.length + '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted)">Cuentas abiertas</div>' +
+      '</div>' +
+      '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
+        '<div style="font-size:22px;font-weight:700;">' + fmtMoney(totalVendido) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted)">Total vendido</div>' +
+      '</div>' +
+      '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
+        '<div style="font-size:22px;font-weight:700;color:var(--success)">' + fmtMoney(totalCobrado) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted)">Total cobrado</div>' +
+      '</div>' +
+      '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
+        '<div style="font-size:22px;font-weight:700;color:' + (totalSaldo > 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmtMoney(totalSaldo) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted)">Saldo pendiente</div>' +
       '</div>' +
     '</div>' +
 
-    '<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">' +
-      '<div class="stat-card">' +
-        '<div class="stat-icon blue"><i class="fas fa-file-invoice-dollar"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalFacturado) + '</div><div class="stat-label">Total Facturado</div></div>' +
-      '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-icon green"><i class="fas fa-hand-holding-dollar"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalCobrado) + '</div><div class="stat-label">Total Cobrado</div></div>' +
-      '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-icon ' + (totalSaldo > 0 ? 'yellow' : 'green') + '"><i class="fas fa-scale-balanced"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalSaldo) + '</div><div class="stat-label">Saldo a Cobrar</div></div>' +
-      '</div>' +
+    '<div class="card" style="padding:0;">' +
+      '<table class="table">' +
+        '<thead><tr>' +
+          '<th>Comprador</th><th>Unidad</th><th>Precio Lista</th><th>Precio Cerrado</th>' +
+          '<th>Cobrado</th><th>Saldo</th><th>Estado</th><th></th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
     '</div>' +
+    '<div id="ccli-detail-panel" style="margin-top:20px"></div>';
 
-    '<div class="card">' +
-      '<div class="card-body" style="padding:0">' +
-        '<div class="table-wrap">' +
-          '<table>' +
-            '<thead><tr>' +
-              '<th>Cliente</th>' +
-              '<th>Proyectos</th>' +
-              '<th class="text-right">Facturado</th>' +
-              '<th class="text-right">Cobrado</th>' +
-              '<th class="text-right">Saldo</th>' +
-              '<th>Estado</th>' +
-              '<th>Acciones</th>' +
-            '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
-          '</table>' +
-        '</div>' +
-      '</div>' +
-    '</div>' +
-
-    '<div id="ccli-movements-panel" style="margin-top:20px"></div>';
+  if (_ccliSelectedId) ccliRenderDetail(_ccliSelectedId);
 }
 
-function ccliShowMovements(encodedClientName) {
-  var clientName = decodeURIComponent(encodedClientName);
-  var invoices = DB.getAll('invoices');
-  var collections = DB.getAll('collections');
+function ccliSelectRow(saleId) {
+  _ccliSelectedId = (_ccliSelectedId === saleId) ? null : saleId;
+  renderCuentasCli();
+}
 
-  var clientInvoices = invoices.filter(function(i) {
-    return (i.client_name || 'Sin cliente') === clientName;
-  });
+function ccliRenderDetail(saleId) {
+  var venta = DB.getById('ventasUnidades', saleId);
+  if (!venta) return;
+  var cobros = DB.getAll('cobrosVentas').filter(function(c) { return c.sale_id === saleId; });
+  var unit = DB.getById('unidades', venta.unit_id);
+  var today = todayStr();
+  var insts = venta.installments || [];
 
-  var movements = [];
+  var totalCobrado = cobros.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+  var saldo = (venta.sale_price || 0) - totalCobrado;
 
-  clientInvoices.forEach(function(inv) {
-    var statusColors = { draft: 'badge-gray', sent: 'badge-yellow', paid: 'badge-green', overdue: 'badge-red', cancelled: 'badge-gray' };
-    var statusLabels = { draft: 'Borrador', sent: 'Enviada', paid: 'Cobrada', overdue: 'Vencida', cancelled: 'Cancelada' };
-    movements.push({
-      date: inv.date,
-      type: 'factura',
-      ref: inv.number,
-      concept: 'Factura' + (inv.notes ? ' - ' + inv.notes : ''),
-      debit: inv.total || 0,
-      credit: 0,
-      badge: '<span class="badge ' + (statusColors[inv.status] || 'badge-gray') + '">' + (statusLabels[inv.status] || inv.status) + '</span>',
-    });
-  });
+  var rows = insts.map(function(inst) {
+    var cobro = cobros.find(function(c) { return c.installment_id === inst.id; });
+    var isOverdue = inst.status !== 'paid' && inst.due_date < today;
+    var stHtml = inst.status === 'paid'
+      ? '<span class="badge badge-green">Pagado</span>'
+      : (isOverdue ? '<span class="badge badge-red">Vencido</span>' : '<span class="badge badge-yellow">Pendiente</span>');
+    return '<tr' + (isOverdue ? ' style="background:rgba(239,68,68,0.04)"' : '') + '>' +
+      '<td>' + inst.number + '</td>' +
+      '<td>' + (inst.concept || '') + '</td>' +
+      '<td>' + fmtDate(inst.due_date) + '</td>' +
+      '<td>' + fmtMoney(inst.amount, venta.currency) + '</td>' +
+      '<td>' + stHtml + '</td>' +
+      '<td>' + (cobro ? fmtDate(cobro.date) : '—') + '</td>' +
+      '<td>' + (cobro ? fmtMoney(cobro.amount, venta.currency) : '—') + '</td>' +
+      '<td>' +
+        (inst.status !== 'paid'
+          ? '<button class="btn btn-sm btn-primary" onclick="ccliRegistrarCobro(\'' + saleId + '\',\'' + inst.id + '\',' + inst.amount + ',\'' + (venta.currency || 'ARS') + '\')"><i class="fas fa-dollar-sign"></i> Cobrar</button>'
+          : '') +
+      '</td>' +
+    '</tr>';
+  }).join('');
 
-  // Get collections for these invoices
-  var invIds = clientInvoices.map(function(i) { return i.id; });
-  collections.filter(function(c) { return invIds.indexOf(c.invoice_id) >= 0; }).forEach(function(col) {
-    var inv = clientInvoices.find(function(i) { return i.id === col.invoice_id; });
-    movements.push({
-      date: col.date,
-      type: 'cobro',
-      ref: col.reference || '-',
-      concept: 'Cobro' + (inv ? ' - ' + inv.number : '') + (col.notes ? ' (' + col.notes + ')' : ''),
-      debit: 0,
-      credit: col.amount || 0,
-      badge: '<span class="badge badge-green">Cobro</span>',
-    });
-  });
-
-  movements.sort(function(a, b) { return a.date.localeCompare(b.date); });
-
-  var balance = 0;
-  var rows = '';
-  movements.forEach(function(m) {
-    balance += m.debit - m.credit;
-    rows +=
-      '<tr>' +
-        '<td>' + fmtDate(m.date) + '</td>' +
-        '<td>' + m.badge + '</td>' +
-        '<td>' + m.ref + '</td>' +
-        '<td>' + m.concept + '</td>' +
-        '<td class="number-cell">' + (m.debit ? fmtMoney(m.debit) : '-') + '</td>' +
-        '<td class="number-cell">' + (m.credit ? fmtMoney(m.credit) : '-') + '</td>' +
-        '<td class="number-cell"><strong>' + fmtMoney(balance) + '</strong></td>' +
-      '</tr>';
-  });
-
-  if (!rows) {
-    rows = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-list"></i><p>Sin movimientos</p></div></td></tr>';
-  }
-
-  var panel = document.getElementById('ccli-movements-panel');
+  var panel = document.getElementById('ccli-detail-panel');
   if (!panel) return;
-
   panel.innerHTML =
     '<div class="card">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">' +
-        '<strong style="font-size:15px">Movimientos: ' + clientName + '</strong>' +
-        '<button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'ccli-movements-panel\').innerHTML=\'\'">Cerrar</button>' +
-      '</div>' +
-      '<div class="card-body" style="padding:0">' +
-        '<div class="table-wrap">' +
-          '<table>' +
-            '<thead><tr>' +
-              '<th>Fecha</th><th>Tipo</th><th>Ref.</th><th>Concepto</th>' +
-              '<th class="text-right">Debe</th><th class="text-right">Haber</th><th class="text-right">Saldo</th>' +
-            '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
-          '</table>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div>' +
+          '<b style="font-size:15px;">' + (venta.buyer_name || '') + '</b>' +
+          (unit ? '<span style="font-size:12px;color:var(--text-muted);margin-left:12px">Unidad ' + unit.number + '</span>' : '') +
+          '<span style="font-size:12px;color:var(--text-muted);margin-left:12px">Contrato: ' + (venta.contract_number || '') + '</span>' +
+        '</div>' +
+        '<div style="display:flex;gap:12px;font-size:13px;align-items:center;">' +
+          '<span>Vendido: <b>' + fmtMoney(venta.sale_price, venta.currency) + '</b></span>' +
+          '<span style="color:var(--success)">Cobrado: <b>' + fmtMoney(totalCobrado, venta.currency) + '</b></span>' +
+          '<span style="color:' + (saldo > 0 ? 'var(--danger)' : 'var(--success)') + '">Saldo: <b>' + fmtMoney(saldo, venta.currency) + '</b></span>' +
+          '<button class="btn btn-sm btn-secondary" onclick="_ccliSelectedId=null;document.getElementById(\'ccli-detail-panel\').innerHTML=\'\'">Cerrar</button>' +
         '</div>' +
       '</div>' +
+      '<table class="table">' +
+        '<thead><tr><th>#</th><th>Concepto</th><th>Vencimiento</th><th>Importe</th><th>Estado</th><th>F. Pago</th><th>Cobrado</th><th></th></tr></thead>' +
+        '<tbody>' + (rows || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Sin cuotas</td></tr>') + '</tbody>' +
+      '</table>' +
     '</div>';
+}
+
+function ccliNuevaCuenta() {
+  var availableUnits = DB.getAll('unidades').filter(function(u) { return u.status === 'available'; });
+  var projects = DB.getAll('projects');
+  var currencies = DB.getAllCurrencies() || [];
+  var today = todayStr();
+
+  var unitOptions = '<option value="">— Seleccionar unidad —</option>' +
+    availableUnits.map(function(u) {
+      var proj = projects.find(function(p) { return p.id === u.project_id; });
+      var desc = (proj ? proj.name + ' — ' : '') + 'Unidad ' + u.number;
+      if (u.area) desc += ' (' + u.area + 'm2';
+      if (u.rooms) desc += ', ' + u.rooms + ' amb';
+      if (u.area || u.rooms) desc += ')';
+      desc += ' | ' + fmtMoney(u.list_price, u.currency);
+      return '<option value="' + u.id + '" data-price="' + (u.list_price || 0) + '" data-currency="' + (u.currency || 'USD') + '">' + desc + '</option>';
+    }).join('');
+
+  var body =
+    '<div class="form-grid">' +
+      '<div class="form-group" style="grid-column:1/-1">' +
+        '<label>Unidad *</label>' +
+        '<select id="ccli-unit" class="form-control" onchange="ccliOnUnitChange(this)">' + unitOptions + '</select>' +
+      '</div>' +
+      '<div class="form-group"><label>Precio de Lista</label>' +
+        '<input type="number" id="ccli-list-price" class="form-control" readonly style="background:var(--bg-muted,#f9f9f9)"></div>' +
+      '<div class="form-group"><label>Precio Cerrado *</label>' +
+        '<input type="number" id="ccli-sale-price" class="form-control" placeholder="Precio negociado"></div>' +
+      '<div class="form-group"><label>Moneda</label>' +
+        '<select id="ccli-currency" class="form-control">' +
+          currencies.map(function(c) { return '<option value="' + c.id + '"' + (c.id === 'USD' ? ' selected' : '') + '>' + c.id + '</option>'; }).join('') +
+        '</select></div>' +
+    '</div>' +
+    '<hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">' +
+    '<b style="font-size:13px;">Datos del Comprador</b>' +
+    '<div class="form-grid" style="margin-top:12px;">' +
+      '<div class="form-group"><label>Nombre completo *</label>' +
+        '<input type="text" id="ccli-buyer" class="form-control" placeholder="Nombre y apellido"></div>' +
+      '<div class="form-group"><label>Tipo Doc.</label>' +
+        '<select id="ccli-doctype" class="form-control"><option>DNI</option><option>CUIT</option><option>PASSPORT</option></select></div>' +
+      '<div class="form-group"><label>N° Documento</label>' +
+        '<input type="text" id="ccli-docnum" class="form-control"></div>' +
+      '<div class="form-group"><label>Telefono</label>' +
+        '<input type="text" id="ccli-phone" class="form-control"></div>' +
+      '<div class="form-group"><label>Email</label>' +
+        '<input type="email" id="ccli-email" class="form-control"></div>' +
+      '<div class="form-group"><label>Fecha de venta</label>' +
+        '<input type="date" id="ccli-date" class="form-control" value="' + today + '"></div>' +
+    '</div>' +
+    '<hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">' +
+    '<b style="font-size:13px;">Condiciones de Venta</b>' +
+    '<div class="form-grid" style="margin-top:12px;">' +
+      '<div class="form-group"><label>Forma de pago</label>' +
+        '<select id="ccli-paytype" class="form-control" onchange="ccliToggleInstFields(this.value)">' +
+          '<option value="cash">Contado</option>' +
+          '<option value="mixed" selected>Seña + Cuotas</option>' +
+          '<option value="installments">Plan de Cuotas</option>' +
+        '</select></div>' +
+    '</div>' +
+    '<div id="ccli-inst-fields">' +
+      '<div class="form-grid">' +
+        '<div class="form-group"><label>Seña / Anticipo</label>' +
+          '<input type="number" id="ccli-down" class="form-control" placeholder="0"></div>' +
+        '<div class="form-group"><label>Fecha seña</label>' +
+          '<input type="date" id="ccli-down-date" class="form-control" value="' + today + '"></div>' +
+        '<div class="form-group"><label>Cantidad de cuotas</label>' +
+          '<input type="number" id="ccli-n" class="form-control" placeholder="Ej: 24" min="1"></div>' +
+        '<div class="form-group"><label>Primera cuota</label>' +
+          '<input type="date" id="ccli-start" class="form-control" value="' + today + '"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="form-group" style="margin-top:12px;">' +
+      '<label>Condiciones / Observaciones</label>' +
+      '<textarea id="ccli-notes" class="form-control" rows="2" placeholder="Condiciones especiales, ajuste por indice, etc."></textarea>' +
+    '</div>';
+
+  openModal('Nueva Cuenta Corriente', body, 'modal-xl',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="ccliGuardarCuenta()"><i class="fas fa-save"></i> Crear Cuenta Corriente</button>'
+  );
+
+  setTimeout(function() { ccliToggleInstFields('mixed'); }, 50);
+}
+
+function ccliOnUnitChange(sel) {
+  var opt = sel.options[sel.selectedIndex];
+  var price = opt ? (parseFloat(opt.getAttribute('data-price')) || 0) : 0;
+  var cur = opt ? (opt.getAttribute('data-currency') || 'USD') : 'USD';
+  var lp = document.getElementById('ccli-list-price');
+  var sp = document.getElementById('ccli-sale-price');
+  var cu = document.getElementById('ccli-currency');
+  if (lp) lp.value = price || '';
+  if (sp && !sp.value) sp.value = price || '';
+  if (cu && cur) cu.value = cur;
+}
+
+function ccliToggleInstFields(payType) {
+  var el = document.getElementById('ccli-inst-fields');
+  if (el) el.style.display = (payType === 'cash') ? 'none' : '';
+}
+
+function ccliGuardarCuenta() {
+  var g = function(id) { return (document.getElementById(id) || {}).value || ''; };
+  var unitId = g('ccli-unit');
+  var buyerName = g('ccli-buyer').trim();
+  var salePrice = parseFloat(g('ccli-sale-price')) || 0;
+  var listPrice = parseFloat(g('ccli-list-price')) || 0;
+  var saleDate = g('ccli-date');
+  var payType = g('ccli-paytype') || 'cash';
+
+  if (!unitId) { toast('Seleccione una unidad', 'error'); return; }
+  if (!buyerName) { toast('Ingrese el nombre del comprador', 'error'); return; }
+  if (!salePrice) { toast('Ingrese el precio cerrado', 'error'); return; }
+
+  // Build installment schedule
+  var installments = [];
+  if (payType === 'cash') {
+    installments = [{ id: uuid(), number: 1, concept: 'Pago contado', due_date: saleDate, amount: salePrice, status: 'pending' }];
+  } else {
+    var down = parseFloat(g('ccli-down')) || 0;
+    var downDate = g('ccli-down-date') || saleDate;
+    var n = parseInt(g('ccli-n')) || 1;
+    var startDate = g('ccli-start') || saleDate;
+    var remaining = salePrice - down;
+    var installAmt = n > 0 ? Math.round(remaining / n) : remaining;
+    if (down > 0) {
+      installments.push({ id: uuid(), number: 0, concept: 'Seña / Anticipo', due_date: downDate, amount: down, status: 'pending' });
+    }
+    for (var i = 1; i <= n; i++) {
+      var dDate = ccliAddMonths(startDate, i - 1);
+      var amt = (i === n) ? (remaining - installAmt * (n - 1)) : installAmt;
+      installments.push({ id: uuid(), number: i, concept: 'Cuota ' + i + '/' + n, due_date: dDate, amount: amt, status: 'pending' });
+    }
+  }
+
+  var ventas = DB.getAll('ventasUnidades');
+  var contratNum = 'CCC-' + new Date().getFullYear() + '-' + String(ventas.length + 1).padStart(3, '0');
+
+  DB.insert('ventasUnidades', {
+    unit_id: unitId,
+    contract_number: contratNum,
+    buyer_name: buyerName,
+    buyer_doc_type: g('ccli-doctype'),
+    buyer_doc: g('ccli-docnum'),
+    buyer_phone: g('ccli-phone'),
+    buyer_email: g('ccli-email'),
+    sale_date: saleDate,
+    currency: g('ccli-currency') || 'USD',
+    list_price: listPrice,
+    sale_price: salePrice,
+    payment_type: payType,
+    installments: installments,
+    status: 'active',
+    notes: g('ccli-notes'),
+  });
+
+  // Mark unit as sold
+  DB.update('unidades', unitId, { status: 'sold' });
+
+  // Auto journal entry
+  try { autoJournalEntry('fact_emitida', salePrice, saleDate, contratNum, 'Venta unidad - ' + buyerName); } catch(e) {}
+
+  closeModal();
+  toast('Cuenta corriente creada. Unidad marcada como vendida.', 'success');
+  renderCuentasCli();
+}
+
+function ccliRegistrarCobro(saleId, installmentId, amount, currency) {
+  var currencies = DB.getAllCurrencies() || [];
+  var body =
+    '<div class="form-grid">' +
+      '<div class="form-group"><label>Fecha *</label><input type="date" id="ccp-date" class="form-control" value="' + todayStr() + '"></div>' +
+      '<div class="form-group"><label>Importe *</label><input type="number" id="ccp-amount" class="form-control" value="' + amount + '"></div>' +
+      '<div class="form-group"><label>Moneda</label><select id="ccp-currency" class="form-control">' +
+        currencies.map(function(c) { return '<option value="' + c.id + '"' + (c.id === currency ? ' selected' : '') + '>' + c.id + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="form-group"><label>Forma de cobro</label><select id="ccp-method" class="form-control">' +
+        '<option value="transfer">Transferencia</option><option value="check">Cheque</option>' +
+        '<option value="cash">Efectivo</option><option value="card">Tarjeta</option>' +
+      '</select></div>' +
+    '</div>' +
+    '<div class="form-group"><label>Referencia</label><input type="text" id="ccp-ref" class="form-control"></div>' +
+    '<div class="form-group"><label>Notas</label><textarea id="ccp-notes" class="form-control" rows="2"></textarea></div>';
+
+  openModal('Registrar Cobro', body, 'modal-lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="ccliConfirmarCobro(\'' + saleId + '\',\'' + installmentId + '\')"><i class="fas fa-check"></i> Confirmar</button>'
+  );
+}
+
+function ccliConfirmarCobro(saleId, installmentId) {
+  var g = function(id) { return (document.getElementById(id) || {}).value || ''; };
+  var cobDate = g('ccp-date');
+  var cobAmt = parseFloat(g('ccp-amount')) || 0;
+  if (!cobDate || !cobAmt) { toast('Complete fecha e importe', 'error'); return; }
+
+  DB.insert('cobrosVentas', {
+    sale_id: saleId, installment_id: installmentId,
+    date: cobDate, amount: cobAmt,
+    currency: g('ccp-currency'), method: g('ccp-method'),
+    reference: g('ccp-ref'), notes: g('ccp-notes'),
+  });
+
+  // Mark installment as paid
+  var venta = DB.getById('ventasUnidades', saleId);
+  if (venta && venta.installments) {
+    DB.update('ventasUnidades', saleId, {
+      installments: venta.installments.map(function(i) {
+        return i.id === installmentId ? Object.assign({}, i, { status: 'paid', paid_date: cobDate, paid_amount: cobAmt }) : i;
+      })
+    });
+  }
+
+  // Auto journal entry
+  try { autoJournalEntry('cobro_cliente', cobAmt, cobDate, g('ccp-ref') || saleId.slice(0,8), 'Cobro cuota CCC'); } catch(e) {}
+
+  // Check if all paid → complete
+  var updated = DB.getById('ventasUnidades', saleId);
+  if (updated && updated.installments && updated.installments.every(function(i) { return i.status === 'paid'; })) {
+    DB.update('ventasUnidades', saleId, { status: 'completed' });
+  }
+
+  closeModal();
+  _ccliSelectedId = saleId;
+  toast('Cobro registrado', 'success');
+  renderCuentasCli();
+}
+
+function ccliAddMonths(dateStr, months) {
+  if (!dateStr) return dateStr;
+  var d = new Date(dateStr + 'T00:00:00');
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().split('T')[0];
 }
 
 // =====================================================================
