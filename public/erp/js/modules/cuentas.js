@@ -521,9 +521,6 @@ function ccliGuardarCuenta() {
   // Mark unit as sold
   DB.update('unidades', unitId, { status: 'sold' });
 
-  // Auto journal entry
-  try { autoJournalEntry('fact_emitida', salePrice, saleDate, contratNum, 'Venta unidad - ' + buyerName); } catch(e) {}
-
   closeModal();
   toast('Cuenta corriente creada. Unidad marcada como vendida.', 'success');
   renderCuentasCli();
