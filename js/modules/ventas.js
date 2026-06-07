@@ -555,8 +555,6 @@ function vuSaveVenta(id) {
     DB.insert('ventasUnidades', data);
     // Update unit status
     DB.update('unidades', unitId, { status: 'sold' });
-    // Auto journal entry for sale
-    try { autoJournalEntry('fact_emitida', salePrice, saleDate, data.contract_number, 'Venta unidad - ' + buyerName); } catch(e) {}
     toast('Venta registrada y cuotas generadas', 'success');
   }
 
