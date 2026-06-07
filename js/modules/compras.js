@@ -1073,9 +1073,9 @@ function openSIForm(id, prefillPoId, prefillCertId) {
   const selectedCertId     = (si && si.cert_id)      || prefillCertId     || '';
   const selectedSupplierId = (si && si.supplier_id)  || (prefillPO && prefillPO.supplier_id) || (prefillContractForCert && prefillContractForCert.contractor_id) || '';
   const selectedProjectId  = (si && si.project_id)   || (prefillPO && prefillPO.project_id)  || (prefillCert && prefillCert.project_id) || '';
-  const defaultSubtotal    = si ? si.subtotal : (prefillPO ? (prefillPO.subtotal || '') : (prefillCert ? (prefillCert.net_amount || '') : ''));
-  const defaultTax         = si ? si.tax      : (prefillPO ? (prefillPO.tax || '')      : (prefillCert ? ((prefillCert.net_amount || 0) * 0.21) : ''));
-  const defaultTotal       = si ? si.total    : (prefillPO ? (prefillPO.total || '')    : (prefillCert ? ((prefillCert.net_amount || 0) * 1.21) : ''));
+  const defaultSubtotal    = si ? si.subtotal : (prefillPO ? (prefillPO.subtotal || 0) : (prefillCert ? (prefillCert.net_amount || 0) : 0));
+  const defaultTax         = si ? si.tax      : (prefillPO ? (prefillPO.tax || 0)      : (prefillCert ? ((prefillCert.net_amount || 0) * 0.21) : 0));
+  const defaultTotal       = si ? si.total    : (prefillPO ? (prefillPO.total || 0)    : (prefillCert ? ((prefillCert.net_amount || 0) * 1.21) : 0));
 
   openModal(si ? 'Editar Factura Proveedor' : 'Nueva Factura de Proveedor',
     '<div class="form-grid form-grid-2">' +
@@ -1182,9 +1182,12 @@ function prefillSIFromCert(certId) {
 }
 
 function recalcSI() {
-  const sub = parseFloat(document.getElementById('si-subtotal')?.value) || 0;
-  const tax = parseFloat(document.getElementById('si-tax')?.value) || sub * 0.21;
-  const totEl = document.getElementById('si-total');
+  var sub = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var taxEl = document.getElementById('si-tax');
+  var taxCurrent = parseFloat((taxEl || {}).value);
+  var tax = isNaN(taxCurrent) ? Math.round(sub * 21) / 100 : taxCurrent;
+  if (taxEl && isNaN(parseFloat(taxEl.value))) taxEl.value = (Math.round(sub * 21) / 100).toFixed(2);
+  var totEl = document.getElementById('si-total');
   if (totEl) totEl.value = (sub + tax).toFixed(2);
 }
 
@@ -1192,7 +1195,8 @@ function saveSI(id) {
   const supplierId = document.getElementById('si-supplier').value;
   if (!supplierId) { toast('El proveedor es obligatorio', 'error'); return; }
   const sub    = parseFloat(document.getElementById('si-subtotal').value) || 0;
-  const tax    = parseFloat(document.getElementById('si-tax').value) || 0;
+  const taxRaw = parseFloat(document.getElementById('si-tax').value);
+  const tax    = isNaN(taxRaw) ? Math.round(sub * 21) / 100 : taxRaw;
   const certId = document.getElementById('si-cert').value || '';
   const data = {
     number:      document.getElementById('si-num').value,
