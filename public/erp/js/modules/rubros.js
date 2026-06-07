@@ -61,7 +61,7 @@ function renderRubros() {
 function buildRubrosTable(rubros) {
   if (!rubros.length) return `<div class="empty-state"><i class="fas fa-list-ol"></i><p>No hay rubros. Creá el primero.</p></div>`;
   return `<table><thead><tr>
-    <th>Código</th><th>Nombre del Rubro</th><th>Categoría</th><th>Unidad</th><th>Descripción</th><th>Estado</th><th>Acciones</th>
+    <th>Código</th><th>Nombre del Rubro</th><th>Categoría</th><th>Unidad</th><th>Cuenta Contable</th><th>Estado</th><th>Acciones</th>
   </tr></thead>
   <tbody>
   ${rubros.sort((a,b)=>a.code.localeCompare(b.code)).map(r => `<tr>
@@ -69,7 +69,7 @@ function buildRubrosTable(rubros) {
     <td>${r.name}</td>
     <td><span class="badge badge-blue">${r.category}</span></td>
     <td><span class="badge badge-gray">${r.unit}</span></td>
-    <td style="font-size:12px;color:var(--text-muted)">${r.description || '-'}</td>
+    <td style="font-size:12px">${r.account_code ? `<b>${r.account_code}</b> <span style="color:var(--text-muted)">${r.account_name||''}</span>` : '<span style="color:var(--border)">—</span>'}</td>
     <td>${r.active !== false ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
     <td><div class="table-actions">
       <button class="btn-ghost btn btn-sm" onclick="openRubroForm('${r.id}')"><i class="fas fa-edit"></i></button>
@@ -121,6 +121,9 @@ function filterRubros(q, category) {
 function openRubroForm(id = null) {
   const r = id ? DB.getById('rubros', id) : null;
   const categories = [...new Set(DB.getAll('rubros').map(x => x.category))].sort();
+  const accounts = DB.getAll('accounts').sort((a, b) => a.code.localeCompare(b.code));
+  const acctOpts = '<option value="">Sin cuenta asignada</option>' +
+    accounts.map(a => `<option value="${a.code}" data-name="${a.name||''}" ${r?.account_code===a.code?'selected':''}>${a.code} — ${a.name}</option>`).join('');
 
   openModal(r ? 'Editar Rubro' : 'Nuevo Rubro de Obra', `
 <div class="form-grid form-grid-2">
@@ -157,6 +160,12 @@ function openRubroForm(id = null) {
     </datalist>
   </div>
   <div class="form-group full">
+    <label class="form-label">Cuenta Contable para Imputación</label>
+    <select class="form-control" id="rb-account" onchange="rbOnAccountChange()">${acctOpts}</select>
+    <input type="hidden" id="rb-account-name" value="${r?.account_name||''}">
+    <small style="color:var(--text-muted);font-size:11px">La cuenta que se usará al imputar este rubro en facturas</small>
+  </div>
+  <div class="form-group full">
     <label class="form-label">Descripción</label>
     <textarea class="form-control" id="rb-desc" rows="2">${r?.description || ''}</textarea>
   </div>
@@ -174,6 +183,14 @@ function openRubroForm(id = null) {
 `);
 }
 
+function rbOnAccountChange() {
+  const sel = document.getElementById('rb-account');
+  const nf = document.getElementById('rb-account-name');
+  if (!sel || !nf) return;
+  const opt = sel.options[sel.selectedIndex];
+  nf.value = opt ? (opt.getAttribute('data-name') || '') : '';
+}
+
 function saveRubro(id) {
   const code = document.getElementById('rb-code').value.trim();
   const name = document.getElementById('rb-name').value.trim();
@@ -181,10 +198,15 @@ function saveRubro(id) {
   const unit = document.getElementById('rb-unit').value.trim();
   if (!code || !name || !category || !unit) { toast('Código, nombre, categoría y unidad son obligatorios', 'error'); return; }
 
+  const accountSel = document.getElementById('rb-account');
+  const accountCode = accountSel ? accountSel.value : '';
+  const accountName = (document.getElementById('rb-account-name') || {}).value || '';
   const data = {
     code, name, category, unit,
     description: document.getElementById('rb-desc').value.trim(),
     active: document.getElementById('rb-active').value === 'true',
+    account_code: accountCode,
+    account_name: accountName,
   };
 
   if (id) { DB.update('rubros', id, data); toast('Rubro actualizado', 'success'); }

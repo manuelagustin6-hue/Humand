@@ -180,11 +180,12 @@ function viewInvoice(id) {
 ${imputacion.length ? `
 <div class="divider"></div>
 <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Imputacion Contable</div>
-<table style="font-size:12px"><thead><tr><th>Cuenta</th><th>Proyecto</th><th>Descripcion</th><th class="text-right">Importe</th></tr></thead>
+<table style="font-size:12px"><thead><tr><th>Rubro</th><th>Cuenta Contable</th><th>Proyecto</th><th class="text-right">Importe</th></tr></thead>
 <tbody>
 ${imputacion.map(l => {
   const p = DB.getById('projects', l.project_id);
-  return `<tr><td><b>${l.account_code||''}</b> ${l.account_name||''}</td><td>${p?p.name:'-'}</td><td>${l.description||''}</td><td class="text-right">${fmtMoney(l.amount||0)}</td></tr>`;
+  const rb = l.rubro_id ? DB.getById('rubros', l.rubro_id) : null;
+  return `<tr><td>${rb ? `<b>${rb.code}</b> ${rb.name}` : '—'}</td><td>${l.account_code ? `<b>${l.account_code}</b> ${l.account_name||''}` : '—'}</td><td>${p?p.name:'-'}</td><td class="text-right">${fmtMoney(l.amount||0)}</td></tr>`;
 }).join('')}
 <tr style="border-top:2px solid var(--border)"><td colspan="3"><strong>Total imputado</strong></td><td class="text-right"><strong>${fmtMoney(imputacion.reduce((s,l)=>s+(l.amount||0),0))}</strong></td></tr>
 </tbody></table>
@@ -292,24 +293,22 @@ function openInvoiceForm(id = null) {
   ${calcInvTotalsHtml(items)}
 </div>
 
-<div id="imp-section" style="${source === 'manual' ? '' : 'display:none'}">
-  <div class="divider"></div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <div>
-      <strong style="font-size:13px">Imputacion Contable</strong>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Asigne cuentas y proyectos para esta factura</div>
-    </div>
-    <button class="btn btn-sm btn-secondary" onclick="addImpLine()"><i class="fas fa-plus"></i> Linea</button>
+<div class="divider"></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+  <div>
+    <strong style="font-size:13px">Imputacion Contable</strong>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Rubros imputados en esta factura (la cuenta surge del rubro)</div>
   </div>
-  <div id="imp-lines">
-    <div style="display:grid;grid-template-columns:2fr 1.5fr 2fr 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
-      <span>Cuenta Contable</span><span>Proyecto</span><span>Descripcion</span><span>Importe</span><span></span>
-    </div>
-    ${imputacion.map((l, i) => invImpRow(l, i, projects)).join('')}
+  <button class="btn btn-sm btn-secondary" onclick="addImpLine()"><i class="fas fa-plus"></i> Linea</button>
+</div>
+<div id="imp-lines">
+  <div style="display:grid;grid-template-columns:2.5fr 1.5fr 1.5fr 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
+    <span>Rubro</span><span>Cuenta contable</span><span>Proyecto</span><span>Importe</span><span></span>
   </div>
-  <div id="imp-totals" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:8px">
-    ${calcImpTotalsHtml(imputacion)}
-  </div>
+  ${imputacion.map((l, i) => invImpRow(l, i, projects)).join('')}
+</div>
+<div id="imp-totals" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:8px">
+  ${calcImpTotalsHtml(imputacion)}
 </div>
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -369,29 +368,47 @@ function calcInvTotalsHtml(items) {
 // ---- IMPUTACION ----
 window._impLines = [];
 
-function invToggleImputacion(source) {
-  const sec = document.getElementById('imp-section');
-  if (sec) sec.style.display = (source === 'manual') ? '' : 'none';
-}
-
 function invImpRow(line, i, projects) {
-  const accounts = DB.getAll('accounts').sort((a, b) => a.code.localeCompare(b.code));
-  const aoHtml = '<option value="">— Cuenta —</option>' +
-    accounts.map(a => `<option value="${a.code}" data-name="${a.name||''}" ${line.account_code===a.code?'selected':''}>${a.code} — ${a.name}</option>`).join('');
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a, b) => a.code.localeCompare(b.code));
+  const rHtml = '<option value="">— Rubro —</option>' +
+    rubros.map(r => `<option value="${r.id}" data-account="${r.account_code||''}" data-aname="${r.account_name||''}" ${line.rubro_id===r.id?'selected':''}>${r.code} — ${r.name}</option>`).join('');
   const projHtml = '<option value="">— Proyecto —</option>' +
     projects.map(p => `<option value="${p.id}" ${line.project_id===p.id?'selected':''}>${p.name}</option>`).join('');
-  return `<div id="imp-row-${i}" style="display:grid;grid-template-columns:2fr 1.5fr 2fr 110px 36px;gap:6px;margin-bottom:6px;align-items:center">
-    <select class="form-control" style="font-size:12px" onchange="updateImpLine(${i},'account_code',this.value,this.options[this.selectedIndex].getAttribute('data-name'))">${aoHtml}</select>
-    <select class="form-control" style="font-size:12px" onchange="updateImpLine(${i},'project_id',this.value)">${projHtml}</select>
-    <input class="form-control" style="font-size:12px" placeholder="Descripcion" value="${line.description||''}" oninput="updateImpLine(${i},'description',this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${line.amount||0}" oninput="updateImpLine(${i},'amount',+this.value)">
+  const acctText = line.account_code ? (line.account_code + (line.account_name ? ' — ' + line.account_name : '')) : '—';
+  return `<div id="imp-row-${i}" style="display:grid;grid-template-columns:2.5fr 1.5fr 1.5fr 110px 36px;gap:6px;margin-bottom:6px;align-items:center">
+    <select class="form-control" style="font-size:12px" onchange="impOnRubroChange(${i},this)">${rHtml}</select>
+    <div id="imp-acct-${i}" style="font-size:11px;color:var(--text-muted);padding:2px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--bg);border-radius:var(--radius-sm);min-height:32px;display:flex;align-items:center">${acctText}</div>
+    <select class="form-control" style="font-size:12px" onchange="impUpdateField(${i},'project_id',this.value)">${projHtml}</select>
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${line.amount||0}" oninput="impUpdateField(${i},'amount',+this.value)">
     <button class="btn-ghost btn danger" onclick="removeImpLine(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }
 
+function impOnRubroChange(i, sel) {
+  if (!window._impLines[i]) window._impLines[i] = {};
+  const opt = sel.options[sel.selectedIndex];
+  window._impLines[i].rubro_id = opt.value;
+  window._impLines[i].account_code = opt.getAttribute('data-account') || '';
+  window._impLines[i].account_name = opt.getAttribute('data-aname') || '';
+  const el = document.getElementById('imp-acct-' + i);
+  if (el) {
+    const code = window._impLines[i].account_code;
+    const name = window._impLines[i].account_name;
+    el.textContent = code ? (code + (name ? ' — ' + name : '')) : '—';
+    el.style.color = code ? 'var(--text)' : 'var(--text-muted)';
+  }
+}
+
+function impUpdateField(i, field, val) {
+  if (!window._impLines[i]) window._impLines[i] = {};
+  window._impLines[i][field] = val;
+  const el = document.getElementById('imp-totals');
+  if (el) el.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
+}
+
 function addImpLine() {
   const projects = DB.getAll('projects');
-  const newLine = { account_code: '', account_name: '', project_id: '', description: '', amount: 0 };
+  const newLine = { rubro_id: '', account_code: '', account_name: '', project_id: '', amount: 0 };
   window._impLines.push(newLine);
   const i = window._impLines.length - 1;
   const cont = document.getElementById('imp-lines');
@@ -400,16 +417,8 @@ function addImpLine() {
   cont.appendChild(div.firstElementChild);
 }
 
-function updateImpLine(i, field, val, extra) {
-  if (!window._impLines[i]) window._impLines[i] = { account_code:'', account_name:'', project_id:'', description:'', amount:0 };
-  window._impLines[i][field] = val;
-  if (field === 'account_code' && extra !== undefined) window._impLines[i].account_name = extra || '';
-  const el = document.getElementById('imp-totals');
-  if (el) el.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
-}
-
 function removeImpLine(i) {
-  const row = document.getElementById(`imp-row-${i}`);
+  const row = document.getElementById('imp-row-' + i);
   if (row) row.remove();
   window._impLines[i] = null;
   const el = document.getElementById('imp-totals');
@@ -435,9 +444,7 @@ function saveInvoice(id) {
   const subtotal = items.reduce((s, it) => s+it.total, 0);
   const tax = subtotal * 0.21;
   const source = document.getElementById('if-source').value;
-  const imputacion = source === 'manual'
-    ? (window._impLines || []).filter(Boolean).filter(l => l.account_code || l.amount)
-    : [];
+  const imputacion = (window._impLines || []).filter(Boolean).filter(l => l.rubro_id || l.amount);
 
   const data = {
     number: document.getElementById('if-num').value,
