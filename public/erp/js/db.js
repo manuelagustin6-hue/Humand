@@ -662,6 +662,33 @@ const DB = {
         { id: 'je-001', number: 'AS-2025-001', date: '2025-03-31', description: 'Facturacion Certificado N1 - Torre Palermo', lines: [{ account_code: '1.1.2', account_name: 'Cuentas por Cobrar', debit: 15125000, credit: 0, description: 'Inversiones RP SA' }, { account_code: '4.1', account_name: 'Ingresos por Obras', debit: 0, credit: 12500000, description: 'Ingreso obra Torre Palermo Cert.1' }, { account_code: '2.1.2', account_name: 'IVA a Pagar', debit: 0, credit: 2625000, description: 'IVA FA-0001-00001234' }], status: 'posted', created_at: now() },
         { id: 'je-002', number: 'AS-2025-002', date: '2025-04-15', description: 'Cobro FA-0001-00001234', lines: [{ account_code: '1.1.1', account_name: 'Caja y Bancos', debit: 15125000, credit: 0, description: 'TRF-20250415 BNA' }, { account_code: '1.1.2', account_name: 'Cuentas por Cobrar', debit: 0, credit: 15125000, description: 'Cancelacion CxC Inversiones RP SA' }], status: 'posted', created_at: now() },
       ],
+      unidades: [
+        { id: 'un-001', project_id: p1, number: '1A', type: 'dept', floor: '1', area: 62, rooms: 2, list_price: 95000, currency: 'USD', status: 'sold',      notes: '', created_at: now() },
+        { id: 'un-002', project_id: p1, number: '1B', type: 'dept', floor: '1', area: 75, rooms: 3, list_price: 115000, currency: 'USD', status: 'reserved',  notes: '', created_at: now() },
+        { id: 'un-003', project_id: p1, number: '2A', type: 'dept', floor: '2', area: 62, rooms: 2, list_price: 97000,  currency: 'USD', status: 'available', notes: '', created_at: now() },
+        { id: 'un-004', project_id: p1, number: '2B', type: 'dept', floor: '2', area: 75, rooms: 3, list_price: 118000, currency: 'USD', status: 'available', notes: '', created_at: now() },
+        { id: 'un-005', project_id: p1, number: '3A', type: 'dept', floor: '3', area: 62, rooms: 2, list_price: 99000,  currency: 'USD', status: 'available', notes: '', created_at: now() },
+        { id: 'un-006', project_id: p1, number: 'PH', type: 'dept', floor: '12', area: 140, rooms: 4, list_price: 280000, currency: 'USD', status: 'available', notes: 'Penthouse con terraza privada', created_at: now() },
+        { id: 'un-007', project_id: p1, number: 'C-01', type: 'parking', floor: 'PB', area: 14, rooms: 0, list_price: 18000, currency: 'USD', status: 'sold', notes: '', created_at: now() },
+        { id: 'un-008', project_id: p1, number: 'C-02', type: 'parking', floor: 'PB', area: 14, rooms: 0, list_price: 18000, currency: 'USD', status: 'available', notes: '', created_at: now() },
+      ],
+      ventasUnidades: [
+        { id: 'vta-001', unit_id: 'un-001', contract_number: 'VTA-2025-001', buyer_name: 'Carlos Fernandez', buyer_doc_type: 'DNI', buyer_doc: '28456789', buyer_phone: '011-1534-5678', buyer_email: 'carlos.f@email.com', sale_date: '2025-02-10', currency: 'USD', sale_price: 93000, payment_type: 'mixed', installments: [{ id: 'inst-001', number: 0, concept: 'Seña / Anticipo', due_date: '2025-02-10', amount: 20000, status: 'paid', paid_date: '2025-02-10' }, { id: 'inst-002', number: 1, concept: 'Cuota 1/24', due_date: '2025-03-10', amount: 3041, status: 'paid', paid_date: '2025-03-12' }, { id: 'inst-003', number: 2, concept: 'Cuota 2/24', due_date: '2025-04-10', amount: 3042, status: 'pending' }, { id: 'inst-004', number: 3, concept: 'Cuota 3/24', due_date: '2025-05-10', amount: 3042, status: 'pending' }], status: 'active', notes: '', created_at: now() },
+      ],
+      cobrosVentas: [
+        { id: 'cob-001', sale_id: 'vta-001', installment_id: 'inst-001', date: '2025-02-10', amount: 20000, currency: 'USD', method: 'transfer', reference: 'TRF-20250210', notes: 'Seña inicial', created_at: now() },
+        { id: 'cob-002', sale_id: 'vta-001', installment_id: 'inst-002', date: '2025-03-12', amount: 3041, currency: 'USD', method: 'transfer', reference: 'TRF-20250312', notes: '', created_at: now() },
+      ],
+      cheques: [],
+      bankAccounts: [
+        { id: 'ba-001', name: 'Cuenta Corriente BNA', bank: 'Banco Nacion Argentina', account_number: '0110-0000-0001234567', currency: 'ARS', type: 'checking', initial_balance: 5000000, notes: 'Cuenta operativa principal', created_at: now() },
+        { id: 'ba-002', name: 'Caja USD', bank: 'Caja interna', account_number: '', currency: 'USD', type: 'cash', initial_balance: 15000, notes: 'Fondos en caja en dolares', created_at: now() },
+      ],
+      bankMovements: [
+        { id: 'bm-001', account_id: 'ba-001', date: '2025-03-25', type: 'debit', amount: 5747500, concept: 'OP-2025-001 Pago proveedor CHP', reference: 'OP-2025-001', created_at: now() },
+        { id: 'bm-002', account_id: 'ba-001', date: '2025-04-15', type: 'debit', amount: 3880000, concept: 'OP-2025-002 Anticipo hierros', reference: 'OP-2025-002', created_at: now() },
+        { id: 'bm-003', account_id: 'ba-001', date: '2025-04-15', type: 'credit', amount: 15125000, concept: 'Cobro FA-0001-00001234 Inversiones RP SA', reference: 'TRF-20250415', created_at: now() },
+      ],
     };
   },
 };

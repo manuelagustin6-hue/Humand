@@ -711,3 +711,231 @@ function calcAccountBalances(accounts, entries) {
 function sumBalances(accs, balances) {
   return accs.filter(a => !a.parent_id).reduce((s,a) => s + (balances[a.code]||0), 0);
 }
+
+// ---- LIBRO MAYOR ----
+function renderContaMayores() {
+  const entries = DB.getAll('journalEntries');
+  const accounts = DB.getAll('accounts');
+  const projects = DB.getAll('projects');
+
+  document.getElementById('content').innerHTML = `
+<div class="page-header">
+  <div>
+    <div class="page-title">Libro Mayor</div>
+    <div class="page-subtitle">Movimientos agrupados por cuenta contable con saldo acumulado</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-secondary" onclick="exportMayores()"><i class="fas fa-download"></i> Exportar</button>
+    <button class="btn btn-primary" onclick="openJEForm()"><i class="fas fa-plus"></i> Nuevo Asiento</button>
+  </div>
+</div>
+
+<div class="filter-bar mb-2">
+  <div class="search-input-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" id="mayor-search" placeholder="Buscar cuenta..." oninput="filterMayores()">
+  </div>
+  <input type="date" class="form-control" id="mayor-from" style="width:150px" placeholder="Desde" onchange="filterMayores()">
+  <input type="date" class="form-control" id="mayor-to" style="width:150px" placeholder="Hasta" onchange="filterMayores()">
+  <select class="form-control" id="mayor-type" style="width:170px" onchange="filterMayores()">
+    <option value="">Todos los tipos</option>
+    <option value="asset">Activo</option>
+    <option value="liability">Pasivo</option>
+    <option value="equity">Patrimonio</option>
+    <option value="revenue">Ingresos</option>
+    <option value="expense">Egresos</option>
+  </select>
+</div>
+
+<div id="mayores-list">
+  ${buildMayoresList(accounts, entries)}
+</div>`;
+}
+
+function buildMayoresList(accounts, entries, filterQ, filterFrom, filterTo, filterType) {
+  // Find all accounts that have movements in journal entries
+  const accountsWithEntries = {};
+
+  const postedEntries = entries.filter(e => e.status === 'posted');
+  postedEntries.forEach(e => {
+    e.lines.forEach(l => {
+      if (!l.account_code) return;
+      if (!accountsWithEntries[l.account_code]) {
+        accountsWithEntries[l.account_code] = [];
+      }
+      accountsWithEntries[l.account_code].push({
+        entry_id: e.id,
+        entry_number: e.number,
+        date: e.date,
+        description: e.description,
+        line_desc: l.description || '',
+        debit: l.debit || 0,
+        credit: l.credit || 0,
+      });
+    });
+  });
+
+  // Also include all draft entries
+  entries.filter(e => e.status !== 'posted').forEach(e => {
+    e.lines.forEach(l => {
+      if (!l.account_code) return;
+      if (!accountsWithEntries[l.account_code]) {
+        accountsWithEntries[l.account_code] = [];
+      }
+      accountsWithEntries[l.account_code].push({
+        entry_id: e.id,
+        entry_number: e.number,
+        date: e.date,
+        description: e.description,
+        line_desc: l.description || '',
+        debit: l.debit || 0,
+        credit: l.credit || 0,
+        draft: true,
+      });
+    });
+  });
+
+  const typeLabels = { asset: 'ACTIVO', liability: 'PASIVO', equity: 'PATRIMONIO', revenue: 'INGRESO', expense: 'EGRESO' };
+  const typeColors = { asset: 'badge-blue', liability: 'badge-red', equity: 'badge-green', revenue: 'badge-cyan', expense: 'badge-yellow' };
+
+  // Sort account codes numerically
+  const sortedCodes = Object.keys(accountsWithEntries).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  if (!sortedCodes.length) {
+    return `<div class="empty-state"><i class="fas fa-book"></i><p>No hay asientos contables registrados</p></div>`;
+  }
+
+  let html = '';
+
+  sortedCodes.forEach(code => {
+    const acc = accounts.find(a => a.code === code);
+    const accName = acc ? acc.name : code;
+    const accType = acc ? acc.type : '';
+
+    // Apply filters
+    if (filterQ && !accName.toLowerCase().includes(filterQ.toLowerCase()) && !code.includes(filterQ)) return;
+    if (filterType && accType !== filterType) return;
+
+    let movements = accountsWithEntries[code].slice().sort((a, b) => a.date.localeCompare(b.date));
+
+    if (filterFrom) movements = movements.filter(m => m.date >= filterFrom);
+    if (filterTo) movements = movements.filter(m => m.date <= filterTo);
+
+    if (!movements.length) return;
+
+    const totalDebit = movements.reduce((s, m) => s + m.debit, 0);
+    const totalCredit = movements.reduce((s, m) => s + m.credit, 0);
+    const finalBalance = totalDebit - totalCredit;
+
+    const typeLabel = typeLabels[accType] || accType;
+    const typeColor = typeColors[accType] || 'badge-gray';
+
+    let runningBalance = 0;
+    const rows = movements.map(m => {
+      runningBalance += m.debit - m.credit;
+      const balColor = runningBalance >= 0 ? 'var(--success)' : 'var(--danger)';
+      return `<tr ${m.draft ? 'style="opacity:.6"' : ''}>
+        <td>${fmtDate(m.date)}</td>
+        <td style="font-size:11px">${m.entry_number}${m.draft ? ' <span class="badge badge-gray" style="font-size:9px">Borrador</span>' : ''}</td>
+        <td>${m.description}</td>
+        <td style="color:var(--text-muted);font-size:11px">${m.line_desc}</td>
+        <td class="number-cell text-right">${m.debit > 0 ? fmtMoney(m.debit) : '-'}</td>
+        <td class="number-cell text-right">${m.credit > 0 ? fmtMoney(m.credit) : '-'}</td>
+        <td class="number-cell text-right" style="color:${balColor};font-weight:600">${fmtMoney(runningBalance)}</td>
+      </tr>`;
+    }).join('');
+
+    const finalColor = finalBalance >= 0 ? 'var(--success)' : 'var(--danger)';
+
+    html += `
+<div class="card mb-3">
+  <div class="card-header" style="cursor:pointer" onclick="toggleMayorSection('mayor-${code.replace(/\./g,'_')}')">
+    <div style="display:flex;align-items:center;gap:10px;flex:1">
+      <span style="font-size:14px;font-weight:700;color:var(--primary)">${code}</span>
+      <span style="font-size:14px;font-weight:600">${accName}</span>
+      <span class="badge ${typeColor}">${typeLabel}</span>
+      <span style="flex:1"></span>
+      <span style="font-size:12px;color:var(--text-muted);margin-right:8px">${movements.length} movimientos</span>
+      <span class="badge badge-blue" title="Total Debe">${fmtMoney(totalDebit)}</span>
+      <span class="badge badge-yellow" title="Total Haber">${fmtMoney(totalCredit)}</span>
+      <span class="badge" style="background:${finalBalance >= 0 ? 'var(--success)' : 'var(--danger)'};color:#fff" title="Saldo Final">${fmtMoney(Math.abs(finalBalance))} ${finalBalance >= 0 ? 'D' : 'H'}</span>
+    </div>
+    <i class="fas fa-chevron-down" id="mayor-icon-${code.replace(/\./g,'_')}" style="font-size:12px;color:var(--text-muted);transition:transform .2s"></i>
+  </div>
+  <div id="mayor-${code.replace(/\./g,'_')}" style="display:none">
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Fecha</th><th>Asiento</th><th>Descripcion</th><th>Detalle</th>
+            <th class="text-right">Debe</th><th class="text-right">Haber</th><th class="text-right">Saldo</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td colspan="4" class="text-right"><strong>Totales</strong></td>
+              <td class="number-cell text-right"><strong>${fmtMoney(totalDebit)}</strong></td>
+              <td class="number-cell text-right"><strong>${fmtMoney(totalCredit)}</strong></td>
+              <td class="number-cell text-right" style="color:${finalColor};font-weight:700">${fmtMoney(finalBalance)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>`;
+  });
+
+  return html || `<div class="empty-state"><i class="fas fa-filter"></i><p>Sin resultados con los filtros aplicados</p></div>`;
+}
+
+function toggleMayorSection(id) {
+  const panel = document.getElementById(id);
+  const code = id.replace('mayor-', '').replace(/_/g, '.');
+  const icon = document.getElementById('mayor-icon-' + id.replace('mayor-', ''));
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : '';
+  if (icon) icon.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+function filterMayores() {
+  const q = (document.getElementById('mayor-search') || {}).value || '';
+  const from = (document.getElementById('mayor-from') || {}).value || '';
+  const to = (document.getElementById('mayor-to') || {}).value || '';
+  const type = (document.getElementById('mayor-type') || {}).value || '';
+  const entries = DB.getAll('journalEntries');
+  const accounts = DB.getAll('accounts');
+  const list = document.getElementById('mayores-list');
+  if (list) list.innerHTML = buildMayoresList(accounts, entries, q, from, to, type);
+}
+
+function exportMayores() {
+  const entries = DB.getAll('journalEntries');
+  const accounts = DB.getAll('accounts');
+  const rows = [];
+
+  entries.filter(e => e.status === 'posted').forEach(e => {
+    e.lines.forEach(l => {
+      if (!l.account_code) return;
+      const acc = accounts.find(a => a.code === l.account_code);
+      rows.push([
+        l.account_code,
+        acc ? acc.name : l.account_code,
+        e.number,
+        e.date,
+        e.description,
+        l.description || '',
+        l.debit || 0,
+        l.credit || 0,
+      ]);
+    });
+  });
+
+  rows.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) || a[3].localeCompare(b[3]));
+
+  exportXLSX('libro_mayor.xlsx',
+    ['Codigo', 'Cuenta', 'Asiento', 'Fecha', 'Descripcion', 'Detalle', 'Debe', 'Haber'],
+    rows
+  );
+}
