@@ -1,4 +1,168 @@
-/* ===== CUENTAS CORRIENTES: PROVEEDORES Y CLIENTES ===== */
+/* ===== CLIENTES + CUENTAS CORRIENTES: PROVEEDORES Y CLIENTES ===== */
+
+// =====================================================================
+// CLIENTES
+// Collection: clientes
+// { id, name, doc_type, doc_number, phone, email, address, notes }
+// =====================================================================
+
+function renderClientes() {
+  var clientes = DB.getAll('clientes');
+  var ventas = DB.getAll('ventasUnidades');
+
+  var searchVal = '';
+  function buildTable(list) {
+    if (!list.length) {
+      return '<div class="empty-state"><i class="fas fa-users"></i><p>No hay clientes registrados</p></div>';
+    }
+    var rows = list.map(function(c) {
+      var ccc = ventas.filter(function(v) { return v.buyer_client_id === c.id || v.buyer_doc === c.doc_number; }).length;
+      return '<tr>' +
+        '<td><b>' + c.name + '</b></td>' +
+        '<td style="font-size:12px">' + (c.doc_type || '') + ' ' + (c.doc_number || '') + '</td>' +
+        '<td>' + (c.phone || '—') + '</td>' +
+        '<td>' + (c.email || '—') + '</td>' +
+        '<td>' + (c.address || '—') + '</td>' +
+        '<td style="text-align:center">' +
+          (ccc > 0 ? '<span class="badge badge-blue">' + ccc + '</span>' : '—') +
+        '</td>' +
+        '<td style="white-space:nowrap;">' +
+          '<button class="btn btn-sm btn-secondary" onclick="clienteEdit(\'' + c.id + '\')"><i class="fas fa-edit"></i></button> ' +
+          (ccc > 0
+            ? '<button class="btn btn-sm btn-primary" onclick="navigate(\'cuentas_cli\')"><i class="fas fa-list-ol"></i></button> '
+            : '') +
+          '<button class="btn btn-sm btn-danger" onclick="clienteDelete(\'' + c.id + '\')"><i class="fas fa-trash"></i></button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+    return '<table class="table"><thead><tr>' +
+      '<th>Nombre</th><th>Documento</th><th>Telefono</th><th>Email</th><th>Direccion</th><th>CCC</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  document.getElementById('content').innerHTML =
+    '<div class="page-header"><div>' +
+      '<div class="page-title"><i class="fas fa-users" style="margin-right:8px;color:var(--primary)"></i>Clientes</div>' +
+      '<div class="page-subtitle">Directorio de compradores e inquilinos</div>' +
+    '</div>' +
+    '<button class="btn btn-primary" onclick="clienteNuevo()"><i class="fas fa-plus"></i> Nuevo Cliente</button>' +
+    '</div>' +
+    '<div class="card" style="margin-bottom:16px;padding:10px 16px;">' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<i class="fas fa-search" style="color:var(--text-muted)"></i>' +
+        '<input type="text" id="cli-search" class="form-control" style="border:none;padding:0;font-size:14px;" placeholder="Buscar por nombre, documento, email..." oninput="clienteFiltrar(this.value)">' +
+      '</div>' +
+    '</div>' +
+    '<div id="cli-table-wrap">' + buildTable(clientes) + '</div>';
+}
+
+function clienteFiltrar(q) {
+  var clientes = DB.getAll('clientes');
+  var ventas = DB.getAll('ventasUnidades');
+  q = (q || '').toLowerCase();
+  var filtered = q
+    ? clientes.filter(function(c) {
+        return (c.name || '').toLowerCase().includes(q) ||
+               (c.doc_number || '').toLowerCase().includes(q) ||
+               (c.email || '').toLowerCase().includes(q);
+      })
+    : clientes;
+
+  function cccCount(c) {
+    return ventas.filter(function(v) { return v.buyer_client_id === c.id || v.buyer_doc === c.doc_number; }).length;
+  }
+
+  var rows = filtered.map(function(c) {
+    var ccc = cccCount(c);
+    return '<tr>' +
+      '<td><b>' + c.name + '</b></td>' +
+      '<td style="font-size:12px">' + (c.doc_type || '') + ' ' + (c.doc_number || '') + '</td>' +
+      '<td>' + (c.phone || '—') + '</td>' +
+      '<td>' + (c.email || '—') + '</td>' +
+      '<td>' + (c.address || '—') + '</td>' +
+      '<td style="text-align:center">' + (ccc > 0 ? '<span class="badge badge-blue">' + ccc + '</span>' : '—') + '</td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button class="btn btn-sm btn-secondary" onclick="clienteEdit(\'' + c.id + '\')"><i class="fas fa-edit"></i></button> ' +
+        (ccc > 0 ? '<button class="btn btn-sm btn-primary" onclick="navigate(\'cuentas_cli\')"><i class="fas fa-list-ol"></i></button> ' : '') +
+        '<button class="btn btn-sm btn-danger" onclick="clienteDelete(\'' + c.id + '\')"><i class="fas fa-trash"></i></button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+
+  var wrap = document.getElementById('cli-table-wrap');
+  if (wrap) wrap.innerHTML = rows
+    ? '<table class="table"><thead><tr><th>Nombre</th><th>Documento</th><th>Telefono</th><th>Email</th><th>Direccion</th><th>CCC</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>'
+    : '<div class="empty-state"><i class="fas fa-search"></i><p>Sin resultados</p></div>';
+}
+
+function _clienteForm(c) {
+  c = c || {};
+  return '<div class="form-grid">' +
+    '<div class="form-group"><label>Nombre completo *</label>' +
+      '<input type="text" id="cf-name" class="form-control" value="' + (c.name || '') + '" placeholder="Nombre y apellido"></div>' +
+    '<div class="form-group"><label>Tipo Documento</label>' +
+      '<select id="cf-doctype" class="form-control">' +
+        ['DNI','CUIT','PASSPORT','Otro'].map(function(t) { return '<option' + (c.doc_type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') +
+      '</select></div>' +
+    '<div class="form-group"><label>N° Documento</label>' +
+      '<input type="text" id="cf-docnum" class="form-control" value="' + (c.doc_number || '') + '"></div>' +
+    '<div class="form-group"><label>Telefono</label>' +
+      '<input type="text" id="cf-phone" class="form-control" value="' + (c.phone || '') + '"></div>' +
+    '<div class="form-group"><label>Email</label>' +
+      '<input type="email" id="cf-email" class="form-control" value="' + (c.email || '') + '"></div>' +
+    '<div class="form-group"><label>Direccion</label>' +
+      '<input type="text" id="cf-address" class="form-control" value="' + (c.address || '') + '"></div>' +
+  '</div>' +
+  '<div class="form-group"><label>Notas</label>' +
+    '<textarea id="cf-notes" class="form-control" rows="2">' + (c.notes || '') + '</textarea></div>';
+}
+
+function clienteNuevo() {
+  openModal('Nuevo Cliente', _clienteForm(), 'modal-lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="clienteGuardar(null)"><i class="fas fa-save"></i> Guardar</button>'
+  );
+}
+
+function clienteEdit(id) {
+  var c = DB.getById('clientes', id);
+  if (!c) return;
+  openModal('Editar Cliente', _clienteForm(c), 'modal-lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="clienteGuardar(\'' + id + '\')"><i class="fas fa-save"></i> Guardar</button>'
+  );
+}
+
+function clienteGuardar(id) {
+  var g = function(eid) { return (document.getElementById(eid) || {}).value || ''; };
+  var name = g('cf-name').trim();
+  if (!name) { toast('El nombre es obligatorio', 'error'); return; }
+  var data = {
+    name: name,
+    doc_type: g('cf-doctype'),
+    doc_number: g('cf-docnum'),
+    phone: g('cf-phone'),
+    email: g('cf-email'),
+    address: g('cf-address'),
+    notes: g('cf-notes'),
+  };
+  if (id) { DB.update('clientes', id, data); toast('Cliente actualizado', 'success'); }
+  else { DB.insert('clientes', data); toast('Cliente creado', 'success'); }
+  closeModal();
+  renderClientes();
+}
+
+function clienteDelete(id) {
+  var ventas = DB.getAll('ventasUnidades');
+  var c = DB.getById('clientes', id);
+  var hasCC = c && ventas.some(function(v) { return v.buyer_client_id === id || v.buyer_doc === (c && c.doc_number); });
+  if (hasCC) { toast('No se puede eliminar: tiene cuentas corrientes asociadas', 'error'); return; }
+  confirmDialog('Eliminar cliente permanentemente.', function() {
+    DB.remove('clientes', id);
+    renderClientes();
+    toast('Cliente eliminado', 'success');
+  });
+}
 
 // =====================================================================
 // CUENTAS CORRIENTES PROVEEDORES
@@ -380,7 +544,22 @@ function ccliNuevaCuenta() {
       return '<option value="' + u.id + '" data-price="' + (u.list_price || 0) + '" data-currency="' + (u.currency || 'USD') + '">' + desc + '</option>';
     }).join('');
 
+  var clientes = DB.getAll('clientes');
+  var clienteOptions = '<option value="">— Seleccionar cliente existente —</option>' +
+    clientes.map(function(c) {
+      return '<option value="' + c.id + '" data-name="' + (c.name || '') + '" data-doctype="' + (c.doc_type || '') + '" data-docnum="' + (c.doc_number || '') + '" data-phone="' + (c.phone || '') + '" data-email="' + (c.email || '') + '">' +
+        c.name + (c.doc_number ? ' — ' + c.doc_type + ' ' + c.doc_number : '') +
+      '</option>';
+    }).join('');
+
   var body =
+    '<div class="form-group" style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border)">' +
+      '<label style="font-size:12px;font-weight:600;color:var(--primary)">Seleccionar cliente del directorio</label>' +
+      '<div style="display:flex;gap:8px;margin-top:6px;">' +
+        '<select id="ccli-cliente-sel" class="form-control" onchange="ccliOnClienteChange(this)" style="flex:1">' + clienteOptions + '</select>' +
+        '<button class="btn btn-sm btn-secondary" onclick="ccliNuevoClienteInline()" type="button"><i class="fas fa-plus"></i> Nuevo</button>' +
+      '</div>' +
+    '</div>' +
     '<div class="form-grid">' +
       '<div class="form-group" style="grid-column:1/-1">' +
         '<label>Unidad *</label>' +
@@ -446,6 +625,68 @@ function ccliNuevaCuenta() {
   setTimeout(function() { ccliToggleInstFields('mixed'); }, 50);
 }
 
+function ccliOnClienteChange(sel) {
+  var opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  var fields = { 'ccli-buyer': 'data-name', 'ccli-doctype': 'data-doctype', 'ccli-docnum': 'data-docnum', 'ccli-phone': 'data-phone', 'ccli-email': 'data-email' };
+  Object.keys(fields).forEach(function(fid) {
+    var el = document.getElementById(fid);
+    if (el) el.value = opt.getAttribute(fields[fid]) || '';
+  });
+}
+
+function ccliNuevoClienteInline() {
+  var sub = document.createElement('div');
+  sub.id = 'ccli-inline-cliente';
+  sub.style.cssText = 'margin-top:8px;padding:12px;border:1px dashed var(--primary);border-radius:var(--radius-sm);background:var(--bg)';
+  sub.innerHTML =
+    '<b style="font-size:12px;color:var(--primary)">Crear nuevo cliente</b>' +
+    '<div class="form-grid" style="margin-top:8px">' +
+      '<div class="form-group"><label>Nombre *</label><input type="text" id="ccli-nc-name" class="form-control"></div>' +
+      '<div class="form-group"><label>Tipo Doc.</label><select id="ccli-nc-doctype" class="form-control"><option>DNI</option><option>CUIT</option><option>PASSPORT</option></select></div>' +
+      '<div class="form-group"><label>N° Doc.</label><input type="text" id="ccli-nc-docnum" class="form-control"></div>' +
+      '<div class="form-group"><label>Telefono</label><input type="text" id="ccli-nc-phone" class="form-control"></div>' +
+      '<div class="form-group"><label>Email</label><input type="email" id="ccli-nc-email" class="form-control"></div>' +
+    '</div>' +
+    '<button class="btn btn-sm btn-primary" onclick="ccliCrearYUsarCliente()" type="button"><i class="fas fa-save"></i> Crear y usar</button>' +
+    '<button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'ccli-inline-cliente\').remove()" type="button" style="margin-left:8px">Cancelar</button>';
+  var sel = document.getElementById('ccli-cliente-sel');
+  if (sel && sel.parentNode) sel.parentNode.parentNode.appendChild(sub);
+}
+
+function ccliCrearYUsarCliente() {
+  var g = function(id) { return (document.getElementById(id) || {}).value || ''; };
+  var name = g('ccli-nc-name').trim();
+  if (!name) { toast('Ingrese el nombre', 'error'); return; }
+  var saved = DB.insert('clientes', {
+    name: name,
+    doc_type: g('ccli-nc-doctype'),
+    doc_number: g('ccli-nc-docnum'),
+    phone: g('ccli-nc-phone'),
+    email: g('ccli-nc-email'),
+  });
+  // Fill buyer fields
+  var fill = { 'ccli-buyer': name, 'ccli-doctype': g('ccli-nc-doctype'), 'ccli-docnum': g('ccli-nc-docnum'), 'ccli-phone': g('ccli-nc-phone'), 'ccli-email': g('ccli-nc-email') };
+  Object.keys(fill).forEach(function(fid) {
+    var el = document.getElementById(fid);
+    if (el) el.value = fill[fid];
+  });
+  // Update selector
+  var sel = document.getElementById('ccli-cliente-sel');
+  if (sel) {
+    var opt = document.createElement('option');
+    opt.value = saved.id;
+    opt.selected = true;
+    opt.setAttribute('data-name', name);
+    opt.textContent = name + (saved.doc_number ? ' — ' + saved.doc_type + ' ' + saved.doc_number : '');
+    sel.appendChild(opt);
+    sel.value = saved.id;
+  }
+  var inline = document.getElementById('ccli-inline-cliente');
+  if (inline) inline.remove();
+  toast('Cliente creado', 'success');
+}
+
 function ccliOnUnitChange(sel) {
   var opt = sel.options[sel.selectedIndex];
   var price = opt ? (parseFloat(opt.getAttribute('data-price')) || 0) : 0;
@@ -503,6 +744,7 @@ function ccliGuardarCuenta() {
   DB.insert('ventasUnidades', {
     unit_id: unitId,
     contract_number: contratNum,
+    buyer_client_id: g('ccli-cliente-sel') || null,
     buyer_name: buyerName,
     buyer_doc_type: g('ccli-doctype'),
     buyer_doc: g('ccli-docnum'),
