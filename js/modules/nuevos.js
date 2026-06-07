@@ -39,11 +39,14 @@ function renderOrdenesCompra() {
 }
 
 function renderDocumentosProv() {
-  renderCompras();
-  setTimeout(function() {
-    var btn = document.querySelector('#compras-tabs .tab-btn[data-tab="tab-fact-prov"]');
-    if (btn) btn.click();
-  }, 80);
+  document.getElementById('content').innerHTML =
+    '<div class="page-header">' +
+    '<div>' +
+    '<div class="page-title">Documentos de Proveedores</div>' +
+    '<div class="page-subtitle">Registro y control de facturas recibidas de proveedores</div>' +
+    '</div>' +
+    '</div>' +
+    renderSupplierInvoicesTab();
 }
 
 // ---- PROVEEDORES ----
@@ -127,18 +130,7 @@ function renderContaSumas()      { _contaTab('tab-sumas-conta'); }
 function renderContaBalance()    { _contaTab('tab-balance'); }
 function renderContaResultados() { _contaTab('tab-resultados'); }
 function renderContaPlan()       { _contaTab('tab-cuentas'); }
-function renderContaMayores() {
-  _renderStub('fa-book', 'Libro Mayor',
-    'Movimientos agrupados por cuenta contable',
-    [
-      'Saldo inicial y final por cuenta',
-      'Detalle de débitos y créditos',
-      'Filtro por período y cuenta',
-      'Saldos acumulados por ejercicio',
-      'Exportación a Excel'
-    ]
-  );
-}
+// renderContaMayores is defined in contabilidad.js (full implementation)
 
 // ---- TESORERÍA ----
 function renderCheques() {

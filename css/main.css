@@ -224,18 +224,17 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .breadcrumb i { color: var(--primary); font-size: 16px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 
-#company-selector-wrap {
-  display: flex; align-items: center; gap: 6px;
+.conta-company-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
   background: var(--primary-light);
-  border: 1px solid rgba(37,99,235,.25);
+  border-left: 3px solid var(--primary);
   border-radius: var(--radius-sm);
-  padding: 5px 10px;
+  margin-bottom: 16px;
 }
-#company-selector-wrap label { color: var(--primary); font-size: 13px; }
-#global-company {
-  background: none; border: none; outline: none;
-  font-size: 12px; color: var(--primary); min-width: 150px; font-weight: 600;
-}
+.conta-company-bar i { color: var(--primary); font-size: 14px; }
+.conta-company-label { font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+.conta-company-sel { width: auto; min-width: 220px; }
 
 #project-selector-wrap {
   display: flex; align-items: center; gap: 6px;
@@ -1053,7 +1052,6 @@ textarea.form-control { resize: vertical; height: auto; }
 
   /* Topbar: compact */
   #topbar { padding: 0 12px; gap: 6px; }
-  #company-selector-wrap { display: none; }
   #project-selector-wrap { display: none; }
   .breadcrumb { font-size: 14px; }
   .breadcrumb span { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
