@@ -1,6 +1,7 @@
 /* ===== MÓDULO: VENTAS DE UNIDADES ===== */
 
 var _vuState = { tab: 'unidades', projectFilter: '' };
+var _vuBulkRows = [];
 
 var VU_UNIT_TYPES = [
   { id: 'dept', label: 'Departamento' },
@@ -104,7 +105,10 @@ function vuRenderUnidades() {
           '</select>'
         ) +
       '</div>' +
-      '<button class="btn btn-primary" onclick="vuNewUnit()"><i class="fas fa-plus"></i> Nueva Unidad</button>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-secondary" onclick="vuBulkCreate()"><i class="fas fa-layer-group"></i> Carga Masiva</button>' +
+        '<button class="btn btn-primary" onclick="vuNewUnit()"><i class="fas fa-plus"></i> Nueva Unidad</button>' +
+      '</div>' +
     '</div>';
 
   // Summary badges
@@ -319,6 +323,392 @@ function vuDeleteUnit(id) {
     vuRenderUnidades();
     toast('Unidad eliminada', 'success');
   });
+}
+
+// ---- CARGA MASIVA ----
+
+function vuBulkCreate() {
+  var projects = vuGetProjects();
+  var currencies = DB.getAllCurrencies() || [];
+  var pid = vuProjectFilter();
+
+  var projectOpts = projects.map(function(p) {
+    return '<option value="' + p.id + '"' + (p.id === pid ? ' selected' : '') + '>' + p.name + '</option>';
+  }).join('');
+  var typeOpts = VU_UNIT_TYPES.map(function(t) {
+    return '<option value="' + t.id + '">' + t.label + '</option>';
+  }).join('');
+  var currOpts = currencies.map(function(c) {
+    return '<option value="' + c.id + '"' + (c.id === 'USD' ? ' selected' : '') + '>' + c.id + '</option>';
+  }).join('');
+
+  var body =
+    '<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">' +
+
+    // LEFT: Template config
+    '<div style="flex:1;min-width:280px;max-width:380px;">' +
+      '<div class="card" style="padding:16px;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px;"><i class="fas fa-sliders"></i> Plantilla</div>' +
+
+        '<div class="form-group">' +
+          '<label>Proyecto *</label>' +
+          '<select id="vub-project" class="form-control"><option value="">— Seleccionar —</option>' + projectOpts + '</select>' +
+        '</div>' +
+
+        '<div class="form-group">' +
+          '<label>Tipo de unidad</label>' +
+          '<select id="vub-type" class="form-control">' + typeOpts + '</select>' +
+        '</div>' +
+
+        '<div class="form-group">' +
+          '<label>Modo de numeración</label>' +
+          '<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">' +
+            '<label style="font-weight:normal;display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+              '<input type="radio" name="vub-mode" value="floors" checked onchange="vuBulkModeChange()">Pisos y letras</label>' +
+            '<label style="font-weight:normal;display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+              '<input type="radio" name="vub-mode" value="sequential" onchange="vuBulkModeChange()">Correlativo (cocheras, depósitos...)</label>' +
+            '<label style="font-weight:normal;display:flex;align-items:center;gap:6px;cursor:pointer;">' +
+              '<input type="radio" name="vub-mode" value="manual" onchange="vuBulkModeChange()">Lista manual</label>' +
+          '</div>' +
+        '</div>' +
+
+        // Panel: Pisos y letras
+        '<div id="vub-panel-floors" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;">' +
+          '<div class="form-group">' +
+            '<label>Pisos (separados por coma)</label>' +
+            '<input type="text" id="vub-floors" class="form-control" value="PB, EP, 1, 2, 3, 4, 5" placeholder="PB, EP, 1, 2, 3...">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Unidades por piso (separadas por coma)</label>' +
+            '<input type="text" id="vub-units-per-floor" class="form-control" value="A, B, C, D" placeholder="A, B, C, D...">' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Prefijo</label>' +
+              '<input type="text" id="vub-prefix" class="form-control" placeholder="Ej: Depto ">' +
+            '</div>' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Separador</label>' +
+              '<select id="vub-sep" class="form-control">' +
+                '<option value="">Ninguno → 2A</option>' +
+                '<option value="-">Guión → 2-A</option>' +
+                '<option value=" ">Espacio → 2 A</option>' +
+              '</select>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        // Panel: Correlativo
+        '<div id="vub-panel-sequential" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;">' +
+          '<div class="form-group">' +
+            '<label>Prefijo</label>' +
+            '<input type="text" id="vub-seq-prefix" class="form-control" placeholder="C- → C-01, C-02...">' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Desde</label>' +
+              '<input type="number" id="vub-seq-from" class="form-control" value="1">' +
+            '</div>' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Hasta</label>' +
+              '<input type="number" id="vub-seq-to" class="form-control" value="20">' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Relleno ceros</label>' +
+              '<select id="vub-seq-pad" class="form-control">' +
+                '<option value="0">Sin relleno</option>' +
+                '<option value="2" selected>2 dígitos (01…)</option>' +
+                '<option value="3">3 dígitos (001…)</option>' +
+              '</select>' +
+            '</div>' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Piso</label>' +
+              '<input type="text" id="vub-seq-floor" class="form-control" placeholder="Opcional">' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        // Panel: Manual
+        '<div id="vub-panel-manual" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;">' +
+          '<div class="form-group">' +
+            '<label>Identificadores (uno por línea)</label>' +
+            '<textarea id="vub-manual-list" class="form-control" rows="6" placeholder="Depto 1A&#10;Depto 1B&#10;Local 01&#10;Cochera 01"></textarea>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Piso (aplica a todos)</label>' +
+            '<input type="text" id="vub-manual-floor" class="form-control" placeholder="Opcional">' +
+          '</div>' +
+        '</div>' +
+
+        // Defaults
+        '<div style="border-top:1px solid var(--border);padding-top:12px;">' +
+          '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">VALORES POR DEFECTO</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>m²</label>' +
+              '<input type="number" id="vub-area" class="form-control" placeholder="0">' +
+            '</div>' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Ambientes</label>' +
+              '<input type="number" id="vub-rooms" class="form-control" placeholder="0">' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div class="form-group" style="flex:2;">' +
+              '<label>Precio de lista</label>' +
+              '<input type="number" id="vub-price" class="form-control" placeholder="0">' +
+            '</div>' +
+            '<div class="form-group" style="flex:1;">' +
+              '<label>Moneda</label>' +
+              '<select id="vub-currency" class="form-control">' + currOpts + '</select>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<button class="btn btn-primary" style="width:100%;margin-top:4px;" onclick="vuGenerateBulkPreview()">' +
+          '<i class="fas fa-play"></i> Generar preview' +
+        '</button>' +
+      '</div>' +
+    '</div>' +
+
+    // RIGHT: Preview
+    '<div style="flex:2;min-width:340px;">' +
+      '<div id="vub-preview-wrap">' +
+        '<div class="empty-state" style="min-height:220px;">' +
+          '<i class="fas fa-table"></i>' +
+          '<p>Configurá la plantilla y presioná "Generar preview"</p>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '</div>';
+
+  _vuBulkRows = [];
+  openModal('Carga Masiva de Unidades', body, 'modal-xl',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" id="vub-confirm-btn" onclick="vuConfirmBulkCreate()" style="display:none"><i class="fas fa-save"></i> Crear unidades</button>'
+  );
+}
+
+function vuBulkModeChange() {
+  var mode = 'floors';
+  var radios = document.querySelectorAll('input[name="vub-mode"]');
+  radios.forEach(function(r) { if (r.checked) mode = r.value; });
+  ['floors', 'sequential', 'manual'].forEach(function(m) {
+    var el = document.getElementById('vub-panel-' + m);
+    if (el) el.style.display = (m === mode) ? '' : 'none';
+  });
+}
+
+function vuBulkGetMode() {
+  var mode = 'floors';
+  var radios = document.querySelectorAll('input[name="vub-mode"]');
+  radios.forEach(function(r) { if (r.checked) mode = r.value; });
+  return mode;
+}
+
+function _vuBulkGenNumbers() {
+  var mode = vuBulkGetMode();
+  var results = [];
+
+  if (mode === 'floors') {
+    var floorsRaw = (document.getElementById('vub-floors') || {}).value || '';
+    var unitsRaw = (document.getElementById('vub-units-per-floor') || {}).value || '';
+    var prefix = (document.getElementById('vub-prefix') || {}).value || '';
+    var sep = (document.getElementById('vub-sep') || {}).value || '';
+    var floors = floorsRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var units = unitsRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    if (!floors.length || !units.length) return [];
+    floors.forEach(function(f) {
+      units.forEach(function(u) {
+        results.push({ number: prefix + f + sep + u, floor: f });
+      });
+    });
+
+  } else if (mode === 'sequential') {
+    var pfx = (document.getElementById('vub-seq-prefix') || {}).value || '';
+    var from = parseInt((document.getElementById('vub-seq-from') || {}).value) || 1;
+    var to = parseInt((document.getElementById('vub-seq-to') || {}).value) || 20;
+    var pad = parseInt((document.getElementById('vub-seq-pad') || {}).value) || 0;
+    var floorVal = (document.getElementById('vub-seq-floor') || {}).value || '';
+    if (isNaN(from) || isNaN(to) || from > to) return [];
+    if (to - from > 499) { toast('Maximo 500 unidades a la vez', 'error'); return []; }
+    for (var i = from; i <= to; i++) {
+      var numStr = pad > 0 ? String(i).padStart(pad, '0') : String(i);
+      results.push({ number: pfx + numStr, floor: floorVal });
+    }
+
+  } else if (mode === 'manual') {
+    var lines = ((document.getElementById('vub-manual-list') || {}).value || '').split('\n');
+    var floorM = (document.getElementById('vub-manual-floor') || {}).value || '';
+    lines.forEach(function(l) {
+      l = l.trim();
+      if (l) results.push({ number: l, floor: floorM });
+    });
+  }
+
+  return results;
+}
+
+function vuGenerateBulkPreview() {
+  var projectId = (document.getElementById('vub-project') || {}).value || '';
+  if (!projectId) { toast('Seleccione un proyecto', 'error'); return; }
+
+  var numbers = _vuBulkGenNumbers();
+  if (!numbers.length) { toast('No se generaron unidades con los parametros indicados', 'error'); return; }
+  if (numbers.length > 500) { toast('Maximo 500 unidades por vez', 'error'); return; }
+
+  var typeId = (document.getElementById('vub-type') || {}).value || 'dept';
+  var area = parseFloat((document.getElementById('vub-area') || {}).value) || 0;
+  var rooms = parseInt((document.getElementById('vub-rooms') || {}).value) || 0;
+  var price = parseFloat((document.getElementById('vub-price') || {}).value) || 0;
+  var currency = (document.getElementById('vub-currency') || {}).value || 'USD';
+
+  _vuBulkRows = numbers.map(function(n, idx) {
+    return { _idx: idx, checked: true, number: n.number, floor: n.floor, type: typeId,
+             area: area, rooms: rooms, list_price: price, currency: currency, status: 'available' };
+  });
+
+  vuRenderBulkPreview();
+}
+
+function vuRenderBulkPreview() {
+  var wrap = document.getElementById('vub-preview-wrap');
+  var confirmBtn = document.getElementById('vub-confirm-btn');
+  if (!wrap) return;
+
+  var checkedCnt = _vuBulkRows.filter(function(r) { return r.checked; }).length;
+  if (confirmBtn) {
+    confirmBtn.style.display = checkedCnt > 0 ? '' : 'none';
+    confirmBtn.innerHTML = '<i class="fas fa-save"></i> Crear ' + checkedCnt + ' unidad' + (checkedCnt !== 1 ? 'es' : '');
+  }
+
+  if (!_vuBulkRows.length) {
+    wrap.innerHTML = '<div class="empty-state"><i class="fas fa-table"></i><p>Sin unidades generadas</p></div>';
+    return;
+  }
+
+  var typeOpts = VU_UNIT_TYPES.map(function(t) { return '<option value="' + t.id + '">' + t.label + '</option>'; }).join('');
+  var statusOpts = Object.keys(VU_UNIT_STATUS).map(function(k) {
+    return '<option value="' + k + '">' + VU_UNIT_STATUS[k].label + '</option>';
+  }).join('');
+
+  var rows = _vuBulkRows.map(function(r, idx) {
+    var selType = typeOpts.replace('value="' + r.type + '"', 'value="' + r.type + '" selected');
+    var selStatus = statusOpts.replace('value="' + r.status + '"', 'value="' + r.status + '" selected');
+    return '<tr style="' + (r.checked ? '' : 'opacity:0.35') + '">' +
+      '<td style="text-align:center;padding:4px 6px;">' +
+        '<input type="checkbox"' + (r.checked ? ' checked' : '') + ' onchange="vuBulkToggleRow(' + idx + ',this.checked)">' +
+      '</td>' +
+      '<td style="padding:4px 6px;"><b style="font-size:12px">' + r.number + '</b></td>' +
+      '<td style="padding:4px 6px;font-size:11px;color:var(--text-muted)">' + (r.floor || '—') + '</td>' +
+      '<td style="padding:4px 2px;">' +
+        '<select class="form-control" style="padding:2px 4px;font-size:11px;height:28px" onchange="vuBulkUpdateRow(' + idx + ',\'type\',this.value)">' + selType + '</select>' +
+      '</td>' +
+      '<td style="padding:4px 2px;">' +
+        '<input type="number" value="' + (r.area || '') + '" class="form-control" style="width:60px;padding:2px 4px;font-size:11px;height:28px" onchange="vuBulkUpdateRow(' + idx + ',\'area\',this.value)">' +
+      '</td>' +
+      '<td style="padding:4px 2px;">' +
+        '<input type="number" value="' + (r.rooms || '') + '" class="form-control" style="width:50px;padding:2px 4px;font-size:11px;height:28px" onchange="vuBulkUpdateRow(' + idx + ',\'rooms\',this.value)">' +
+      '</td>' +
+      '<td style="padding:4px 2px;">' +
+        '<input type="number" value="' + (r.list_price || '') + '" class="form-control" style="width:100px;padding:2px 4px;font-size:11px;height:28px" onchange="vuBulkUpdateRow(' + idx + ',\'list_price\',this.value)">' +
+      '</td>' +
+      '<td style="padding:4px 2px;">' +
+        '<select class="form-control" style="padding:2px 4px;font-size:11px;height:28px" onchange="vuBulkUpdateRow(' + idx + ',\'status\',this.value)">' + selStatus + '</select>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+
+  var allChecked = _vuBulkRows.every(function(r) { return r.checked; });
+
+  wrap.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+      '<div style="font-size:13px;font-weight:600"><i class="fas fa-table" style="color:var(--primary);margin-right:6px"></i>Vista previa — ' + _vuBulkRows.length + ' unidades</div>' +
+      '<button class="btn btn-sm btn-secondary" onclick="vuBulkSelectAll(' + !allChecked + ')">' +
+        '<i class="fas ' + (allChecked ? 'fa-square' : 'fa-check-square') + '"></i> ' + (allChecked ? 'Deseleccionar todas' : 'Seleccionar todas') +
+      '</button>' +
+    '</div>' +
+    '<div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);">' +
+      '<table class="table" style="margin:0;font-size:12px">' +
+        '<thead><tr>' +
+          '<th style="width:28px"></th>' +
+          '<th>Número</th>' +
+          '<th>Piso</th>' +
+          '<th>Tipo</th>' +
+          '<th>m²</th>' +
+          '<th>Amb.</th>' +
+          '<th>Precio lista</th>' +
+          '<th>Estado inicial</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>';
+}
+
+function vuBulkToggleRow(idx, checked) {
+  if (_vuBulkRows[idx]) {
+    _vuBulkRows[idx].checked = !!checked;
+    var cnt = _vuBulkRows.filter(function(r) { return r.checked; }).length;
+    var btn = document.getElementById('vub-confirm-btn');
+    if (btn) {
+      btn.style.display = cnt > 0 ? '' : 'none';
+      btn.innerHTML = '<i class="fas fa-save"></i> Crear ' + cnt + ' unidad' + (cnt !== 1 ? 'es' : '');
+    }
+    var tr = document.querySelectorAll('#vub-preview-wrap tbody tr')[idx];
+    if (tr) tr.style.opacity = checked ? '1' : '0.35';
+  }
+}
+
+function vuBulkUpdateRow(idx, field, value) {
+  if (!_vuBulkRows[idx]) return;
+  if (field === 'area' || field === 'list_price') _vuBulkRows[idx][field] = parseFloat(value) || 0;
+  else if (field === 'rooms') _vuBulkRows[idx][field] = parseInt(value) || 0;
+  else _vuBulkRows[idx][field] = value;
+}
+
+function vuBulkSelectAll(sel) {
+  _vuBulkRows.forEach(function(r) { r.checked = !!sel; });
+  vuRenderBulkPreview();
+}
+
+function vuConfirmBulkCreate() {
+  var projectId = (document.getElementById('vub-project') || {}).value || '';
+  if (!projectId) { toast('Seleccione un proyecto', 'error'); return; }
+
+  var toCreate = _vuBulkRows.filter(function(r) { return r.checked; });
+  if (!toCreate.length) { toast('No hay unidades seleccionadas', 'error'); return; }
+
+  var existing = DB.getAll('unidades');
+  var existNums = {};
+  existing.forEach(function(u) { if (u.project_id === projectId) existNums[u.number] = true; });
+
+  var dups = toCreate.filter(function(r) { return existNums[r.number]; });
+  if (dups.length) {
+    var names = dups.slice(0, 4).map(function(d) { return d.number; }).join(', ');
+    toast('Numeros duplicados: ' + names + (dups.length > 4 ? '...' : ''), 'error');
+    return;
+  }
+
+  toCreate.forEach(function(r) {
+    DB.insert('unidades', {
+      project_id: projectId,
+      number: r.number,
+      floor: r.floor || '',
+      type: r.type || 'dept',
+      area: r.area || 0,
+      rooms: r.rooms || 0,
+      list_price: r.list_price || 0,
+      currency: r.currency || 'USD',
+      status: r.status || 'available',
+      notes: '',
+    });
+  });
+
+  closeModal();
+  toast(toCreate.length + ' unidades creadas correctamente', 'success');
+  vuRenderUnidades();
 }
 
 // ---- TAB 2: CONTRATOS DE VENTA ----
