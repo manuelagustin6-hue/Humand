@@ -106,10 +106,10 @@ function _clienteForm(c) {
       '</select></div>' +
     '<div class="form-group"><label>N° Documento</label>' +
       '<input type="text" id="cf-docnum" class="form-control" value="' + (c.doc_number || '') + '"></div>' +
-    '<div class="form-group"><label>Telefono</label>' +
-      '<input type="text" id="cf-phone" class="form-control" value="' + (c.phone || '') + '"></div>' +
-    '<div class="form-group"><label>Email</label>' +
-      '<input type="email" id="cf-email" class="form-control" value="' + (c.email || '') + '"></div>' +
+    '<div class="form-group"><label>Telefono *</label>' +
+      '<input type="text" id="cf-phone" class="form-control" value="' + (c.phone || '') + '" placeholder="+54 11 1234-5678"></div>' +
+    '<div class="form-group"><label>Email *</label>' +
+      '<input type="email" id="cf-email" class="form-control" value="' + (c.email || '') + '" placeholder="correo@ejemplo.com"></div>' +
     '<div class="form-group"><label>Direccion</label>' +
       '<input type="text" id="cf-address" class="form-control" value="' + (c.address || '') + '"></div>' +
   '</div>' +
@@ -136,7 +136,11 @@ function clienteEdit(id) {
 function clienteGuardar(id) {
   var g = function(eid) { return (document.getElementById(eid) || {}).value || ''; };
   var name = g('cf-name').trim();
+  var phone = g('cf-phone').trim();
+  var email = g('cf-email').trim();
   if (!name) { toast('El nombre es obligatorio', 'error'); return; }
+  if (!phone) { toast('El telefono es obligatorio', 'error'); return; }
+  if (!email) { toast('El email es obligatorio', 'error'); return; }
   var data = {
     name: name,
     doc_type: g('cf-doctype'),
@@ -645,8 +649,8 @@ function ccliNuevoClienteInline() {
       '<div class="form-group"><label>Nombre *</label><input type="text" id="ccli-nc-name" class="form-control"></div>' +
       '<div class="form-group"><label>Tipo Doc.</label><select id="ccli-nc-doctype" class="form-control"><option>DNI</option><option>CUIT</option><option>PASSPORT</option></select></div>' +
       '<div class="form-group"><label>N° Doc.</label><input type="text" id="ccli-nc-docnum" class="form-control"></div>' +
-      '<div class="form-group"><label>Telefono</label><input type="text" id="ccli-nc-phone" class="form-control"></div>' +
-      '<div class="form-group"><label>Email</label><input type="email" id="ccli-nc-email" class="form-control"></div>' +
+      '<div class="form-group"><label>Telefono *</label><input type="text" id="ccli-nc-phone" class="form-control" placeholder="+54 11 1234-5678"></div>' +
+      '<div class="form-group"><label>Email *</label><input type="email" id="ccli-nc-email" class="form-control" placeholder="correo@ejemplo.com"></div>' +
     '</div>' +
     '<button class="btn btn-sm btn-primary" onclick="ccliCrearYUsarCliente()" type="button"><i class="fas fa-save"></i> Crear y usar</button>' +
     '<button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'ccli-inline-cliente\').remove()" type="button" style="margin-left:8px">Cancelar</button>';
@@ -657,7 +661,11 @@ function ccliNuevoClienteInline() {
 function ccliCrearYUsarCliente() {
   var g = function(id) { return (document.getElementById(id) || {}).value || ''; };
   var name = g('ccli-nc-name').trim();
+  var phone = g('ccli-nc-phone').trim();
+  var email = g('ccli-nc-email').trim();
   if (!name) { toast('Ingrese el nombre', 'error'); return; }
+  if (!phone) { toast('El telefono es obligatorio', 'error'); return; }
+  if (!email) { toast('El email es obligatorio', 'error'); return; }
   var saved = DB.insert('clientes', {
     name: name,
     doc_type: g('ccli-nc-doctype'),
