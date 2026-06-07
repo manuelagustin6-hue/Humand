@@ -181,7 +181,24 @@ const DB = {
   getGlobal() {
     try {
       var raw = localStorage.getItem(this.GLOBAL_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        var data = JSON.parse(raw);
+        var seed = this._seedGlobal();
+        var needsSave = false;
+        if (!data.taxPresets) {
+          data.taxPresets = seed.taxPresets;
+          needsSave = true;
+        } else {
+          Object.keys(seed.taxPresets).forEach(function(key) {
+            if (!data.taxPresets[key]) {
+              data.taxPresets[key] = seed.taxPresets[key];
+              needsSave = true;
+            }
+          });
+        }
+        if (needsSave) this.saveGlobal(data);
+        return data;
+      }
       return this._initGlobal();
     } catch(e) {
       return this._initGlobal();
@@ -370,6 +387,13 @@ const DB = {
           { id: 'br-iss', name: 'ISS', type: 'service_tax', rate: 5, applies_to: 'sales' },
           { id: 'br-irpj', name: 'IRPJ', type: 'income_tax', rate: 15, applies_to: 'purchases' },
           { id: 'br-csll', name: 'CSLL', type: 'income_tax', rate: 9, applies_to: 'purchases' },
+        ]},
+        US: { name: 'Estados Unidos', taxes: [
+          { id: 'us-sales-tax', name: 'Sales Tax', type: 'sales_tax', rate: 8.5, applies_to: 'sales' },
+          { id: 'us-corp-tax', name: 'Federal Corporate Tax', type: 'income_tax', rate: 21, applies_to: 'income' },
+          { id: 'us-fica', name: 'FICA Employer', type: 'social', rate: 7.65, applies_to: 'payroll' },
+          { id: 'us-fed-wh', name: 'Federal Withholding', type: 'withholding', rate: 24, applies_to: 'purchases' },
+          { id: 'us-state-tax', name: 'State Tax (avg)', type: 'income_tax', rate: 5, applies_to: 'income' },
         ]},
       }
     };
