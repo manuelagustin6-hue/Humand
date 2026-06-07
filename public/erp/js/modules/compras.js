@@ -1082,7 +1082,16 @@ function openSIForm(id, prefillPoId, prefillCertId) {
   var defaultImputacion  = si ? (si.imputacion || []) : [];
   var rubros             = DB.getAll('rubros').filter(function(r) { return r.active !== false; }).sort(function(a, b) { return a.code.localeCompare(b.code); });
 
-  window._siImpLines = defaultImputacion.map(function(l) { return Object.assign({}, l); });
+  var defaultTaxLines = [];
+  if (si && si.taxes && si.taxes.length) {
+    defaultTaxLines = si.taxes.map(function(t) { return Object.assign({}, t); });
+  } else if (si) {
+    if (defaultPercIva  > 0) defaultTaxLines.push({ type: 'perc_iva',  amount: defaultPercIva });
+    if (defaultPercIibb > 0) defaultTaxLines.push({ type: 'perc_iibb', amount: defaultPercIibb });
+  }
+
+  window._siImpLines  = defaultImputacion.map(function(l) { return Object.assign({}, l); });
+  window._siTaxLines  = defaultTaxLines.map(function(t) { return Object.assign({}, t); });
 
   openModal(si ? 'Editar Factura Proveedor' : 'Nueva Factura de Proveedor',
     '<div class="form-grid form-grid-2">' +
@@ -1127,30 +1136,45 @@ function openSIForm(id, prefillPoId, prefillCertId) {
         '<input class="form-control" id="si-due" type="date" value="' + ((si && si.due_date) || addDays(todayStr(), 30)) + '"></div>' +
     '</div>' +
 
-    '<div style="background:var(--bg);border-radius:var(--radius-sm);padding:16px;margin:4px 0 16px">' +
-      '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Importes</div>' +
-      '<div class="form-grid form-grid-2">' +
-        '<div class="form-group"><label class="form-label">Neto / Subtotal</label>' +
-          '<input class="form-control" id="si-subtotal" type="number" min="0" step="0.01" value="' + defaultSubtotal + '" oninput="siRecalcFromSubtotal()"></div>' +
-        '<div class="form-group" style="display:flex;gap:8px">' +
-          '<div style="flex:0 0 120px"><label class="form-label">Alicuota IVA</label>' +
-            '<select class="form-control" id="si-iva-rate" onchange="siRecalcFromRate()">' +
-              '<option value="21"'   + (defaultIvaRate === 21   ? ' selected' : '') + '>21%</option>' +
-              '<option value="10.5"' + (defaultIvaRate === 10.5 ? ' selected' : '') + '>10.5%</option>' +
-              '<option value="27"'   + (defaultIvaRate === 27   ? ' selected' : '') + '>27%</option>' +
-              '<option value="0"'    + (defaultIvaRate === 0    ? ' selected' : '') + '>0% Exento</option>' +
-            '</select></div>' +
-          '<div style="flex:1"><label class="form-label">IVA $</label>' +
-            '<input class="form-control" id="si-tax" type="number" min="0" step="0.01" value="' + Number(defaultTax).toFixed(2) + '" oninput="siRecalcTotal()"></div>' +
-        '</div>' +
-        '<div class="form-group"><label class="form-label">Percepciones IVA</label>' +
-          '<input class="form-control" id="si-perc-iva" type="number" min="0" step="0.01" value="' + defaultPercIva + '" oninput="siRecalcTotal()" placeholder="0.00"></div>' +
-        '<div class="form-group"><label class="form-label">Percepciones IIBB / Sel. Ingresos</label>' +
-          '<input class="form-control" id="si-perc-iibb" type="number" min="0" step="0.01" value="' + defaultPercIibb + '" oninput="siRecalcTotal()" placeholder="0.00"></div>' +
-        '<div class="form-group full" style="border-top:2px solid var(--primary);padding-top:10px;margin-top:4px">' +
-          '<label class="form-label" style="font-weight:700">TOTAL FACTURA</label>' +
-          '<input class="form-control" id="si-total" readonly value="' + Number(defaultTotal).toFixed(2) + '" style="font-weight:700;color:var(--primary);font-size:15px;background:var(--primary-light)"></div>' +
+    '<div class="divider"></div>' +
+    '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px"><i class="fas fa-calculator" style="margin-right:6px;color:var(--primary)"></i>Importes</div>' +
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;align-items:end">' +
+      '<div class="form-group" style="margin:0">' +
+        '<label class="form-label" style="font-weight:700">Neto / Subtotal <small style="color:var(--text-muted);font-weight:400">(sin impuestos)</small></label>' +
+        '<input class="form-control" id="si-subtotal" type="number" min="0" step="0.01" value="' + defaultSubtotal + '" oninput="siRecalcFromSubtotal()" style="font-size:15px;font-weight:700">' +
       '</div>' +
+      '<div class="form-group" style="margin:0">' +
+        '<label class="form-label">IVA</label>' +
+        '<div style="display:grid;grid-template-columns:130px 1fr;gap:6px">' +
+          '<select class="form-control" id="si-iva-rate" onchange="siRecalcFromRate()">' +
+            '<option value="21"'   + (defaultIvaRate === 21   ? ' selected' : '') + '>Alicuota 21%</option>' +
+            '<option value="10.5"' + (defaultIvaRate === 10.5 ? ' selected' : '') + '>Alicuota 10.5%</option>' +
+            '<option value="27"'   + (defaultIvaRate === 27   ? ' selected' : '') + '>Alicuota 27%</option>' +
+            '<option value="0"'    + (defaultIvaRate === 0    ? ' selected' : '') + '>0% Exento</option>' +
+          '</select>' +
+          '<input class="form-control" id="si-tax" type="number" min="0" step="0.01" value="' + Number(defaultTax).toFixed(2) + '" oninput="siRecalcTotal()" placeholder="Monto IVA $">' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="margin-bottom:16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+        '<span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.3px">Otros impuestos y percepciones</span>' +
+        '<button class="btn btn-sm btn-secondary" onclick="siAddTaxLine()"><i class="fas fa-plus"></i> Agregar</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 150px 36px;gap:6px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted);padding:0 2px" id="si-tax-lines-header">' +
+        '<span>Tipo</span><span>Importe</span><span></span>' +
+      '</div>' +
+      '<div id="si-tax-lines">' +
+        (defaultTaxLines.length
+          ? defaultTaxLines.map(function(t, i) { return buildSiTaxRow(t, i); }).join('')
+          : '<div id="si-tax-empty" style="font-size:12px;color:var(--text-muted);font-style:italic;padding:6px 2px">Sin percepciones ni impuestos adicionales</div>') +
+      '</div>' +
+    '</div>' +
+
+    '<div id="si-tax-summary" style="background:var(--bg);border-radius:var(--radius-sm);padding:14px 16px">' +
+      buildSiTaxSummaryHtml({ sub: defaultSubtotal, iva: defaultTax, ivaRate: defaultIvaRate, taxLines: defaultTaxLines }) +
     '</div>' +
 
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
@@ -1185,14 +1209,13 @@ function prefillSIFromPO(poId) {
   if (certEl) certEl.value = '';
   const subEl  = document.getElementById('si-subtotal');
   const taxEl  = document.getElementById('si-tax');
-  const totEl  = document.getElementById('si-total');
   const supEl  = document.getElementById('si-supplier');
   const projEl = document.getElementById('si-project');
   if (subEl)  subEl.value  = po.subtotal || 0;
   if (taxEl)  taxEl.value  = po.tax || 0;
-  if (totEl)  totEl.value  = po.total || 0;
   if (supEl)  supEl.value  = po.supplier_id || '';
   if (projEl) projEl.value = po.project_id || '';
+  siRecalcTotal();
 }
 
 function prefillSIFromCert(certId) {
@@ -1207,14 +1230,13 @@ function prefillSIFromCert(certId) {
   const tax    = Math.round(net * 21) / 100;
   const subEl  = document.getElementById('si-subtotal');
   const taxEl  = document.getElementById('si-tax');
-  const totEl  = document.getElementById('si-total');
   const supEl  = document.getElementById('si-supplier');
   const projEl = document.getElementById('si-project');
   if (subEl)  subEl.value  = net;
-  if (taxEl)  taxEl.value  = tax;
-  if (totEl)  totEl.value  = (net + tax).toFixed(2);
+  if (taxEl)  taxEl.value  = tax.toFixed(2);
   if (supEl  && contract && contract.contractor_id) supEl.value  = contract.contractor_id;
   if (projEl && cert.project_id)                    projEl.value = cert.project_id;
+  siRecalcTotal();
   // prefill notes
   const notesEl = document.getElementById('si-notes');
   if (notesEl && !notesEl.value) {
@@ -1223,7 +1245,7 @@ function prefillSIFromCert(certId) {
 }
 
 function siRecalcFromSubtotal() {
-  var sub = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var sub  = parseFloat(document.getElementById('si-subtotal').value) || 0;
   var rate = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
   var taxEl = document.getElementById('si-tax');
   if (taxEl) taxEl.value = (Math.round(sub * rate) / 100).toFixed(2);
@@ -1231,7 +1253,7 @@ function siRecalcFromSubtotal() {
 }
 
 function siRecalcFromRate() {
-  var sub = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var sub  = parseFloat(document.getElementById('si-subtotal').value) || 0;
   var rate = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
   var taxEl = document.getElementById('si-tax');
   if (taxEl) taxEl.value = (Math.round(sub * rate) / 100).toFixed(2);
@@ -1239,12 +1261,8 @@ function siRecalcFromRate() {
 }
 
 function siRecalcTotal() {
-  var sub      = parseFloat(document.getElementById('si-subtotal').value) || 0;
-  var tax      = parseFloat((document.getElementById('si-tax') || {}).value) || 0;
-  var percIva  = parseFloat((document.getElementById('si-perc-iva') || {}).value) || 0;
-  var percIibb = parseFloat((document.getElementById('si-perc-iibb') || {}).value) || 0;
-  var totEl    = document.getElementById('si-total');
-  if (totEl) totEl.value = (sub + tax + percIva + percIibb).toFixed(2);
+  var summEl = document.getElementById('si-tax-summary');
+  if (summEl) summEl.innerHTML = buildSiTaxSummaryHtml();
   var impTotEl = document.getElementById('si-imp-totals');
   if (impTotEl) impTotEl.innerHTML = calcSiImpTotalsHtml((window._siImpLines || []).filter(Boolean));
 }
@@ -1254,13 +1272,15 @@ function recalcSI() { siRecalcFromSubtotal(); }
 function saveSI(id) {
   const supplierId = document.getElementById('si-supplier').value;
   if (!supplierId) { toast('El proveedor es obligatorio', 'error'); return; }
-  var sub      = parseFloat(document.getElementById('si-subtotal').value) || 0;
-  var ivaRate  = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
-  var taxRaw   = parseFloat(document.getElementById('si-tax').value);
-  var tax      = isNaN(taxRaw) ? Math.round(sub * ivaRate) / 100 : taxRaw;
-  var percIva  = parseFloat((document.getElementById('si-perc-iva') || {}).value) || 0;
-  var percIibb = parseFloat((document.getElementById('si-perc-iibb') || {}).value) || 0;
-  var certId   = document.getElementById('si-cert').value || '';
+  var sub       = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var ivaRate   = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
+  var taxRaw    = parseFloat(document.getElementById('si-tax').value);
+  var tax       = isNaN(taxRaw) ? Math.round(sub * ivaRate) / 100 : taxRaw;
+  var taxes     = (window._siTaxLines || []).filter(Boolean).filter(function(t) { return t.amount > 0; });
+  var percIva   = taxes.filter(function(t) { return t.type === 'perc_iva'; }).reduce(function(s, t) { return s + t.amount; }, 0);
+  var percIibb  = taxes.filter(function(t) { return t.type === 'perc_iibb'; }).reduce(function(s, t) { return s + t.amount; }, 0);
+  var otherTaxTotal = taxes.reduce(function(s, t) { return s + (t.amount || 0); }, 0);
+  var certId    = document.getElementById('si-cert').value || '';
   var imputacion = (window._siImpLines || []).filter(Boolean).filter(function(l) { return l.rubro_id || l.amount; });
 
   if (imputacion.length) {
@@ -1283,7 +1303,8 @@ function saveSI(id) {
     tax:         tax,
     perc_iva:    percIva,
     perc_iibb:   percIibb,
-    total:       parseFloat(document.getElementById('si-total').value) || (sub + tax + percIva + percIibb),
+    taxes:       taxes,
+    total:       sub + tax + otherTaxTotal,
     status:      document.getElementById('si-status').value,
     notes:       document.getElementById('si-notes').value.trim(),
     imputacion:  imputacion,
@@ -1298,10 +1319,14 @@ function saveSI(id) {
 
   // Generate journal entry from imputacion lines
   if (typeof autoJournalEntryFromImputacion === 'function') {
-    autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, { iva: tax, percIva: percIva, percIibb: percIibb }, data.date, data.number);
+    var jeTaxes = { iva: tax };
+    if (percIva  > 0) jeTaxes.percIva  = percIva;
+    if (percIibb > 0) jeTaxes.percIibb = percIibb;
+    autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, jeTaxes, data.date, data.number);
   }
 
   window._siImpLines = [];
+  window._siTaxLines = [];
   closeModal();
   renderCompras();
 }
@@ -1319,6 +1344,19 @@ function deleteSI(id) {
     renderCompras();
   });
 }
+
+// ---- SI TAX TYPES ----
+var SI_TAX_TYPES = [
+  { id: 'perc_iva',  label: 'Percepciones IVA' },
+  { id: 'perc_iibb', label: 'Percepciones IIBB / Sel. Ingresos' },
+  { id: 'ret_gan',   label: 'Retencion Ganancias' },
+  { id: 'ret_iva',   label: 'Retencion IVA' },
+  { id: 'suss',      label: 'Retencion SUSS' },
+  { id: 'sellos',    label: 'Impuesto de Sellos' },
+  { id: 'otro',      label: 'Otro' },
+];
+
+window._siTaxLines = [];
 
 // ---- SI IMPUTACION ----
 window._siImpLines = [];
@@ -1377,6 +1415,90 @@ function siRemoveImpLine(i) {
   window._siImpLines[i] = null;
   var el = document.getElementById('si-imp-totals');
   if (el) el.innerHTML = calcSiImpTotalsHtml(window._siImpLines.filter(Boolean));
+}
+
+// ---- SI TAX LINES ----
+function buildSiTaxRow(line, i) {
+  var typeOpts = SI_TAX_TYPES.map(function(t) {
+    return '<option value="' + t.id + '"' + (line.type === t.id ? ' selected' : '') + '>' + t.label + '</option>';
+  }).join('');
+  return '<div id="si-tax-row-' + i + '" style="display:grid;grid-template-columns:1fr 150px 36px;gap:6px;margin-bottom:6px;align-items:center">' +
+    '<select class="form-control" style="font-size:12px" onchange="siUpdateTaxLineType(' + i + ',this.value)">' + typeOpts + '</select>' +
+    '<input class="form-control" style="font-size:12px;text-align:right" type="number" min="0" step="0.01" placeholder="0.00" value="' + (line.amount || 0) + '" oninput="siUpdateTaxLineAmount(' + i + ',+this.value)">' +
+    '<button class="btn-ghost btn danger" onclick="siRemoveTaxLine(' + i + ')"><i class="fas fa-times"></i></button>' +
+  '</div>';
+}
+
+function siAddTaxLine() {
+  var newLine = { type: 'perc_iva', amount: 0 };
+  window._siTaxLines.push(newLine);
+  var i    = window._siTaxLines.length - 1;
+  var cont = document.getElementById('si-tax-lines');
+  if (!cont) return;
+  var empty = document.getElementById('si-tax-empty');
+  if (empty) empty.remove();
+  var hdr = document.getElementById('si-tax-lines-header');
+  if (hdr) hdr.style.display = '';
+  var div = document.createElement('div');
+  div.innerHTML = buildSiTaxRow(newLine, i);
+  cont.appendChild(div.firstElementChild);
+  siRecalcTotal();
+}
+
+function siRemoveTaxLine(i) {
+  var row = document.getElementById('si-tax-row-' + i);
+  if (row) row.remove();
+  window._siTaxLines[i] = null;
+  siRecalcTotal();
+}
+
+function siUpdateTaxLineType(i, typeId) {
+  if (!window._siTaxLines[i]) window._siTaxLines[i] = { type: typeId, amount: 0 };
+  window._siTaxLines[i].type = typeId;
+  siRecalcTotal();
+}
+
+function siUpdateTaxLineAmount(i, val) {
+  if (!window._siTaxLines[i]) window._siTaxLines[i] = { type: 'otro', amount: 0 };
+  window._siTaxLines[i].amount = val || 0;
+  siRecalcTotal();
+}
+
+function buildSiTaxSummaryHtml(opts) {
+  opts = opts || {};
+  var sub      = (opts.sub      !== undefined) ? opts.sub      : (parseFloat((document.getElementById('si-subtotal') || {}).value) || 0);
+  var iva      = (opts.iva      !== undefined) ? opts.iva      : (parseFloat((document.getElementById('si-tax')      || {}).value) || 0);
+  var ivaRate  = (opts.ivaRate  !== undefined) ? opts.ivaRate  : (parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21);
+  var taxLines = (opts.taxLines !== undefined) ? opts.taxLines : ((window._siTaxLines || []).filter(Boolean).filter(function(t) { return t.amount > 0; }));
+  var otherTaxTotal = taxLines.reduce(function(s, t) { return s + (t.amount || 0); }, 0);
+  var total    = sub + iva + otherTaxTotal;
+
+  var rows = '<table style="width:100%;border-collapse:collapse">' +
+    '<tr>' +
+      '<td style="font-size:13px;color:var(--text-muted);padding:3px 0">Neto:</td>' +
+      '<td style="text-align:right;font-size:13px;font-weight:600;padding:3px 0">' + fmtMoney(sub) + '</td>' +
+    '</tr>' +
+    '<tr>' +
+      '<td style="font-size:13px;color:var(--text-muted);padding:3px 0">IVA (' + ivaRate + '%):</td>' +
+      '<td style="text-align:right;font-size:13px;font-weight:600;padding:3px 0">' + fmtMoney(iva) + '</td>' +
+    '</tr>';
+
+  taxLines.forEach(function(t) {
+    var typeInfo = SI_TAX_TYPES.find(function(x) { return x.id === t.type; }) || { label: t.type || 'Impuesto' };
+    rows += '<tr>' +
+      '<td style="font-size:13px;color:var(--text-muted);padding:3px 0">' + typeInfo.label + ':</td>' +
+      '<td style="text-align:right;font-size:13px;font-weight:600;padding:3px 0">' + fmtMoney(t.amount) + '</td>' +
+    '</tr>';
+  });
+
+  rows +=
+    '<tr><td colspan="2" style="padding:6px 0 4px"><div style="border-top:2px solid var(--primary)"></div></td></tr>' +
+    '<tr>' +
+      '<td style="font-weight:800;font-size:15px;color:var(--primary)">TOTAL FACTURA:</td>' +
+      '<td style="text-align:right;font-weight:800;font-size:16px;color:var(--primary)">' + fmtMoney(total) + '</td>' +
+    '</tr>' +
+    '</table>';
+  return rows;
 }
 
 function calcSiImpTotalsHtml(lines, netoOverride) {
