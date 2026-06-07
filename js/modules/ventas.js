@@ -94,10 +94,13 @@ function vuRenderUnidades() {
   var pid = vuProjectFilter();
   if (pid) units = units.filter(function(u) { return u.project_id === pid; });
 
+  var avail    = units.filter(function(u) { return u.status === 'available'; }).length;
+  var reserved = units.filter(function(u) { return u.status === 'reserved'; }).length;
+  var sold     = units.filter(function(u) { return u.status === 'sold'; }).length;
+
   var html =
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">' +
-      '<div style="display:flex;gap:12px;align-items:center;">' +
-        '<b style="font-size:14px;">Unidades</b>' +
+    '<div class="toolbar">' +
+      '<div class="toolbar-left">' +
         (pid ? '' :
           '<select class="form-control" style="width:220px" onchange="vuFilterProject(this.value)">' +
             '<option value="">Todos los proyectos</option>' +
@@ -105,42 +108,25 @@ function vuRenderUnidades() {
           '</select>'
         ) +
       '</div>' +
-      '<div style="display:flex;gap:8px;">' +
+      '<div class="btn-group">' +
         '<button class="btn btn-secondary" onclick="vuBulkCreate()"><i class="fas fa-layer-group"></i> Carga Masiva</button>' +
         '<button class="btn btn-primary" onclick="vuNewUnit()"><i class="fas fa-plus"></i> Nueva Unidad</button>' +
       '</div>' +
-    '</div>';
+    '</div>' +
 
-  // Summary badges
-  var avail = units.filter(function(u) { return u.status === 'available'; }).length;
-  var reserved = units.filter(function(u) { return u.status === 'reserved'; }).length;
-  var sold = units.filter(function(u) { return u.status === 'sold'; }).length;
-  html +=
-    '<div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">' +
-      '<div class="card" style="flex:1;min-width:110px;text-align:center;padding:16px 12px;">' +
-        '<div style="font-size:24px;font-weight:700;color:var(--success)">' + avail + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted)">Disponibles</div>' +
-      '</div>' +
-      '<div class="card" style="flex:1;min-width:110px;text-align:center;padding:16px 12px;">' +
-        '<div style="font-size:24px;font-weight:700;color:var(--warning)">' + reserved + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted)">Reservadas</div>' +
-      '</div>' +
-      '<div class="card" style="flex:1;min-width:110px;text-align:center;padding:16px 12px;">' +
-        '<div style="font-size:24px;font-weight:700;color:var(--primary)">' + sold + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted)">Vendidas</div>' +
-      '</div>' +
-      '<div class="card" style="flex:1;min-width:110px;text-align:center;padding:16px 12px;">' +
-        '<div style="font-size:24px;font-weight:700;color:var(--text)">' + units.length + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted)">Total</div>' +
-      '</div>' +
+    '<div class="stat-mini-row">' +
+      '<div class="stat-mini green"><div class="stat-mini-num">' + avail + '</div><div class="stat-mini-lbl">Disponibles</div></div>' +
+      '<div class="stat-mini yellow"><div class="stat-mini-num">' + reserved + '</div><div class="stat-mini-lbl">Reservadas</div></div>' +
+      '<div class="stat-mini blue"><div class="stat-mini-num">' + sold + '</div><div class="stat-mini-lbl">Vendidas</div></div>' +
+      '<div class="stat-mini"><div class="stat-mini-num">' + units.length + '</div><div class="stat-mini-lbl">Total</div></div>' +
     '</div>';
 
   if (!units.length) {
-    html += '<div class="empty-state"><i class="fas fa-house-chimney"></i><p>No hay unidades registradas</p></div>';
+    html += '<div class="empty-state"><i class="fas fa-house-chimney"></i><p>No hay unidades registradas</p><span class="empty-hint">Creá una unidad nueva o usá Carga Masiva para importar varias a la vez</span></div>';
   } else {
-    html += '<table class="table">' +
+    html += '<div class="table-wrap"><table class="table">' +
       '<thead><tr>' +
-        '<th>Unidad</th><th>Proyecto</th><th>Tipo</th><th>Piso</th><th>Sup. (m2)</th><th>Ambientes</th><th>Precio Lista</th><th>Estado</th><th></th>' +
+        '<th>Unidad</th><th>Proyecto</th><th>Tipo</th><th>Piso</th><th>m²</th><th>Amb.</th><th>Precio Lista</th><th>Estado</th><th></th>' +
       '</tr></thead><tbody>';
     units.forEach(function(u) {
       var proj = projects.find(function(p) { return p.id === u.project_id; });
@@ -148,21 +134,25 @@ function vuRenderUnidades() {
       var typeLabel = (VU_UNIT_TYPES.find(function(t) { return t.id === u.type; }) || {}).label || u.type;
       html += '<tr>' +
         '<td><b>' + u.number + '</b></td>' +
-        '<td style="font-size:12px">' + (proj ? proj.name : '-') + '</td>' +
+        '<td class="text-sm text-muted">' + (proj ? proj.name : '—') + '</td>' +
         '<td>' + typeLabel + '</td>' +
-        '<td>' + (u.floor || '-') + '</td>' +
-        '<td>' + (u.area || '-') + '</td>' +
-        '<td>' + (u.rooms || '-') + '</td>' +
-        '<td>' + fmtMoney(u.list_price, u.currency) + '</td>' +
-        '<td><span class="badge ' + st.badge + '">' + st.label + '</span></td>' +
-        '<td style="white-space:nowrap;">' +
-          '<button class="btn btn-sm btn-secondary" onclick="vuEditUnit(\'' + u.id + '\')"><i class="fas fa-edit"></i></button> ' +
-          (u.status === 'available' ? '<button class="btn btn-sm btn-primary" onclick="vuNewVentaForUnit(\'' + u.id + '\')"><i class="fas fa-handshake"></i> Vender</button> ' : '') +
-          '<button class="btn btn-sm btn-danger" onclick="vuDeleteUnit(\'' + u.id + '\')"><i class="fas fa-trash"></i></button>' +
+        '<td>' + (u.floor || '—') + '</td>' +
+        '<td class="number-cell">' + (u.area || '—') + '</td>' +
+        '<td class="text-center">' + (u.rooms || '—') + '</td>' +
+        '<td class="number-cell">' + fmtMoney(u.list_price, u.currency) + '</td>' +
+        '<td><span class="badge badge-dot ' + st.badge + '">' + st.label + '</span></td>' +
+        '<td class="nowrap">' +
+          '<div class="table-actions">' +
+            '<button class="action-btn" onclick="vuEditUnit(\'' + u.id + '\')" title="Editar"><i class="fas fa-pencil"></i></button>' +
+            (u.status === 'available'
+              ? '<button class="action-btn success" onclick="vuNewVentaForUnit(\'' + u.id + '\')" title="Vender"><i class="fas fa-handshake"></i></button>'
+              : '') +
+            '<button class="action-btn danger" onclick="vuDeleteUnit(\'' + u.id + '\')" title="Eliminar"><i class="fas fa-trash"></i></button>' +
+          '</div>' +
         '</td>' +
       '</tr>';
     });
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
   }
 
   var panel = document.getElementById('tab-vu-unidades');

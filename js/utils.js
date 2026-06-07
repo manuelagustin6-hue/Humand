@@ -113,13 +113,17 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 });
 
 // ---- TOAST ----
-function toast(msg, type = 'info') {
-  const icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-circle', info: 'fa-info-circle' };
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${msg}</span>`;
-  document.getElementById('toast-wrap').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+function toast(msg, type) {
+  type = type || 'info';
+  var icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML =
+    '<span class="toast-icon"><i class="fas ' + (icons[type] || icons.info) + '"></i></span>' +
+    '<span>' + msg + '</span>';
+  var wrap = document.getElementById('toast-wrap');
+  if (wrap) wrap.appendChild(el);
+  setTimeout(function() { if (el.parentNode) el.remove(); }, 3800);
 }
 
 // ---- CONFIRM ----
