@@ -160,7 +160,11 @@ function filterNav(q) {
 
 // ---- TOGGLE SIDEBAR ----
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+  if (window.innerWidth < 768) {
+    document.body.classList.toggle('sidebar-open');
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+  }
 }
 
 // ---- PROGRESS BAR HTML ----

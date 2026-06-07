@@ -65,6 +65,9 @@ function navigate(module) {
   var mod = MODULES[module];
   if (!mod) return;
 
+  // Close mobile sidebar drawer
+  document.body.classList.remove('sidebar-open');
+
   // Update active nav
   document.querySelectorAll('#sidebar-nav .nav-item').forEach(function(li) {
     li.classList.toggle('active', li.dataset.module === module);
