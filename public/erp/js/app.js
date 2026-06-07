@@ -28,6 +28,7 @@ const MODULES = {
   indices:         { title: 'Indices de Ajuste',             icon: 'fa-chart-line',             render: renderIndices },
 
   // Clientes
+  clientes:        { title: 'Clientes',                      icon: 'fa-users',                  render: renderClientes },
   facturacion:     { title: 'Facturacion',                   icon: 'fa-file-invoice-dollar',    render: renderFacturacion },
   cobranzas:       { title: 'Cobranzas',                     icon: 'fa-hand-holding-dollar',    render: renderCobranzas },
   cuentas_cli:     { title: 'Cuentas Corrientes Clientes',   icon: 'fa-users-between-lines',    render: renderCuentasCli },
