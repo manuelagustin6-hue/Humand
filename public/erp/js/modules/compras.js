@@ -1069,13 +1069,20 @@ function openSIForm(id, prefillPoId, prefillCertId) {
   const prefillCert = prefillCertId ? DB.getById('certificates',   prefillCertId) : null;
   const prefillContractForCert = prefillCert && prefillCert.contract_id ? DB.getById('contracts', prefillCert.contract_id) : null;
 
-  const selectedPoId       = (si && si.po_id)       || prefillPoId       || '';
-  const selectedCertId     = (si && si.cert_id)      || prefillCertId     || '';
-  const selectedSupplierId = (si && si.supplier_id)  || (prefillPO && prefillPO.supplier_id) || (prefillContractForCert && prefillContractForCert.contractor_id) || '';
-  const selectedProjectId  = (si && si.project_id)   || (prefillPO && prefillPO.project_id)  || (prefillCert && prefillCert.project_id) || '';
-  const defaultSubtotal    = si ? si.subtotal : (prefillPO ? (prefillPO.subtotal || 0) : (prefillCert ? (prefillCert.net_amount || 0) : 0));
-  const defaultTax         = si ? si.tax      : (prefillPO ? (prefillPO.tax || 0)      : (prefillCert ? ((prefillCert.net_amount || 0) * 0.21) : 0));
-  const defaultTotal       = si ? si.total    : (prefillPO ? (prefillPO.total || 0)    : (prefillCert ? ((prefillCert.net_amount || 0) * 1.21) : 0));
+  var selectedPoId       = (si && si.po_id)       || prefillPoId       || '';
+  var selectedCertId     = (si && si.cert_id)      || prefillCertId     || '';
+  var selectedSupplierId = (si && si.supplier_id)  || (prefillPO && prefillPO.supplier_id) || (prefillContractForCert && prefillContractForCert.contractor_id) || '';
+  var selectedProjectId  = (si && si.project_id)   || (prefillPO && prefillPO.project_id)  || (prefillCert && prefillCert.project_id) || '';
+  var defaultSubtotal    = si ? si.subtotal : (prefillPO ? (prefillPO.subtotal || 0) : (prefillCert ? (prefillCert.net_amount || 0) : 0));
+  var defaultIvaRate     = si ? (si.iva_rate || 21) : 21;
+  var defaultTax         = si ? si.tax      : (prefillPO ? (prefillPO.tax || 0) : (prefillCert ? ((prefillCert.net_amount || 0) * 0.21) : 0));
+  var defaultPercIva     = si ? (si.perc_iva  || 0) : 0;
+  var defaultPercIibb    = si ? (si.perc_iibb || 0) : 0;
+  var defaultTotal       = si ? si.total    : defaultSubtotal + defaultTax + defaultPercIva + defaultPercIibb;
+  var defaultImputacion  = si ? (si.imputacion || []) : [];
+  var rubros             = DB.getAll('rubros').filter(function(r) { return r.active !== false; }).sort(function(a, b) { return a.code.localeCompare(b.code); });
+
+  window._siImpLines = defaultImputacion.map(function(l) { return Object.assign({}, l); });
 
   openModal(si ? 'Editar Factura Proveedor' : 'Nueva Factura de Proveedor',
     '<div class="form-grid form-grid-2">' +
@@ -1083,52 +1090,86 @@ function openSIForm(id, prefillPoId, prefillCertId) {
         '<input class="form-control" id="si-num" value="' + ((si && si.number) || nextNum) + '"></div>' +
       '<div class="form-group"><label class="form-label">Estado</label>' +
         '<select class="form-control" id="si-status">' +
-          '<option value="pending" ' + ((!si || si.status === 'pending') ? 'selected' : '') + '>Pendiente de Pago</option>' +
-          '<option value="paid" '    + ((si && si.status === 'paid')      ? 'selected' : '') + '>Pagada</option>' +
-          '<option value="cancelled" '+ ((si && si.status === 'cancelled') ? 'selected' : '') + '>Cancelada</option>' +
+          '<option value="pending"'   + ((!si || si.status === 'pending')  ? ' selected' : '') + '>Pendiente de Pago</option>' +
+          '<option value="paid"'      + ((si && si.status === 'paid')       ? ' selected' : '') + '>Pagada</option>' +
+          '<option value="cancelled"' + ((si && si.status === 'cancelled')  ? ' selected' : '') + '>Cancelada</option>' +
         '</select></div>' +
-      // OC reference
       '<div class="form-group"><label class="form-label"><i class="fas fa-shopping-cart" style="font-size:10px;color:var(--text-muted)"></i> OC de Origen</label>' +
         '<select class="form-control" id="si-po" onchange="prefillSIFromPO(this.value)">' +
           '<option value="">Sin OC de referencia</option>' +
           pos.map(function(p) {
             var sName = (suppliers.find(function(s) { return s.id === p.supplier_id; }) || {}).name || '';
-            return '<option value="' + p.id + '" ' + (selectedPoId === p.id ? 'selected' : '') + '>' + p.number + ' — ' + sName + '</option>';
+            return '<option value="' + p.id + '"' + (selectedPoId === p.id ? ' selected' : '') + '>' + p.number + ' — ' + sName + '</option>';
           }).join('') +
         '</select></div>' +
-      // Cert reference
       '<div class="form-group"><label class="form-label"><i class="fas fa-certificate" style="font-size:10px;color:var(--primary)"></i> Certificado de Obra</label>' +
         '<select class="form-control" id="si-cert" onchange="prefillSIFromCert(this.value)">' +
           '<option value="">Sin certificado de referencia</option>' +
           certs.map(function(c) {
             var ct = c.contract_id ? contracts.find(function(ct) { return ct.id === c.contract_id; }) : null;
-            return '<option value="' + c.id + '" ' + (selectedCertId === c.id ? 'selected' : '') + '>' +
+            return '<option value="' + c.id + '"' + (selectedCertId === c.id ? ' selected' : '') + '>' +
               c.number + ' — ' + fmtMoney(c.net_amount || 0) + (ct ? ' [' + ct.number + ']' : '') + '</option>';
           }).join('') +
         '</select></div>' +
       '<div class="form-group"><label class="form-label">Proveedor *</label>' +
         '<select class="form-control" id="si-supplier">' +
           '<option value="">Seleccionar...</option>' +
-          suppliers.map(function(s) { return '<option value="' + s.id + '" ' + (selectedSupplierId === s.id ? 'selected' : '') + '>' + s.name + '</option>'; }).join('') +
+          suppliers.map(function(s) { return '<option value="' + s.id + '"' + (selectedSupplierId === s.id ? ' selected' : '') + '>' + s.name + '</option>'; }).join('') +
         '</select></div>' +
       '<div class="form-group"><label class="form-label">Proyecto</label>' +
         '<select class="form-control" id="si-project">' +
           '<option value="">Sin proyecto</option>' +
-          projects.map(function(p) { return '<option value="' + p.id + '" ' + (selectedProjectId === p.id ? 'selected' : '') + '>' + p.name + '</option>'; }).join('') +
+          projects.map(function(p) { return '<option value="' + p.id + '"' + (selectedProjectId === p.id ? ' selected' : '') + '>' + p.name + '</option>'; }).join('') +
         '</select></div>' +
       '<div class="form-group"><label class="form-label">Fecha Factura</label>' +
         '<input class="form-control" id="si-date" type="date" value="' + ((si && si.date) || todayStr()) + '"></div>' +
       '<div class="form-group"><label class="form-label">Fecha Vencimiento</label>' +
         '<input class="form-control" id="si-due" type="date" value="' + ((si && si.due_date) || addDays(todayStr(), 30)) + '"></div>' +
-      '<div class="form-group"><label class="form-label">Subtotal (sin IVA)</label>' +
-        '<input class="form-control" id="si-subtotal" type="number" min="0" value="' + defaultSubtotal + '" oninput="recalcSI()"></div>' +
-      '<div class="form-group"><label class="form-label">IVA 21%</label>' +
-        '<input class="form-control" id="si-tax" type="number" min="0" value="' + defaultTax + '" oninput="recalcSI()"></div>' +
-      '<div class="form-group"><label class="form-label">Total</label>' +
-        '<input class="form-control" id="si-total" type="number" min="0" value="' + defaultTotal + '" style="font-weight:700;color:var(--primary)"></div>' +
-      '<div class="form-group full"><label class="form-label">Notas</label>' +
-        '<textarea class="form-control" id="si-notes" rows="2">' + ((si && si.notes) || '') + '</textarea></div>' +
-    '</div>',
+    '</div>' +
+
+    '<div style="background:var(--bg);border-radius:var(--radius-sm);padding:16px;margin:4px 0 16px">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Importes</div>' +
+      '<div class="form-grid form-grid-2">' +
+        '<div class="form-group"><label class="form-label">Neto / Subtotal</label>' +
+          '<input class="form-control" id="si-subtotal" type="number" min="0" step="0.01" value="' + defaultSubtotal + '" oninput="siRecalcFromSubtotal()"></div>' +
+        '<div class="form-group" style="display:flex;gap:8px">' +
+          '<div style="flex:0 0 120px"><label class="form-label">Alicuota IVA</label>' +
+            '<select class="form-control" id="si-iva-rate" onchange="siRecalcFromRate()">' +
+              '<option value="21"'   + (defaultIvaRate === 21   ? ' selected' : '') + '>21%</option>' +
+              '<option value="10.5"' + (defaultIvaRate === 10.5 ? ' selected' : '') + '>10.5%</option>' +
+              '<option value="27"'   + (defaultIvaRate === 27   ? ' selected' : '') + '>27%</option>' +
+              '<option value="0"'    + (defaultIvaRate === 0    ? ' selected' : '') + '>0% Exento</option>' +
+            '</select></div>' +
+          '<div style="flex:1"><label class="form-label">IVA $</label>' +
+            '<input class="form-control" id="si-tax" type="number" min="0" step="0.01" value="' + Number(defaultTax).toFixed(2) + '" oninput="siRecalcTotal()"></div>' +
+        '</div>' +
+        '<div class="form-group"><label class="form-label">Percepciones IVA</label>' +
+          '<input class="form-control" id="si-perc-iva" type="number" min="0" step="0.01" value="' + defaultPercIva + '" oninput="siRecalcTotal()" placeholder="0.00"></div>' +
+        '<div class="form-group"><label class="form-label">Percepciones IIBB / Sel. Ingresos</label>' +
+          '<input class="form-control" id="si-perc-iibb" type="number" min="0" step="0.01" value="' + defaultPercIibb + '" oninput="siRecalcTotal()" placeholder="0.00"></div>' +
+        '<div class="form-group full" style="border-top:2px solid var(--primary);padding-top:10px;margin-top:4px">' +
+          '<label class="form-label" style="font-weight:700">TOTAL FACTURA</label>' +
+          '<input class="form-control" id="si-total" readonly value="' + Number(defaultTotal).toFixed(2) + '" style="font-weight:700;color:var(--primary);font-size:15px;background:var(--primary-light)"></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<div><strong style="font-size:13px">Imputacion Contable</strong>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Asigna cada costo a un rubro y proyecto</div></div>' +
+      '<button class="btn btn-sm btn-secondary" onclick="siAddImpLine()"><i class="fas fa-plus"></i> Linea</button>' +
+    '</div>' +
+    '<div id="si-imp-lines">' +
+      '<div style="display:grid;grid-template-columns:2.5fr 1.5fr 1.5fr 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">' +
+        '<span>Rubro</span><span>Cuenta contable</span><span>Proyecto</span><span>Importe</span><span></span>' +
+      '</div>' +
+      defaultImputacion.map(function(l, i) { return buildSiImpRow(l, i, projects, rubros); }).join('') +
+    '</div>' +
+    '<div id="si-imp-totals" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:8px">' +
+      calcSiImpTotalsHtml(defaultImputacion) +
+    '</div>' +
+
+    '<div class="form-group" style="margin-top:16px"><label class="form-label">Notas</label>' +
+      '<textarea class="form-control" id="si-notes" rows="2">' + ((si && si.notes) || '') + '</textarea></div>',
   'modal-lg',
     '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
     '<button class="btn btn-primary" onclick="saveSI(\'' + (id || '') + '\')"><i class="fas fa-save"></i> Guardar</button>'
@@ -1181,24 +1222,45 @@ function prefillSIFromCert(certId) {
   }
 }
 
-function recalcSI() {
+function siRecalcFromSubtotal() {
   var sub = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var rate = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
   var taxEl = document.getElementById('si-tax');
-  var taxCurrent = parseFloat((taxEl || {}).value);
-  var tax = isNaN(taxCurrent) ? Math.round(sub * 21) / 100 : taxCurrent;
-  if (taxEl && isNaN(parseFloat(taxEl.value))) taxEl.value = (Math.round(sub * 21) / 100).toFixed(2);
-  var totEl = document.getElementById('si-total');
-  if (totEl) totEl.value = (sub + tax).toFixed(2);
+  if (taxEl) taxEl.value = (Math.round(sub * rate) / 100).toFixed(2);
+  siRecalcTotal();
 }
+
+function siRecalcFromRate() {
+  var sub = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var rate = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
+  var taxEl = document.getElementById('si-tax');
+  if (taxEl) taxEl.value = (Math.round(sub * rate) / 100).toFixed(2);
+  siRecalcTotal();
+}
+
+function siRecalcTotal() {
+  var sub      = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var tax      = parseFloat((document.getElementById('si-tax') || {}).value) || 0;
+  var percIva  = parseFloat((document.getElementById('si-perc-iva') || {}).value) || 0;
+  var percIibb = parseFloat((document.getElementById('si-perc-iibb') || {}).value) || 0;
+  var totEl    = document.getElementById('si-total');
+  if (totEl) totEl.value = (sub + tax + percIva + percIibb).toFixed(2);
+}
+
+function recalcSI() { siRecalcFromSubtotal(); }
 
 function saveSI(id) {
   const supplierId = document.getElementById('si-supplier').value;
   if (!supplierId) { toast('El proveedor es obligatorio', 'error'); return; }
-  const sub    = parseFloat(document.getElementById('si-subtotal').value) || 0;
-  const taxRaw = parseFloat(document.getElementById('si-tax').value);
-  const tax    = isNaN(taxRaw) ? Math.round(sub * 21) / 100 : taxRaw;
-  const certId = document.getElementById('si-cert').value || '';
-  const data = {
+  var sub      = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var ivaRate  = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
+  var taxRaw   = parseFloat(document.getElementById('si-tax').value);
+  var tax      = isNaN(taxRaw) ? Math.round(sub * ivaRate) / 100 : taxRaw;
+  var percIva  = parseFloat((document.getElementById('si-perc-iva') || {}).value) || 0;
+  var percIibb = parseFloat((document.getElementById('si-perc-iibb') || {}).value) || 0;
+  var certId   = document.getElementById('si-cert').value || '';
+  var imputacion = (window._siImpLines || []).filter(Boolean).filter(function(l) { return l.rubro_id || l.amount; });
+  var data = {
     number:      document.getElementById('si-num').value,
     po_id:       document.getElementById('si-po').value || '',
     cert_id:     certId,
@@ -1207,19 +1269,23 @@ function saveSI(id) {
     date:        document.getElementById('si-date').value,
     due_date:    document.getElementById('si-due').value,
     subtotal:    sub,
-    tax,
-    total:       parseFloat(document.getElementById('si-total').value) || sub + tax,
+    iva_rate:    ivaRate,
+    tax:         tax,
+    perc_iva:    percIva,
+    perc_iibb:   percIibb,
+    total:       parseFloat(document.getElementById('si-total').value) || (sub + tax + percIva + percIibb),
     status:      document.getElementById('si-status').value,
     notes:       document.getElementById('si-notes').value.trim(),
+    imputacion:  imputacion,
   };
   var savedId;
   if (id) { DB.update('supplierInvoices', id, data); toast('Factura actualizada', 'success'); savedId = id; }
   else    { var nsi = DB.insert('supplierInvoices', data); toast('Factura creada', 'success'); savedId = nsi.id; }
 
-  // bidirectional link: update cert with supplier_invoice_id
   if (certId) {
     DB.update('certificates', certId, { supplier_invoice_id: savedId });
   }
+  window._siImpLines = [];
   closeModal();
   renderCompras();
 }
@@ -1236,6 +1302,78 @@ function deleteSI(id) {
     toast('Factura eliminada', 'warning');
     renderCompras();
   });
+}
+
+// ---- SI IMPUTACION ----
+window._siImpLines = [];
+
+function buildSiImpRow(line, i, projects, rubros) {
+  var rHtml = '<option value="">— Rubro —</option>' +
+    rubros.map(function(r) {
+      return '<option value="' + r.id + '" data-account="' + (r.account_code || '') + '" data-aname="' + (r.account_name || '') + '"' +
+        (line.rubro_id === r.id ? ' selected' : '') + '>' + r.code + ' — ' + r.name + '</option>';
+    }).join('');
+  var projHtml = '<option value="">— Proyecto —</option>' +
+    projects.map(function(p) {
+      return '<option value="' + p.id + '"' + (line.project_id === p.id ? ' selected' : '') + '>' + p.name + '</option>';
+    }).join('');
+  var acctText = line.account_code ? (line.account_code + (line.account_name ? ' — ' + line.account_name : '')) : '—';
+  return '<div id="si-imp-row-' + i + '" style="display:grid;grid-template-columns:2.5fr 1.5fr 1.5fr 110px 36px;gap:6px;margin-bottom:6px;align-items:center">' +
+    '<select class="form-control" style="font-size:12px" onchange="siImpOnRubroChange(' + i + ',this)">' + rHtml + '</select>' +
+    '<div id="si-imp-acct-' + i + '" style="font-size:11px;color:var(--text-muted);padding:2px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--bg);border-radius:var(--radius-sm);min-height:32px;display:flex;align-items:center">' + acctText + '</div>' +
+    '<select class="form-control" style="font-size:12px" onchange="siImpUpdateField(' + i + ',\'project_id\',this.value)">' + projHtml + '</select>' +
+    '<input class="form-control" style="font-size:12px" type="number" min="0" value="' + (line.amount || 0) + '" oninput="siImpUpdateField(' + i + ',\'amount\',+this.value)">' +
+    '<button class="btn-ghost btn danger" onclick="siRemoveImpLine(' + i + ')"><i class="fas fa-times"></i></button>' +
+  '</div>';
+}
+
+function siImpOnRubroChange(i, sel) {
+  if (!window._siImpLines[i]) window._siImpLines[i] = {};
+  var opt = sel.options[sel.selectedIndex];
+  window._siImpLines[i].rubro_id     = opt.value;
+  window._siImpLines[i].account_code = opt.getAttribute('data-account') || '';
+  window._siImpLines[i].account_name = opt.getAttribute('data-aname')   || '';
+  var el = document.getElementById('si-imp-acct-' + i);
+  if (el) {
+    var code = window._siImpLines[i].account_code;
+    var name = window._siImpLines[i].account_name;
+    el.textContent = code ? (code + (name ? ' — ' + name : '')) : '—';
+    el.style.color = code ? 'var(--text)' : 'var(--text-muted)';
+  }
+}
+
+function siImpUpdateField(i, field, val) {
+  if (!window._siImpLines[i]) window._siImpLines[i] = {};
+  window._siImpLines[i][field] = val;
+  var el = document.getElementById('si-imp-totals');
+  if (el) el.innerHTML = calcSiImpTotalsHtml(window._siImpLines.filter(Boolean));
+}
+
+function siAddImpLine() {
+  var projects = DB.getAll('projects');
+  var rubros   = DB.getAll('rubros').filter(function(r) { return r.active !== false; }).sort(function(a, b) { return a.code.localeCompare(b.code); });
+  var newLine  = { rubro_id: '', account_code: '', account_name: '', project_id: '', amount: 0 };
+  window._siImpLines.push(newLine);
+  var i    = window._siImpLines.length - 1;
+  var cont = document.getElementById('si-imp-lines');
+  var div  = document.createElement('div');
+  div.innerHTML = buildSiImpRow(newLine, i, projects, rubros);
+  cont.appendChild(div.firstElementChild);
+}
+
+function siRemoveImpLine(i) {
+  var row = document.getElementById('si-imp-row-' + i);
+  if (row) row.remove();
+  window._siImpLines[i] = null;
+  var el = document.getElementById('si-imp-totals');
+  if (el) el.innerHTML = calcSiImpTotalsHtml(window._siImpLines.filter(Boolean));
+}
+
+function calcSiImpTotalsHtml(lines) {
+  var valid = lines.filter(Boolean);
+  var total = valid.reduce(function(s, l) { return s + (l.amount || 0); }, 0);
+  if (!valid.length) return '<span style="color:var(--text-muted)">Sin lineas de imputacion</span>';
+  return 'Total imputado: <strong style="color:var(--primary)">' + fmtMoney(total) + '</strong>';
 }
 
 function exportSIs() {
