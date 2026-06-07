@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>ERP Construcción</title>
-  <link rel="stylesheet" href="css/main.css?v=9">
+  <link rel="stylesheet" href="css/main.css?v=10">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -294,12 +294,18 @@
     </div>
   </aside>
 
+  <!-- Sidebar overlay for mobile -->
+  <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
   <!-- MAIN AREA -->
   <div id="main-area">
 
     <!-- TOPBAR -->
     <header id="topbar">
-      <div class="topbar-left">
+      <div class="topbar-left" style="display:flex;align-items:center;gap:10px;">
+        <button id="mobile-menu-btn" class="icon-btn" onclick="toggleSidebar()" title="Menu" style="display:none;flex-shrink:0;">
+          <i class="fas fa-bars"></i>
+        </button>
         <div id="breadcrumb" class="breadcrumb">
           <i class="fas fa-chart-pie"></i>
           <span>Dashboard</span>
@@ -344,7 +350,7 @@
 
 <!-- SCRIPTS -->
 <script src="js/db.js?v=10"></script>
-<script src="js/utils.js?v=8"></script>
+<script src="js/utils.js?v=9"></script>
 <script src="js/modules/dashboard.js?v=6"></script>
 <script src="js/modules/projects.js?v=6"></script>
 <script src="js/modules/compras.js?v=6"></script>
@@ -371,6 +377,6 @@
 <script src="js/modules/cuentas.js?v=4"></script>
 <script src="js/modules/bancos.js?v=1"></script>
 <script src="js/modules/ventas.js?v=4"></script>
-<script src="js/app.js?v=12"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>
