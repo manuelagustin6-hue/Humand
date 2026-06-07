@@ -12,8 +12,8 @@ function renderFacturacion() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
-    <div class="page-title">Facturación</div>
-    <div class="page-subtitle">Gestión de facturas, certificaciones y comprobantes</div>
+    <div class="page-title">Facturacion</div>
+    <div class="page-subtitle">Gestion de facturas, certificaciones y comprobantes</div>
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="exportInvoices()"><i class="fas fa-download"></i> Exportar</button>
@@ -69,19 +69,26 @@ function renderFacturacion() {
 
 function buildInvoiceRows(invoices, projects, collections) {
   if (!invoices.length) return `<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas</p></div>`;
+  const sourceLabels = { manual: 'Manual', certificacion: 'Certificacion', oc: 'Desde OC' };
   return `<table><thead><tr>
-    <th>Número</th><th>Tipo</th><th>Proyecto</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th>
+    <th>Numero</th><th>Tipo</th><th>Origen</th><th>Proyecto</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th>
     <th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>
     <th>Estado</th><th>Acciones</th>
   </tr></thead>
   <tbody>
   ${invoices.map(inv => {
     const proj = projects.find(p => p.id === inv.project_id);
-    const collected = collections.filter(c => c.invoice_id === inv.id).reduce((s,c) => s+c.amount, 0);
     const overdue = isOverdue(inv.due_date) && inv.status !== 'paid';
+    const src = inv.source || 'manual';
+    const srcBadge = src === 'certificacion'
+      ? '<span class="badge badge-green" style="font-size:10px">Certif.</span>'
+      : src === 'oc'
+      ? '<span class="badge badge-blue" style="font-size:10px">OC</span>'
+      : '<span class="badge badge-gray" style="font-size:10px">Manual</span>';
     return `<tr>
       <td><strong>${inv.number}</strong></td>
       <td><span class="badge badge-cyan">Fact. ${inv.type}</span></td>
+      <td>${srcBadge}</td>
       <td>${proj ? proj.name : '-'}</td>
       <td>${inv.client_name}</td>
       <td>${fmtDate(inv.date)}</td>
@@ -120,13 +127,14 @@ function viewInvoice(id) {
   const proj = DB.getById('projects', inv.project_id);
   const collections = DB.getAll('collections').filter(c => c.invoice_id === id);
   const totalCollected = collections.reduce((s,c) => s+c.amount, 0);
+  const imputacion = inv.imputacion || [];
 
   openModal(`Factura ${inv.number}`, `
 <div class="invoice-preview">
   <div class="invoice-logo-row">
     <div>
       <div style="font-size:22px;font-weight:800;color:var(--primary)">ConstructERP</div>
-      <div style="font-size:12px;color:var(--text-muted)">Sistema de Gestión</div>
+      <div style="font-size:12px;color:var(--text-muted)">Sistema de Gestion</div>
     </div>
     <div class="invoice-number-box">
       <div style="font-size:11px;color:var(--text-muted);font-weight:600">FACTURA ${inv.type}</div>
@@ -140,7 +148,7 @@ function viewInvoice(id) {
   <div class="invoice-parties">
     <div class="invoice-party-box">
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">EMISOR</div>
-      <p><strong>ConstructERP SA</strong><br>CUIT: 30-00000000-0<br>Dirección Comercial<br>${proj ? `Proyecto: ${proj.name}` : ''}</p>
+      <p><strong>ConstructERP SA</strong><br>CUIT: 30-00000000-0<br>Direccion Comercial<br>${proj ? `Proyecto: ${proj.name}` : ''}</p>
     </div>
     <div class="invoice-party-box">
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">RECEPTOR</div>
@@ -149,7 +157,7 @@ function viewInvoice(id) {
   </div>
 
   <div class="table-wrap" style="margin-bottom:16px">
-  <table><thead><tr><th>Descripción</th><th class="text-center">Unidad</th><th class="text-right">Cantidad</th><th class="text-right">P.Unit.</th><th class="text-right">Total</th></tr></thead>
+  <table><thead><tr><th>Descripcion</th><th class="text-center">Unidad</th><th class="text-right">Cantidad</th><th class="text-right">P.Unit.</th><th class="text-right">Total</th></tr></thead>
   <tbody>
   ${inv.items.map(it => `<tr><td>${it.description}</td><td class="text-center">${it.unit}</td>
     <td class="number-cell text-right">${fmtNum(it.quantity)}</td>
@@ -169,10 +177,23 @@ function viewInvoice(id) {
   ${inv.notes ? `<div style="margin-top:12px;font-size:12px;color:var(--text-muted)"><strong>Notas:</strong> ${inv.notes}</div>` : ''}
 </div>
 
+${imputacion.length ? `
+<div class="divider"></div>
+<div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Imputacion Contable</div>
+<table style="font-size:12px"><thead><tr><th>Cuenta</th><th>Proyecto</th><th>Descripcion</th><th class="text-right">Importe</th></tr></thead>
+<tbody>
+${imputacion.map(l => {
+  const p = DB.getById('projects', l.project_id);
+  return `<tr><td><b>${l.account_code||''}</b> ${l.account_name||''}</td><td>${p?p.name:'-'}</td><td>${l.description||''}</td><td class="text-right">${fmtMoney(l.amount||0)}</td></tr>`;
+}).join('')}
+<tr style="border-top:2px solid var(--border)"><td colspan="3"><strong>Total imputado</strong></td><td class="text-right"><strong>${fmtMoney(imputacion.reduce((s,l)=>s+(l.amount||0),0))}</strong></td></tr>
+</tbody></table>
+` : ''}
+
 ${collections.length ? `
 <div class="divider"></div>
 <div class="form-label">Pagos registrados</div>
-<table style="font-size:12px"><thead><tr><th>Fecha</th><th>Método</th><th>Ref.</th><th>Importe</th></tr></thead>
+<table style="font-size:12px"><thead><tr><th>Fecha</th><th>Metodo</th><th>Ref.</th><th>Importe</th></tr></thead>
 <tbody>${collections.map(c => `<tr><td>${fmtDate(c.date)}</td><td>${c.method}</td><td>${c.reference}</td><td>${fmtMoney(c.amount)}</td></tr>`).join('')}
 <tr class="total-row"><td colspan="3">Total cobrado</td><td>${fmtMoney(totalCollected)}</td></tr>
 <tr><td colspan="3">Saldo pendiente</td><td class="${inv.total - totalCollected > 0 ? 'text-danger' : 'text-success'}">${fmtMoney(inv.total - totalCollected)}</td></tr>
@@ -188,11 +209,13 @@ function openInvoiceForm(id = null) {
   const projects = DB.getAll('projects');
   const items = inv?.items || [{ description: '', unit: 'Global', quantity: 1, unit_price: 0, total: 0, tax_rate: 21 }];
   const nextNum = `FA-0001-${String(DB.getAll('invoices').length + 1235).padStart(8,'0')}`;
+  const source = inv?.source || 'manual';
+  const imputacion = inv?.imputacion || [];
 
   openModal(inv ? 'Editar Factura' : 'Nueva Factura', `
 <div class="form-grid form-grid-2">
   <div class="form-group">
-    <label class="form-label">Número</label>
+    <label class="form-label">Numero</label>
     <input class="form-control" id="if-num" value="${inv?.number || nextNum}">
   </div>
   <div class="form-group">
@@ -202,6 +225,18 @@ function openInvoiceForm(id = null) {
       <option value="B" ${inv?.type==='B'?'selected':''}>Factura B</option>
       <option value="C" ${inv?.type==='C'?'selected':''}>Factura C</option>
     </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Origen</label>
+    <select class="form-control" id="if-source" onchange="invToggleImputacion(this.value)">
+      <option value="manual" ${source==='manual'?'selected':''}>Manual (sin OC ni certificado)</option>
+      <option value="certificacion" ${source==='certificacion'?'selected':''}>Desde Certificacion de Obra</option>
+      <option value="oc" ${source==='oc'?'selected':''}>Desde Orden de Compra</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Referencia Origen</label>
+    <input class="form-control" id="if-ref" placeholder="N° de OC / N° de certificado" value="${inv?.source_ref||''}">
   </div>
   <div class="form-group">
     <label class="form-label">Proyecto *</label>
@@ -217,7 +252,7 @@ function openInvoiceForm(id = null) {
     </select>
   </div>
   <div class="form-group full">
-    <label class="form-label">Razón Social Cliente *</label>
+    <label class="form-label">Razon Social Cliente *</label>
     <input class="form-control" id="if-client" value="${inv?.client_name || ''}">
   </div>
   <div class="form-group">
@@ -229,7 +264,7 @@ function openInvoiceForm(id = null) {
     <input class="form-control" id="if-addr" value="${inv?.client_address || ''}">
   </div>
   <div class="form-group">
-    <label class="form-label">Fecha Emisión</label>
+    <label class="form-label">Fecha Emision</label>
     <input class="form-control" id="if-date" type="date" value="${inv?.date || todayStr()}">
   </div>
   <div class="form-group">
@@ -244,28 +279,50 @@ function openInvoiceForm(id = null) {
 
 <div class="divider"></div>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-  <strong style="font-size:13px">Ítems de Factura</strong>
-  <button class="btn btn-sm btn-secondary" onclick="addInvItem()"><i class="fas fa-plus"></i> Ítem</button>
+  <strong style="font-size:13px">Items de Factura</strong>
+  <button class="btn btn-sm btn-secondary" onclick="addInvItem()"><i class="fas fa-plus"></i> Item</button>
 </div>
 <div id="inv-items">
   <div style="display:grid;grid-template-columns:3fr 80px 80px 120px 120px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
-    <span>Descripción</span><span>Unidad</span><span>Cantidad</span><span>P.Unit.</span><span>Total</span><span></span>
+    <span>Descripcion</span><span>Unidad</span><span>Cantidad</span><span>P.Unit.</span><span>Total</span><span></span>
   </div>
   ${items.map((it, i) => invItemRow(it, i)).join('')}
 </div>
 <div id="inv-totals" style="text-align:right;font-size:13px;margin-top:12px">
   ${calcInvTotalsHtml(items)}
 </div>
+
+<div id="imp-section" style="${source === 'manual' ? '' : 'display:none'}">
+  <div class="divider"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div>
+      <strong style="font-size:13px">Imputacion Contable</strong>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Asigne cuentas y proyectos para esta factura</div>
+    </div>
+    <button class="btn btn-sm btn-secondary" onclick="addImpLine()"><i class="fas fa-plus"></i> Linea</button>
+  </div>
+  <div id="imp-lines">
+    <div style="display:grid;grid-template-columns:2fr 1.5fr 2fr 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
+      <span>Cuenta Contable</span><span>Proyecto</span><span>Descripcion</span><span>Importe</span><span></span>
+    </div>
+    ${imputacion.map((l, i) => invImpRow(l, i, projects)).join('')}
+  </div>
+  <div id="imp-totals" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:8px">
+    ${calcImpTotalsHtml(imputacion)}
+  </div>
+</div>
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="saveInvoice('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
 `);
   window._invItems = [...items];
+  window._impLines = imputacion.map(l => Object.assign({}, l));
 }
 
+// ---- ITEMS ----
 function invItemRow(it, i) {
   return `<div id="ivi-row-${i}" style="display:grid;grid-template-columns:3fr 80px 80px 120px 120px 36px;gap:6px;margin-bottom:6px;align-items:center">
-    <input class="form-control" style="font-size:12px" placeholder="Descripción" value="${it.description||''}" oninput="updateInvItem(${i},'description',this.value)">
+    <input class="form-control" style="font-size:12px" placeholder="Descripcion" value="${it.description||''}" oninput="updateInvItem(${i},'description',this.value)">
     <input class="form-control" style="font-size:12px" value="${it.unit||'Global'}" oninput="updateInvItem(${i},'unit',this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" step="0.01" value="${it.quantity||1}" oninput="updateInvItem(${i},'quantity',+this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price||0}" oninput="updateInvItem(${i},'unit_price',+this.value)">
@@ -309,16 +366,78 @@ function calcInvTotalsHtml(items) {
   return `Subtotal: <strong>${fmtMoney(subtotal)}</strong> &nbsp;|&nbsp; IVA 21%: <strong>${fmtMoney(tax)}</strong> &nbsp;|&nbsp; <strong style="font-size:15px;color:var(--primary)">TOTAL: ${fmtMoney(total)}</strong>`;
 }
 
+// ---- IMPUTACION ----
+window._impLines = [];
+
+function invToggleImputacion(source) {
+  const sec = document.getElementById('imp-section');
+  if (sec) sec.style.display = (source === 'manual') ? '' : 'none';
+}
+
+function invImpRow(line, i, projects) {
+  const accounts = DB.getAll('accounts').sort((a, b) => a.code.localeCompare(b.code));
+  const aoHtml = '<option value="">— Cuenta —</option>' +
+    accounts.map(a => `<option value="${a.code}" data-name="${a.name||''}" ${line.account_code===a.code?'selected':''}>${a.code} — ${a.name}</option>`).join('');
+  const projHtml = '<option value="">— Proyecto —</option>' +
+    projects.map(p => `<option value="${p.id}" ${line.project_id===p.id?'selected':''}>${p.name}</option>`).join('');
+  return `<div id="imp-row-${i}" style="display:grid;grid-template-columns:2fr 1.5fr 2fr 110px 36px;gap:6px;margin-bottom:6px;align-items:center">
+    <select class="form-control" style="font-size:12px" onchange="updateImpLine(${i},'account_code',this.value,this.options[this.selectedIndex].getAttribute('data-name'))">${aoHtml}</select>
+    <select class="form-control" style="font-size:12px" onchange="updateImpLine(${i},'project_id',this.value)">${projHtml}</select>
+    <input class="form-control" style="font-size:12px" placeholder="Descripcion" value="${line.description||''}" oninput="updateImpLine(${i},'description',this.value)">
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${line.amount||0}" oninput="updateImpLine(${i},'amount',+this.value)">
+    <button class="btn-ghost btn danger" onclick="removeImpLine(${i})"><i class="fas fa-times"></i></button>
+  </div>`;
+}
+
+function addImpLine() {
+  const projects = DB.getAll('projects');
+  const newLine = { account_code: '', account_name: '', project_id: '', description: '', amount: 0 };
+  window._impLines.push(newLine);
+  const i = window._impLines.length - 1;
+  const cont = document.getElementById('imp-lines');
+  const div = document.createElement('div');
+  div.innerHTML = invImpRow(newLine, i, projects);
+  cont.appendChild(div.firstElementChild);
+}
+
+function updateImpLine(i, field, val, extra) {
+  if (!window._impLines[i]) window._impLines[i] = { account_code:'', account_name:'', project_id:'', description:'', amount:0 };
+  window._impLines[i][field] = val;
+  if (field === 'account_code' && extra !== undefined) window._impLines[i].account_name = extra || '';
+  const el = document.getElementById('imp-totals');
+  if (el) el.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
+}
+
+function removeImpLine(i) {
+  const row = document.getElementById(`imp-row-${i}`);
+  if (row) row.remove();
+  window._impLines[i] = null;
+  const el = document.getElementById('imp-totals');
+  if (el) el.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
+}
+
+function calcImpTotalsHtml(lines) {
+  const valid = lines.filter(Boolean);
+  const total = valid.reduce((s, l) => s + (l.amount || 0), 0);
+  if (!valid.length) return '<span style="color:var(--text-muted)">Sin lineas de imputacion</span>';
+  return `Total imputado: <strong style="color:var(--primary)">${fmtMoney(total)}</strong>`;
+}
+
+// ---- SAVE ----
 function saveInvoice(id) {
   const projectId = document.getElementById('if-project').value;
   const clientName = document.getElementById('if-client').value.trim();
   if (!projectId || !clientName) { toast('Proyecto y cliente son obligatorios', 'error'); return; }
 
   const items = window._invItems.filter(Boolean).filter(it => it.description);
-  if (!items.length) { toast('Agregá al menos un ítem', 'error'); return; }
+  if (!items.length) { toast('Agrega al menos un item', 'error'); return; }
 
   const subtotal = items.reduce((s, it) => s+it.total, 0);
   const tax = subtotal * 0.21;
+  const source = document.getElementById('if-source').value;
+  const imputacion = source === 'manual'
+    ? (window._impLines || []).filter(Boolean).filter(l => l.account_code || l.amount)
+    : [];
 
   const data = {
     number: document.getElementById('if-num').value,
@@ -331,7 +450,10 @@ function saveInvoice(id) {
     date: document.getElementById('if-date').value,
     due_date: document.getElementById('if-due').value,
     notes: document.getElementById('if-notes').value.trim(),
+    source: source,
+    source_ref: document.getElementById('if-ref').value.trim(),
     items,
+    imputacion,
     subtotal,
     tax,
     total: subtotal + tax,
@@ -341,6 +463,7 @@ function saveInvoice(id) {
   else { DB.insert('invoices', data); toast('Factura creada', 'success'); }
 
   window._invItems = [];
+  window._impLines = [];
   closeModal();
   renderFacturacion();
 }
@@ -352,7 +475,7 @@ function markInvoicePaid(id) {
 }
 
 function deleteInvoice(id) {
-  confirmDialog('¿Eliminar esta factura?', () => {
+  confirmDialog('Eliminar esta factura?', () => {
     DB.remove('invoices', id);
     toast('Factura eliminada', 'warning');
     renderFacturacion();
@@ -363,7 +486,7 @@ function exportInvoices() {
   const invs = DB.getAll('invoices');
   const projects = DB.getAll('projects');
   exportXLSX('facturas.xlsx',
-    ['Número','Tipo','Proyecto','Cliente','CUIT','Fecha','Vencimiento','Subtotal','IVA','Total','Estado'],
-    invs.map(i => [i.number, i.type, projects.find(p=>p.id===i.project_id)?.name||'', i.client_name, i.client_cuit, i.date, i.due_date, i.subtotal, i.tax, i.total, i.status])
+    ['Numero','Tipo','Origen','Proyecto','Cliente','CUIT','Fecha','Vencimiento','Subtotal','IVA','Total','Estado'],
+    invs.map(i => [i.number, i.type, i.source||'manual', projects.find(p=>p.id===i.project_id)?.name||'', i.client_name, i.client_cuit, i.date, i.due_date, i.subtotal, i.tax, i.total, i.status])
   );
 }
