@@ -1,16 +1,16 @@
 /* ===== MÓDULO: ASIENTOS AUTOMÁTICOS ===== */
 
 var AJ_TYPES = [
-  { id: 'fact_emitida',        name: 'Factura Emitida (Ventas)',   desc: 'Al emitir factura a cliente',            icon: 'fa-file-invoice-dollar' },
-  { id: 'nc_emitida',          name: 'Nota de Credito Emitida',    desc: 'Al emitir nota de credito a cliente',    icon: 'fa-file-circle-minus' },
-  { id: 'cobro_cliente',       name: 'Cobro de Cliente',           desc: 'Al registrar cobro de cliente',          icon: 'fa-hand-holding-dollar' },
-  { id: 'certificacion',       name: 'Certificacion de Obra',      desc: 'Al aprobar certificacion',               icon: 'fa-certificate' },
-  { id: 'fact_proveedor',      name: 'Factura Proveedor (Compras)', desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice' },
-  { id: 'orden_pago',          name: 'Orden de Pago',              desc: 'Al emitir pago a proveedor',             icon: 'fa-money-bill-wave' },
-  { id: 'retencion_iva',       name: 'Retencion IVA',              desc: 'Al generar retencion de IVA',            icon: 'fa-percentage' },
-  { id: 'retencion_ganancias', name: 'Retencion Ganancias',        desc: 'Al generar retencion de Ganancias',      icon: 'fa-percentage' },
-  { id: 'ingreso_caja',        name: 'Ingreso Caja / Banco',       desc: 'Al registrar ingreso en caja o banco',   icon: 'fa-landmark' },
-  { id: 'egreso_caja',         name: 'Egreso Caja / Banco',        desc: 'Al registrar egreso de caja o banco',    icon: 'fa-landmark' },
+  { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta de Ventas / Ingresos' },
+  { id: 'nc_emitida',          name: 'Nota de Credito Emitida',  desc: 'Al emitir nota de credito a cliente',   icon: 'fa-file-circle-minus',   default_side: 'debit',  side_label: 'Cuenta de Ventas (devolucion)' },
+  { id: 'cobro_cliente',       name: 'Cobro de Cliente',         desc: 'Al registrar cobro de cliente',         icon: 'fa-hand-holding-dollar', default_side: 'debit',  side_label: 'Cuenta Caja / Banco (ingreso)' },
+  { id: 'certificacion',       name: 'Certificacion de Obra',    desc: 'Al aprobar certificacion',              icon: 'fa-certificate',         default_side: 'credit', side_label: 'Cuenta de Certificaciones' },
+  { id: 'fact_proveedor',      name: 'Factura Proveedor',        desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice',        default_side: 'debit',  side_label: 'Cuenta de Gastos / Costo' },
+  { id: 'orden_pago',          name: 'Orden de Pago',            desc: 'Al emitir pago a proveedor',            icon: 'fa-money-bill-wave',     default_side: 'credit', side_label: 'Cuenta Caja / Banco (egreso)' },
+  { id: 'retencion_iva',       name: 'Retencion IVA',            desc: 'Al generar retencion de IVA',           icon: 'fa-percentage',          default_side: 'credit', side_label: 'Cuenta IVA Retenido' },
+  { id: 'retencion_ganancias', name: 'Retencion Ganancias',      desc: 'Al generar retencion de Ganancias',     icon: 'fa-percentage',          default_side: 'credit', side_label: 'Cuenta Ret. Ganancias' },
+  { id: 'ingreso_caja',        name: 'Ingreso Caja / Banco',     desc: 'Al registrar ingreso en caja o banco',  icon: 'fa-landmark',            default_side: 'debit',  side_label: 'Cuenta Caja / Banco' },
+  { id: 'egreso_caja',         name: 'Egreso Caja / Banco',      desc: 'Al registrar egreso de caja o banco',   icon: 'fa-landmark',            default_side: 'credit', side_label: 'Cuenta Caja / Banco' },
 ];
 
 function renderAsientos() {
@@ -18,18 +18,17 @@ function renderAsientos() {
   content.innerHTML =
     '<div class="page-header"><div>' +
       '<div class="page-title"><i class="fas fa-magic" style="margin-right:8px;color:var(--primary)"></i>Asientos Automaticos</div>' +
-      '<div class="page-subtitle">Parametrizar cuentas contables por tipo de operacion</div>' +
+      '<div class="page-subtitle">Asigne una cuenta contable por tipo de operacion. El sistema generara el asiento automaticamente al registrar cada operacion.</div>' +
     '</div></div>' +
     '<div class="card">' +
-      '<p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">Configure las cuentas debito y credito para cada tipo de operacion. Cuando se registre una operacion con asiento activo, se generara un asiento contable automaticamente.</p>' +
       '<table class="table">' +
         '<thead><tr>' +
           '<th>Tipo de Operacion</th>' +
-          '<th>Cuenta Debito</th>' +
-          '<th>Cuenta Credito</th>' +
+          '<th>Cuenta Contable</th>' +
+          '<th>Lado</th>' +
           '<th>Concepto Modelo</th>' +
           '<th>Estado</th>' +
-          '<th></th>' +
+          '<th style="width:110px"></th>' +
         '</tr></thead>' +
         '<tbody id="aj-tbody">' + ajBuildRows() + '</tbody>' +
       '</table>' +
@@ -40,20 +39,31 @@ function ajBuildRows() {
   var html = '';
   AJ_TYPES.forEach(function(type) {
     var cfg = ajGetConfig(type.id);
-    var isConfigured = cfg && cfg.debit_account && cfg.credit_account;
+    var isConfigured = cfg && cfg.account;
     var statusHtml = !isConfigured
       ? '<span class="badge badge-gray">Sin configurar</span>'
       : (cfg.active
           ? '<span class="badge badge-green">Activo</span>'
           : '<span class="badge badge-yellow">Inactivo</span>');
-    var debitCell = isConfigured ? ('<b>' + cfg.debit_account + '</b><br><span style="color:var(--text-muted);font-size:11px">' + (cfg.debit_name || '') + '</span>') : '<span style="color:var(--border)">—</span>';
-    var creditCell = isConfigured ? ('<b>' + cfg.credit_account + '</b><br><span style="color:var(--text-muted);font-size:11px">' + (cfg.credit_name || '') + '</span>') : '<span style="color:var(--border)">—</span>';
-    var conceptCell = (cfg && cfg.concept_template) ? ('<span style="font-size:12px">' + cfg.concept_template + '</span>') : '<span style="color:var(--border)">—</span>';
+    var accountCell = isConfigured
+      ? '<b>' + cfg.account + '</b><br><span style="color:var(--text-muted);font-size:11px">' + (cfg.account_name || '') + '</span>'
+      : '<span style="color:var(--border)">—</span>';
+    var sideCell = isConfigured
+      ? (cfg.account_side === 'debit'
+          ? '<span class="badge badge-blue" style="font-size:11px">Debito</span>'
+          : '<span class="badge badge-cyan" style="font-size:11px">Credito</span>')
+      : '';
+    var conceptCell = (cfg && cfg.concept_template)
+      ? '<span style="font-size:12px">' + cfg.concept_template + '</span>'
+      : '<span style="color:var(--border)">—</span>';
     html +=
       '<tr>' +
-        '<td style="white-space:nowrap;"><i class="fas ' + type.icon + '" style="color:var(--primary);margin-right:8px"></i><b>' + type.name + '</b><br><span style="font-size:11px;color:var(--text-muted)">' + type.desc + '</span></td>' +
-        '<td style="font-size:12px;">' + debitCell + '</td>' +
-        '<td style="font-size:12px;">' + creditCell + '</td>' +
+        '<td><i class="fas ' + type.icon + '" style="color:var(--primary);margin-right:8px"></i>' +
+          '<b>' + type.name + '</b>' +
+          '<br><span style="font-size:11px;color:var(--text-muted)">' + type.desc + '</span>' +
+        '</td>' +
+        '<td style="font-size:12px;">' + accountCell + '</td>' +
+        '<td>' + sideCell + '</td>' +
         '<td style="font-size:12px;">' + conceptCell + '</td>' +
         '<td>' + statusHtml + '</td>' +
         '<td><button class="btn btn-sm btn-secondary" onclick="ajEditType(\'' + type.id + '\')"><i class="fas fa-cog"></i> Configurar</button></td>' +
@@ -93,35 +103,39 @@ function ajEditType(typeId) {
       return '<option value="' + a.code + '" data-name="' + (a.name || '') + '">' + a.code + ' — ' + a.name + '</option>';
     }).join('');
 
+  var currentSide = cfg.account_side || type.default_side;
+
   var body =
-    '<div class="form-group" style="margin-bottom:16px">' +
-      '<div style="background:var(--bg);border-radius:var(--radius-sm);padding:10px 14px;font-size:14px;">' +
-        '<i class="fas ' + type.icon + '" style="color:var(--primary);margin-right:8px"></i>' +
-        '<b>' + type.name + '</b>' +
-        '<span style="color:var(--text-muted);font-size:12px;margin-left:12px">' + type.desc + '</span>' +
+    '<div style="background:var(--bg);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:20px">' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:4px">' +
+        '<i class="fas ' + type.icon + '" style="color:var(--primary);margin-right:8px"></i>' + type.name +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">' + type.desc + '</div>' +
+      '<div style="font-size:12px;color:var(--primary)">' +
+        '<i class="fas fa-info-circle" style="margin-right:4px"></i>Configure: <b>' + type.side_label + '</b>' +
       '</div>' +
     '</div>' +
-    '<div class="form-grid">' +
-      '<div class="form-group">' +
-        '<label>Cuenta Debito *</label>' +
-        '<select id="aj-debit" class="form-control" onchange="ajOnAccountChange(\'aj-debit\')">' + aoHtml + '</select>' +
-        '<input type="hidden" id="aj-debit-name">' +
-      '</div>' +
-      '<div class="form-group">' +
-        '<label>Cuenta Credito *</label>' +
-        '<select id="aj-credit" class="form-control" onchange="ajOnAccountChange(\'aj-credit\')">' + aoHtml + '</select>' +
-        '<input type="hidden" id="aj-credit-name">' +
-      '</div>' +
+    '<div class="form-group">' +
+      '<label>Cuenta Contable *</label>' +
+      '<select id="aj-account" class="form-control" onchange="ajOnAccountChange()">' + aoHtml + '</select>' +
+      '<input type="hidden" id="aj-account-name">' +
+    '</div>' +
+    '<div class="form-group">' +
+      '<label>Lado del Asiento</label>' +
+      '<select id="aj-side" class="form-control">' +
+        '<option value="debit"' + (currentSide === 'debit' ? ' selected' : '') + '>Debito (cargo)</option>' +
+        '<option value="credit"' + (currentSide === 'credit' ? ' selected' : '') + '>Credito (abono)</option>' +
+      '</select>' +
     '</div>' +
     '<div class="form-group">' +
       '<label>Plantilla de Concepto</label>' +
-      '<input type="text" id="aj-concept" class="form-control" value="' + (cfg.concept_template || '') + '" placeholder="Ej: Asiento auto {ref}">' +
-      '<small style="color:var(--text-muted);font-size:11px">Variables disponibles: {ref} = referencia, {date} = fecha, {amount} = importe</small>' +
+      '<input type="text" id="aj-concept" class="form-control" value="' + (cfg.concept_template || '') + '" placeholder="Ej: Factura {ref} — {date}">' +
+      '<small style="color:var(--text-muted);font-size:11px">Variables: {ref} = referencia, {date} = fecha, {amount} = importe</small>' +
     '</div>' +
     '<div class="form-group">' +
       '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;">' +
-        '<input type="checkbox" id="aj-active" ' + (cfg.active ? 'checked' : '') + ' style="width:16px;height:16px;">' +
-        ' Asiento activo (se generara automaticamente al guardar la operacion)' +
+        '<input type="checkbox" id="aj-active"' + (cfg.active ? ' checked' : '') + ' style="width:16px;height:16px;">' +
+        '<span>Activo: generar asiento automaticamente al guardar</span>' +
       '</label>' +
     '</div>';
 
@@ -129,42 +143,44 @@ function ajEditType(typeId) {
     '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
     '<button class="btn btn-primary" onclick="ajSaveEdit(\'' + typeId + '\')"><i class="fas fa-save"></i> Guardar</button>';
 
-  openModal('Configurar: ' + type.name, body, 'modal-lg', footer);
+  openModal('Configurar: ' + type.name, body, 'modal-md', footer);
 
   setTimeout(function() {
-    if (cfg.debit_account) {
-      var d = document.getElementById('aj-debit');
-      if (d) { d.value = cfg.debit_account; ajOnAccountChange('aj-debit'); }
+    if (cfg.account) {
+      var sel = document.getElementById('aj-account');
+      if (sel) { sel.value = cfg.account; ajOnAccountChange(); }
     }
-    if (cfg.credit_account) {
-      var c = document.getElementById('aj-credit');
-      if (c) { c.value = cfg.credit_account; ajOnAccountChange('aj-credit'); }
+    if (cfg.account_name) {
+      var nf = document.getElementById('aj-account-name');
+      if (nf) nf.value = cfg.account_name;
     }
-    if (cfg.debit_name) { var dn = document.getElementById('aj-debit-name'); if (dn) dn.value = cfg.debit_name; }
-    if (cfg.credit_name) { var cn = document.getElementById('aj-credit-name'); if (cn) cn.value = cfg.credit_name; }
   }, 50);
 }
 
-function ajOnAccountChange(selectId) {
-  var sel = document.getElementById(selectId);
-  var nameField = document.getElementById(selectId + '-name');
+function ajOnAccountChange() {
+  var sel = document.getElementById('aj-account');
+  var nameField = document.getElementById('aj-account-name');
   if (!sel || !nameField) return;
   var opt = sel.options[sel.selectedIndex];
   nameField.value = opt ? (opt.getAttribute('data-name') || '') : '';
 }
 
 function ajSaveEdit(typeId) {
-  var debit = (document.getElementById('aj-debit') || {}).value || '';
-  var credit = (document.getElementById('aj-credit') || {}).value || '';
-  var debitName = (document.getElementById('aj-debit-name') || {}).value || '';
-  var creditName = (document.getElementById('aj-credit-name') || {}).value || '';
+  var account = (document.getElementById('aj-account') || {}).value || '';
+  var accountName = (document.getElementById('aj-account-name') || {}).value || '';
+  var accountSide = (document.getElementById('aj-side') || {}).value || 'debit';
   var concept = ((document.getElementById('aj-concept') || {}).value || '').trim();
-  var active = (document.getElementById('aj-active') || {}).checked || false;
+  var active = !!(document.getElementById('aj-active') || {}).checked;
 
-  if (!debit || !credit) { toast('Debe seleccionar cuenta debito y credito', 'error'); return; }
-  if (debit === credit) { toast('Las cuentas debito y credito no pueden ser iguales', 'error'); return; }
+  if (!account) { toast('Debe seleccionar una cuenta contable', 'error'); return; }
 
-  ajSaveConfig(typeId, { debit_account: debit, debit_name: debitName, credit_account: credit, credit_name: creditName, concept_template: concept, active: active });
+  ajSaveConfig(typeId, {
+    account: account,
+    account_name: accountName,
+    account_side: accountSide,
+    concept_template: concept,
+    active: active
+  });
   closeModal();
   var tbody = document.getElementById('aj-tbody');
   if (tbody) tbody.innerHTML = ajBuildRows();
@@ -172,14 +188,16 @@ function ajSaveEdit(typeId) {
 }
 
 // ---- PUBLIC API ----
-// Call from other modules to auto-generate a journal entry.
-// Returns the created entry object or null if no active config found.
-function autoJournalEntry(operationTypeId, amount, date, ref, description) {
+// Genera un asiento contable automatico para una operacion.
+// opts.counterAccount / opts.counterName: cuenta contraparte (si el modulo la conoce, ej. la cuenta bancaria usada).
+// Retorna el asiento creado o null si no hay config activa.
+function autoJournalEntry(operationTypeId, amount, date, ref, description, opts) {
   try {
     var cfg = ajGetConfig(operationTypeId);
-    if (!cfg || !cfg.active || !cfg.debit_account || !cfg.credit_account) return null;
+    if (!cfg || !cfg.active || !cfg.account) return null;
     if (!amount || isNaN(amount) || amount <= 0) return null;
 
+    opts = opts || {};
     var concept = (cfg.concept_template || 'Asiento auto - {ref}')
       .replace(/\{ref\}/g, ref || '')
       .replace(/\{date\}/g, date || '')
@@ -187,6 +205,13 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description) {
 
     var entries = DB.getAll('journalEntries');
     var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
+
+    var isDebit = (cfg.account_side === 'debit');
+    var counterCode = opts.counterAccount || '---';
+    var counterName = opts.counterName || 'Contraparte pendiente';
+
+    var mainLine   = { account_code: cfg.account,  account_name: cfg.account_name || cfg.account, debit: isDebit ? amount : 0, credit: isDebit ? 0 : amount, description: concept };
+    var counterLine = { account_code: counterCode, account_name: counterName, debit: isDebit ? 0 : amount, credit: isDebit ? amount : 0, description: concept };
 
     var entry = {
       number: nextNum,
@@ -196,10 +221,7 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description) {
       status: 'posted',
       auto_generated: true,
       operation_type: operationTypeId,
-      lines: [
-        { account_code: cfg.debit_account,  account_name: cfg.debit_name  || cfg.debit_account,  debit: amount, credit: 0,      description: concept },
-        { account_code: cfg.credit_account, account_name: cfg.credit_name || cfg.credit_account, debit: 0,      credit: amount, description: concept },
-      ],
+      lines: isDebit ? [mainLine, counterLine] : [counterLine, mainLine],
     };
 
     return DB.insert('journalEntries', entry);
