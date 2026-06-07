@@ -4,7 +4,7 @@ function renderCompras() {
 <div class="page-header">
   <div>
     <div class="page-title">Compras</div>
-    <div class="page-subtitle">Pedidos de materiales, órdenes de compra y proveedores</div>
+    <div class="page-subtitle">Pedidos de materiales y órdenes de compra</div>
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="openSupplierForm()"><i class="fas fa-truck"></i> Nuevo Proveedor</button>
@@ -17,7 +17,6 @@ function renderCompras() {
   <div class="tabs">
     <button class="tab-btn" data-tab="tab-pedidos">Pedidos de Materiales</button>
     <button class="tab-btn" data-tab="tab-oc">Órdenes de Compra</button>
-    <button class="tab-btn" data-tab="tab-fact-prov">Facturas Proveedor</button>
     <button class="tab-btn" data-tab="tab-suppliers">Proveedores</button>
   </div>
   <div id="tab-pedidos" class="tab-content">
@@ -25,9 +24,6 @@ function renderCompras() {
   </div>
   <div id="tab-oc" class="tab-content">
     ${renderPOTable()}
-  </div>
-  <div id="tab-fact-prov" class="tab-content">
-    ${renderSupplierInvoicesTab()}
   </div>
   <div id="tab-suppliers" class="tab-content">
     ${renderSuppliersTable()}

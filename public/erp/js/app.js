@@ -146,24 +146,8 @@ function syncExchangeRates() {
     .catch(function() {});
 }
 
-// ---- COMPANY SELECTOR ----
-function populateCompanySelector() {
-  var sel = document.getElementById('global-company');
-  if (!sel) return;
-  try {
-    var companies = DB.getAllCompanies();
-    var activeId = window.APP_STATE.activeCompany || 'comp-001';
-    var allSelected = activeId === '' ? ' selected' : '';
-    sel.innerHTML =
-      '<option value=""' + allSelected + '>Todas las empresas</option>' +
-      companies.map(function(c) {
-        var selected = c.id === activeId ? ' selected' : '';
-        return '<option value="' + c.id + '"' + selected + '>' + c.name + '</option>';
-      }).join('');
-  } catch(e) {
-    console.error('Error populating company selector', e);
-  }
-}
+// ---- COMPANY SELECTOR (kept for backward compat; topbar selector removed) ----
+function populateCompanySelector() {}
 
 function setActiveCompany(id) {
   // id === '' means "Todas las empresas" (consolidated view)

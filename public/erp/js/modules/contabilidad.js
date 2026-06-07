@@ -1,5 +1,34 @@
 /* ===== CONTABILIDAD ===== */
+
+window._contaCompanyId = '';
+
+function _contaCompanyBar() {
+  var companies = DB.getAllCompanies();
+  if (companies.length <= 1) return '';
+  var activeId = window._contaCompanyId || (window.APP_STATE && window.APP_STATE.activeCompany) || '';
+  var opts = companies.map(function(c) {
+    return '<option value="' + c.id + '"' + (c.id === activeId ? ' selected' : '') + '>' + c.name + '</option>';
+  }).join('');
+  return '<div class="conta-company-bar">' +
+    '<i class="fas fa-city"></i>' +
+    '<span class="conta-company-label">Razón Social</span>' +
+    '<select class="form-control conta-company-sel" onchange="contaSetCompany(this.value)">' + opts + '</select>' +
+    '</div>';
+}
+
+function contaSetCompany(id) {
+  if (!id) return;
+  window._contaCompanyId = id;
+  DB.setCompany(id);
+  if (window.APP_STATE) window.APP_STATE.activeCompany = id;
+  var mod = window.APP_STATE && window.APP_STATE.currentModule;
+  if (mod === 'conta_mayores') renderContaMayores();
+  else renderContabilidad();
+}
+
 function renderContabilidad() {
+  var cid = window._contaCompanyId || (window.APP_STATE && window.APP_STATE.activeCompany) || '';
+  if (cid) { window._contaCompanyId = cid; DB.setCompany(cid); }
   const entries = DB.getAll('journalEntries');
   const accounts = DB.getAll('accounts');
 
@@ -14,6 +43,8 @@ function renderContabilidad() {
     <button class="btn btn-primary" onclick="openJEForm()"><i class="fas fa-plus"></i> Nuevo Asiento</button>
   </div>
 </div>
+
+${_contaCompanyBar()}
 
 <div id="conta-tabs">
   <div class="tabs">
@@ -714,6 +745,8 @@ function sumBalances(accs, balances) {
 
 // ---- LIBRO MAYOR ----
 function renderContaMayores() {
+  var cid = window._contaCompanyId || (window.APP_STATE && window.APP_STATE.activeCompany) || '';
+  if (cid) { window._contaCompanyId = cid; DB.setCompany(cid); }
   const entries = DB.getAll('journalEntries');
   const accounts = DB.getAll('accounts');
   const projects = DB.getAll('projects');
@@ -729,6 +762,8 @@ function renderContaMayores() {
     <button class="btn btn-primary" onclick="openJEForm()"><i class="fas fa-plus"></i> Nuevo Asiento</button>
   </div>
 </div>
+
+${_contaCompanyBar()}
 
 <div class="filter-bar mb-2">
   <div class="search-input-wrap">
