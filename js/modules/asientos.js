@@ -1,11 +1,11 @@
 /* ===== MÓDULO: ASIENTOS AUTOMÁTICOS ===== */
 
 var AJ_TYPES = [
-  { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta de Ventas / Ingresos' },
+  { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta a Cobrar (AR) — contraparte de cada rubro de venta' },
   { id: 'nc_emitida',          name: 'Nota de Credito Emitida',  desc: 'Al emitir nota de credito a cliente',   icon: 'fa-file-circle-minus',   default_side: 'debit',  side_label: 'Cuenta de Ventas (devolucion)' },
   { id: 'cobro_cliente',       name: 'Cobro de Cliente',         desc: 'Al registrar cobro de cliente',         icon: 'fa-hand-holding-dollar', default_side: 'debit',  side_label: 'Cuenta Caja / Banco (ingreso)' },
   { id: 'certificacion',       name: 'Certificacion de Obra',    desc: 'Al aprobar certificacion',              icon: 'fa-certificate',         default_side: 'credit', side_label: 'Cuenta de Certificaciones' },
-  { id: 'fact_proveedor',      name: 'Factura Proveedor',        desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice',        default_side: 'debit',  side_label: 'Cuenta de Gastos / Costo' },
+  { id: 'fact_proveedor',      name: 'Factura Proveedor',        desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice',        default_side: 'credit', side_label: 'Cuenta a Pagar (AP) — contraparte de cada rubro de costo' },
   { id: 'orden_pago',          name: 'Orden de Pago',            desc: 'Al emitir pago a proveedor',            icon: 'fa-money-bill-wave',     default_side: 'credit', side_label: 'Cuenta Caja / Banco (egreso)' },
   { id: 'retencion_iva',       name: 'Retencion IVA',            desc: 'Al generar retencion de IVA',           icon: 'fa-percentage',          default_side: 'credit', side_label: 'Cuenta IVA Retenido' },
   { id: 'retencion_ganancias', name: 'Retencion Ganancias',      desc: 'Al generar retencion de Ganancias',     icon: 'fa-percentage',          default_side: 'credit', side_label: 'Cuenta Ret. Ganancias' },
@@ -227,6 +227,62 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
     return DB.insert('journalEntries', entry);
   } catch(e) {
     console.error('autoJournalEntry:', e);
+    return null;
+  }
+}
+
+// Generates a multi-line journal entry from imputacion rubros.
+// The configured operation account (AP or AR) is the counter line.
+// imputacion = [{account_code, account_name, amount}, ...]
+function autoJournalEntryFromImputacion(operationTypeId, imputacion, total, date, ref) {
+  try {
+    var cfg = ajGetConfig(operationTypeId);
+    if (!cfg || !cfg.active || !cfg.account) return null;
+    var validLines = (imputacion || []).filter(function(l) { return l.account_code && l.amount > 0; });
+    if (!validLines.length) return autoJournalEntry(operationTypeId, total, date, ref, '');
+
+    var concept = (cfg.concept_template || 'Asiento auto - {ref}')
+      .replace(/\{ref\}/g, ref || '')
+      .replace(/\{date\}/g, date || '')
+      .replace(/\{amount\}/g, total ? Number(total).toLocaleString('es-AR') : '');
+
+    var entries = DB.getAll('journalEntries');
+    var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
+    var isDebit = (cfg.account_side === 'debit');  // true = AR debit (client), false = AP credit (supplier)
+
+    var lines = [];
+    // Imputacion lines go on the OPPOSITE side to the operation account
+    validLines.forEach(function(l) {
+      lines.push({
+        account_code: l.account_code,
+        account_name: l.account_name || l.account_code,
+        debit:  isDebit ? 0 : l.amount,
+        credit: isDebit ? l.amount : 0,
+        description: concept
+      });
+    });
+    // Counter line = configured operation account
+    lines.push({
+      account_code: cfg.account,
+      account_name: cfg.account_name || cfg.account,
+      debit:  isDebit ? total : 0,
+      credit: isDebit ? 0 : total,
+      description: concept
+    });
+
+    var entry = {
+      number: nextNum,
+      date: date || (new Date()).toISOString().split('T')[0],
+      description: concept,
+      reference: ref || '',
+      status: 'posted',
+      auto_generated: true,
+      operation_type: operationTypeId,
+      lines: lines,
+    };
+    return DB.insert('journalEntries', entry);
+  } catch(e) {
+    console.error('autoJournalEntryFromImputacion:', e);
     return null;
   }
 }

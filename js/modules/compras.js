@@ -1155,14 +1155,14 @@ function openSIForm(id, prefillPoId, prefillCertId) {
 
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
       '<div><strong style="font-size:13px">Imputacion Contable</strong>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Asigna cada costo a un rubro y proyecto</div></div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Asigna cada costo a un rubro (la cuenta surge del rubro)</div></div>' +
       '<button class="btn btn-sm btn-secondary" onclick="siAddImpLine()"><i class="fas fa-plus"></i> Linea</button>' +
     '</div>' +
     '<div id="si-imp-lines">' +
-      '<div style="display:grid;grid-template-columns:2.5fr 1.5fr 1.5fr 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">' +
-        '<span>Rubro</span><span>Cuenta contable</span><span>Proyecto</span><span>Importe</span><span></span>' +
+      '<div style="display:grid;grid-template-columns:3fr 2fr 130px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">' +
+        '<span>Rubro</span><span>Cuenta contable</span><span>Importe</span><span></span>' +
       '</div>' +
-      defaultImputacion.map(function(l, i) { return buildSiImpRow(l, i, projects, rubros); }).join('') +
+      defaultImputacion.map(function(l, i) { return buildSiImpRow(l, i, rubros); }).join('') +
     '</div>' +
     '<div id="si-imp-totals" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:8px">' +
       calcSiImpTotalsHtml(defaultImputacion) +
@@ -1285,6 +1285,12 @@ function saveSI(id) {
   if (certId) {
     DB.update('certificates', certId, { supplier_invoice_id: savedId });
   }
+
+  // Generate journal entry from imputacion lines
+  if (typeof autoJournalEntryFromImputacion === 'function') {
+    autoJournalEntryFromImputacion('fact_proveedor', imputacion, data.total, data.date, data.number);
+  }
+
   window._siImpLines = [];
   closeModal();
   renderCompras();
@@ -1307,21 +1313,16 @@ function deleteSI(id) {
 // ---- SI IMPUTACION ----
 window._siImpLines = [];
 
-function buildSiImpRow(line, i, projects, rubros) {
+function buildSiImpRow(line, i, rubros) {
   var rHtml = '<option value="">— Rubro —</option>' +
     rubros.map(function(r) {
       return '<option value="' + r.id + '" data-account="' + (r.account_code || '') + '" data-aname="' + (r.account_name || '') + '"' +
         (line.rubro_id === r.id ? ' selected' : '') + '>' + r.code + ' — ' + r.name + '</option>';
     }).join('');
-  var projHtml = '<option value="">— Proyecto —</option>' +
-    projects.map(function(p) {
-      return '<option value="' + p.id + '"' + (line.project_id === p.id ? ' selected' : '') + '>' + p.name + '</option>';
-    }).join('');
   var acctText = line.account_code ? (line.account_code + (line.account_name ? ' — ' + line.account_name : '')) : '—';
-  return '<div id="si-imp-row-' + i + '" style="display:grid;grid-template-columns:2.5fr 1.5fr 1.5fr 110px 36px;gap:6px;margin-bottom:6px;align-items:center">' +
+  return '<div id="si-imp-row-' + i + '" style="display:grid;grid-template-columns:3fr 2fr 130px 36px;gap:6px;margin-bottom:6px;align-items:center">' +
     '<select class="form-control" style="font-size:12px" onchange="siImpOnRubroChange(' + i + ',this)">' + rHtml + '</select>' +
     '<div id="si-imp-acct-' + i + '" style="font-size:11px;color:var(--text-muted);padding:2px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--bg);border-radius:var(--radius-sm);min-height:32px;display:flex;align-items:center">' + acctText + '</div>' +
-    '<select class="form-control" style="font-size:12px" onchange="siImpUpdateField(' + i + ',\'project_id\',this.value)">' + projHtml + '</select>' +
     '<input class="form-control" style="font-size:12px" type="number" min="0" value="' + (line.amount || 0) + '" oninput="siImpUpdateField(' + i + ',\'amount\',+this.value)">' +
     '<button class="btn-ghost btn danger" onclick="siRemoveImpLine(' + i + ')"><i class="fas fa-times"></i></button>' +
   '</div>';
@@ -1350,14 +1351,13 @@ function siImpUpdateField(i, field, val) {
 }
 
 function siAddImpLine() {
-  var projects = DB.getAll('projects');
   var rubros   = DB.getAll('rubros').filter(function(r) { return r.active !== false; }).sort(function(a, b) { return a.code.localeCompare(b.code); });
-  var newLine  = { rubro_id: '', account_code: '', account_name: '', project_id: '', amount: 0 };
+  var newLine  = { rubro_id: '', account_code: '', account_name: '', amount: 0 };
   window._siImpLines.push(newLine);
   var i    = window._siImpLines.length - 1;
   var cont = document.getElementById('si-imp-lines');
   var div  = document.createElement('div');
-  div.innerHTML = buildSiImpRow(newLine, i, projects, rubros);
+  div.innerHTML = buildSiImpRow(newLine, i, rubros);
   cont.appendChild(div.firstElementChild);
 }
 
