@@ -53,6 +53,7 @@ const MODULES = {
 
   // Administracion
   empresas:        { title: 'Empresas',                      icon: 'fa-city',                   render: renderEmpresas },
+  asientos:        { title: 'Asientos Automaticos',          icon: 'fa-magic',                  render: renderAsientos },
   aprobaciones:    { title: 'Aprobaciones',                  icon: 'fa-check-double',           render: renderAprobaciones },
   reportes:        { title: 'Reportes',                      icon: 'fa-chart-bar',              render: renderReportes },
   usuarios:        { title: 'Usuarios',                      icon: 'fa-users',                  render: renderUsuarios },
@@ -88,6 +89,59 @@ function navigate(module) {
   }, 60);
 }
 
+// ---- EXCHANGE RATE SYNC ----
+function syncExchangeRates() {
+  var today = (new Date()).toISOString().split('T')[0];
+  var lastSync = localStorage.getItem('erp_last_rate_sync');
+  if (lastSync === today) return;
+
+  fetch('https://open.er-api.com/v6/latest/USD')
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      if (!data || data.result !== 'success') return;
+      var apiRates = data.rates;
+      var global = DB.getGlobal();
+      var currencies = global.currencies || [];
+      var currencyIds = currencies.map(function(c) { return c.id; });
+      if (!global.exchangeRates) global.exchangeRates = [];
+
+      function upsertRate(from, to, rate) {
+        var id = 'er-sync-' + from.toLowerCase() + '-' + to.toLowerCase() + '-' + today.replace(/-/g, '');
+        var idx = -1;
+        for (var i = 0; i < global.exchangeRates.length; i++) {
+          if (global.exchangeRates[i].date === today && global.exchangeRates[i].from === from && global.exchangeRates[i].to === to) {
+            idx = i; break;
+          }
+        }
+        if (idx === -1) {
+          global.exchangeRates.push({ id: id, date: today, from: from, to: to, rate: Math.round(rate * 100) / 100 });
+        } else {
+          global.exchangeRates[idx].rate = Math.round(rate * 100) / 100;
+        }
+      }
+
+      currencyIds.forEach(function(to) {
+        if (to === 'USD') return;
+        if (apiRates[to]) upsertRate('USD', to, apiRates[to]);
+      });
+
+      if (apiRates['EUR'] && apiRates['EUR'] > 0) {
+        currencyIds.forEach(function(to) {
+          if (to === 'EUR' || to === 'USD') return;
+          if (apiRates[to]) upsertRate('EUR', to, apiRates[to] / apiRates['EUR']);
+        });
+      }
+
+      DB.saveGlobal(global);
+      localStorage.setItem('erp_last_rate_sync', today);
+      if (window.APP_STATE && window.APP_STATE.currentModule === 'empresas') {
+        try { empRenderTabMonedas(); } catch(e) {}
+      }
+      toast('Tipos de cambio actualizados (' + today + ')', 'success');
+    })
+    .catch(function() {});
+}
+
 // ---- COMPANY SELECTOR ----
 function populateCompanySelector() {
   var sel = document.getElementById('global-company');
@@ -95,20 +149,26 @@ function populateCompanySelector() {
   try {
     var companies = DB.getAllCompanies();
     var activeId = window.APP_STATE.activeCompany || 'comp-001';
-    sel.innerHTML = companies.map(function(c) {
-      var selected = c.id === activeId ? ' selected' : '';
-      return '<option value="' + c.id + '"' + selected + '>' + c.name + '</option>';
-    }).join('');
+    var allSelected = activeId === '' ? ' selected' : '';
+    sel.innerHTML =
+      '<option value=""' + allSelected + '>Todas las empresas</option>' +
+      companies.map(function(c) {
+        var selected = c.id === activeId ? ' selected' : '';
+        return '<option value="' + c.id + '"' + selected + '>' + c.name + '</option>';
+      }).join('');
   } catch(e) {
     console.error('Error populating company selector', e);
   }
 }
 
 function setActiveCompany(id) {
-  var companies = DB.getAllCompanies();
-  var company = companies.find(function(c) { return c.id === id; });
-  if (!company) return;
-  DB.setCompany(id);
+  // id === '' means "Todas las empresas" (consolidated view)
+  if (id !== '') {
+    var companies = DB.getAllCompanies();
+    var company = companies.find(function(c) { return c.id === id; });
+    if (!company) return;
+    DB.setCompany(id);
+  }
   window.APP_STATE.activeCompany = id;
   localStorage.setItem('erp_active_company', id);
   populateProjectSelector();
@@ -139,4 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Navigate to dashboard
   navigate('dashboard');
+
+  // Sync exchange rates once per day (non-blocking)
+  setTimeout(syncExchangeRates, 1500);
 });

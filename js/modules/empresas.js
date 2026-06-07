@@ -63,7 +63,7 @@ function empRenderTabEmpresas() {
 }
 
 function empCountryFlag(country) {
-  var flags = { AR: '🇦🇷', UY: '🇺🇾', CL: '🇨🇱', BR: '🇧🇷' };
+  var flags = { AR: '🇦🇷', UY: '🇺🇾', CL: '🇨🇱', BR: '🇧🇷', US: '🇺🇸' };
   return flags[country] || '🏢';
 }
 
@@ -137,6 +137,7 @@ function empNewCompany() {
           '<option value="UY">Uruguay</option>' +
           '<option value="CL">Chile</option>' +
           '<option value="BR">Brasil</option>' +
+          '<option value="US">Estados Unidos</option>' +
           '<option value="">Otro</option>' +
         '</select>' +
       '</div>' +
@@ -239,8 +240,8 @@ function empEditCompany(id) {
     return '<option value="' + cur.id + '"' + sel + '>' + cur.id + ' - ' + cur.name + '</option>';
   }).join('');
 
-  var countryMap = { AR: 'Argentina', UY: 'Uruguay', CL: 'Chile', BR: 'Brasil' };
-  var countryOptions = ['AR', 'UY', 'CL', 'BR', ''].map(function(code) {
+  var countryMap = { AR: 'Argentina', UY: 'Uruguay', CL: 'Chile', BR: 'Brasil', US: 'Estados Unidos' };
+  var countryOptions = ['AR', 'UY', 'CL', 'BR', 'US', ''].map(function(code) {
     var sel = (c.country || '') === code ? ' selected' : '';
     return '<option value="' + code + '"' + sel + '>' + (countryMap[code] || 'Otro') + '</option>';
   }).join('');
@@ -373,7 +374,10 @@ function empRenderTabMonedas() {
       '<div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
           '<h3 style="font-size:14px;font-weight:600;">Tipos de Cambio</h3>' +
-          '<button class="btn btn-sm btn-primary" onclick="empNewRate()"><i class="fas fa-plus"></i> Agregar</button>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button class="btn btn-sm btn-secondary" onclick="empSyncRates(this)"><i class="fas fa-sync-alt"></i> Sincronizar</button>' +
+            '<button class="btn btn-sm btn-primary" onclick="empNewRate()"><i class="fas fa-plus"></i> Agregar</button>' +
+          '</div>' +
         '</div>' +
         '<table class="table">' +
           '<thead><tr>' +
@@ -392,6 +396,14 @@ function empRenderTabMonedas() {
 
   var panel = document.getElementById('tab-monedas');
   if (panel) panel.innerHTML = html;
+}
+
+function empSyncRates(btn) {
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spin fa-spinner"></i> Sincronizando...'; }
+  syncExchangeRates();
+  setTimeout(function() {
+    empRenderTabMonedas();
+  }, 1800);
 }
 
 function empRatesRows(rates) {
