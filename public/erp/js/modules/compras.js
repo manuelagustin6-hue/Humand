@@ -1165,7 +1165,7 @@ function openSIForm(id, prefillPoId, prefillCertId) {
       defaultImputacion.map(function(l, i) { return buildSiImpRow(l, i, rubros); }).join('') +
     '</div>' +
     '<div id="si-imp-totals" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:8px">' +
-      calcSiImpTotalsHtml(defaultImputacion) +
+      calcSiImpTotalsHtml(defaultImputacion, defaultSubtotal) +
     '</div>' +
 
     '<div class="form-group" style="margin-top:16px"><label class="form-label">Notas</label>' +
@@ -1245,6 +1245,8 @@ function siRecalcTotal() {
   var percIibb = parseFloat((document.getElementById('si-perc-iibb') || {}).value) || 0;
   var totEl    = document.getElementById('si-total');
   if (totEl) totEl.value = (sub + tax + percIva + percIibb).toFixed(2);
+  var impTotEl = document.getElementById('si-imp-totals');
+  if (impTotEl) impTotEl.innerHTML = calcSiImpTotalsHtml((window._siImpLines || []).filter(Boolean));
 }
 
 function recalcSI() { siRecalcFromSubtotal(); }
@@ -1260,6 +1262,14 @@ function saveSI(id) {
   var percIibb = parseFloat((document.getElementById('si-perc-iibb') || {}).value) || 0;
   var certId   = document.getElementById('si-cert').value || '';
   var imputacion = (window._siImpLines || []).filter(Boolean).filter(function(l) { return l.rubro_id || l.amount; });
+
+  if (imputacion.length) {
+    var imputado = imputacion.reduce(function(s, l) { return s + (l.amount || 0); }, 0);
+    if (Math.abs(imputado - sub) > 0.01) {
+      toast('Imputacion incorrecta: se imputaron ' + fmtMoney(imputado) + ' pero el neto es ' + fmtMoney(sub), 'error');
+      return;
+    }
+  }
   var data = {
     number:      document.getElementById('si-num').value,
     po_id:       document.getElementById('si-po').value || '',
@@ -1288,7 +1298,7 @@ function saveSI(id) {
 
   // Generate journal entry from imputacion lines
   if (typeof autoJournalEntryFromImputacion === 'function') {
-    autoJournalEntryFromImputacion('fact_proveedor', imputacion, data.total, data.date, data.number);
+    autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, { iva: tax, percIva: percIva, percIibb: percIibb }, data.date, data.number);
   }
 
   window._siImpLines = [];
@@ -1369,11 +1379,23 @@ function siRemoveImpLine(i) {
   if (el) el.innerHTML = calcSiImpTotalsHtml(window._siImpLines.filter(Boolean));
 }
 
-function calcSiImpTotalsHtml(lines) {
+function calcSiImpTotalsHtml(lines, netoOverride) {
   var valid = lines.filter(Boolean);
-  var total = valid.reduce(function(s, l) { return s + (l.amount || 0); }, 0);
-  if (!valid.length) return '<span style="color:var(--text-muted)">Sin lineas de imputacion</span>';
-  return 'Total imputado: <strong style="color:var(--primary)">' + fmtMoney(total) + '</strong>';
+  var imputado = valid.reduce(function(s, l) { return s + (l.amount || 0); }, 0);
+  var neto = (netoOverride !== undefined && netoOverride !== null) ? netoOverride : (function() {
+    var el = document.getElementById('si-subtotal');
+    return el ? (parseFloat(el.value) || 0) : 0;
+  })();
+  if (!valid.length) {
+    if (neto > 0) return '<span style="color:var(--warning,#f59e0b)"><i class="fas fa-exclamation-triangle"></i> Sin imputar — Neto a imputar: <strong>' + fmtMoney(neto) + '</strong></span>';
+    return '<span style="color:var(--text-muted)">Sin lineas de imputacion</span>';
+  }
+  var diff = neto - imputado;
+  var ok = Math.abs(diff) < 0.01;
+  var color = ok ? 'var(--success,#22c55e)' : (diff > 0 ? 'var(--warning,#f59e0b)' : 'var(--danger,#ef4444)');
+  return 'Neto: <strong>' + fmtMoney(neto) + '</strong> &nbsp;|&nbsp; Imputado: <strong style="color:' + color + '">' + fmtMoney(imputado) + '</strong>' +
+    (ok ? ' <i class="fas fa-check-circle" style="color:' + color + '"></i>'
+        : ' &nbsp;|&nbsp; <span style="color:' + color + ';font-weight:600">' + (diff > 0 ? 'Faltan ' + fmtMoney(diff) + ' por imputar' : 'Excede por ' + fmtMoney(-diff)) + '</span>');
 }
 
 function exportSIs() {

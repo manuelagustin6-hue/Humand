@@ -307,7 +307,7 @@ function openInvoiceForm(id = null) {
   ${imputacion.map((l, i) => invImpRow(l, i)).join('')}
 </div>
 <div id="imp-totals" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:8px">
-  ${calcImpTotalsHtml(imputacion)}
+  ${calcImpTotalsHtml(imputacion, items.reduce((s, it) => s + (it.total || 0), 0))}
 </div>
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -347,6 +347,8 @@ function updateInvItem(i, field, val) {
   const el = document.getElementById(`ivi-total-${i}`);
   if (el) el.value = window._invItems[i].total;
   document.getElementById('inv-totals').innerHTML = calcInvTotalsHtml(window._invItems.filter(Boolean));
+  const impEl = document.getElementById('imp-totals');
+  if (impEl) impEl.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
 }
 
 function removeInvItem(i) {
@@ -354,6 +356,8 @@ function removeInvItem(i) {
   if (row) row.remove();
   window._invItems[i] = null;
   document.getElementById('inv-totals').innerHTML = calcInvTotalsHtml(window._invItems.filter(Boolean));
+  const impEl = document.getElementById('imp-totals');
+  if (impEl) impEl.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
 }
 
 function calcInvTotalsHtml(items) {
@@ -420,11 +424,22 @@ function removeImpLine(i) {
   if (el) el.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
 }
 
-function calcImpTotalsHtml(lines) {
+function calcImpTotalsHtml(lines, netoOverride) {
   const valid = lines.filter(Boolean);
-  const total = valid.reduce((s, l) => s + (l.amount || 0), 0);
-  if (!valid.length) return '<span style="color:var(--text-muted)">Sin lineas de imputacion</span>';
-  return `Total imputado: <strong style="color:var(--primary)">${fmtMoney(total)}</strong>`;
+  const imputado = valid.reduce((s, l) => s + (l.amount || 0), 0);
+  const neto = (netoOverride !== undefined && netoOverride !== null)
+    ? netoOverride
+    : (window._invItems || []).filter(Boolean).reduce((s, it) => s + (it.total || 0), 0);
+  if (!valid.length) {
+    if (neto > 0) return `<span style="color:var(--warning,#f59e0b)"><i class="fas fa-exclamation-triangle"></i> Sin imputar — Neto a imputar: <strong>${fmtMoney(neto)}</strong></span>`;
+    return '<span style="color:var(--text-muted)">Sin lineas de imputacion</span>';
+  }
+  const diff = neto - imputado;
+  const ok = Math.abs(diff) < 0.01;
+  const color = ok ? 'var(--success,#22c55e)' : (diff > 0 ? 'var(--warning,#f59e0b)' : 'var(--danger,#ef4444)');
+  return `Neto: <strong>${fmtMoney(neto)}</strong> &nbsp;|&nbsp; Imputado: <strong style="color:${color}">${fmtMoney(imputado)}</strong>` +
+    (ok ? ` <i class="fas fa-check-circle" style="color:${color}"></i>`
+        : ` &nbsp;|&nbsp; <span style="color:${color};font-weight:600">${diff > 0 ? `Faltan ${fmtMoney(diff)} por imputar` : `Excede por ${fmtMoney(-diff)}`}</span>`);
 }
 
 // ---- SAVE ----
@@ -440,6 +455,14 @@ function saveInvoice(id) {
   const tax = subtotal * 0.21;
   const source = document.getElementById('if-source').value;
   const imputacion = (window._impLines || []).filter(Boolean).filter(l => l.rubro_id || l.amount);
+
+  if (imputacion.length) {
+    const imputado = imputacion.reduce((s, l) => s + (l.amount || 0), 0);
+    if (Math.abs(imputado - subtotal) > 0.01) {
+      toast(`Imputacion incorrecta: se imputaron ${fmtMoney(imputado)} pero el neto es ${fmtMoney(subtotal)}`, 'error');
+      return;
+    }
+  }
 
   const data = {
     number: document.getElementById('if-num').value,
@@ -466,7 +489,7 @@ function saveInvoice(id) {
 
   // Generate journal entry from imputacion lines
   if (typeof autoJournalEntryFromImputacion === 'function') {
-    autoJournalEntryFromImputacion('fact_emitida', imputacion, data.total, data.date, data.number);
+    autoJournalEntryFromImputacion('fact_emitida', imputacion, subtotal, data.total, { iva: tax }, data.date, data.number);
   }
 
   window._invItems = [];

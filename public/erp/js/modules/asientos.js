@@ -1,11 +1,11 @@
 /* ===== MÓDULO: ASIENTOS AUTOMÁTICOS ===== */
 
 var AJ_TYPES = [
-  { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta a Cobrar (AR) — contraparte de cada rubro de venta' },
+  { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta a Cobrar (AR) — contraparte de cada rubro de venta', has_iva: true },
   { id: 'nc_emitida',          name: 'Nota de Credito Emitida',  desc: 'Al emitir nota de credito a cliente',   icon: 'fa-file-circle-minus',   default_side: 'debit',  side_label: 'Cuenta de Ventas (devolucion)' },
   { id: 'cobro_cliente',       name: 'Cobro de Cliente',         desc: 'Al registrar cobro de cliente',         icon: 'fa-hand-holding-dollar', default_side: 'debit',  side_label: 'Cuenta Caja / Banco (ingreso)' },
   { id: 'certificacion',       name: 'Certificacion de Obra',    desc: 'Al aprobar certificacion',              icon: 'fa-certificate',         default_side: 'credit', side_label: 'Cuenta de Certificaciones' },
-  { id: 'fact_proveedor',      name: 'Factura Proveedor',        desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice',        default_side: 'credit', side_label: 'Cuenta a Pagar (AP) — contraparte de cada rubro de costo' },
+  { id: 'fact_proveedor',      name: 'Factura Proveedor',        desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice',        default_side: 'credit', side_label: 'Cuenta a Pagar (AP) — contraparte de cada rubro de costo', has_iva: true, has_percepciones: true },
   { id: 'orden_pago',          name: 'Orden de Pago',            desc: 'Al emitir pago a proveedor',            icon: 'fa-money-bill-wave',     default_side: 'credit', side_label: 'Cuenta Caja / Banco (egreso)' },
   { id: 'retencion_iva',       name: 'Retencion IVA',            desc: 'Al generar retencion de IVA',           icon: 'fa-percentage',          default_side: 'credit', side_label: 'Cuenta IVA Retenido' },
   { id: 'retencion_ganancias', name: 'Retencion Ganancias',      desc: 'Al generar retencion de Ganancias',     icon: 'fa-percentage',          default_side: 'credit', side_label: 'Cuenta Ret. Ganancias' },
@@ -139,6 +139,33 @@ function ajEditType(typeId) {
       '</label>' +
     '</div>';
 
+  var taxAoHtml = '<option value="">— No configurar (omitir) —</option>' +
+    accounts.map(function(a) {
+      return '<option value="' + a.code + '" data-name="' + (a.name || '') + '">' + a.code + ' — ' + a.name + '</option>';
+    }).join('');
+
+  if (type.has_iva) {
+    body +=
+      '<div class="divider" style="margin:12px 0 16px"></div>' +
+      '<div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Cuentas de Impuestos</div>' +
+      '<div class="form-group">' +
+        '<label>Cuenta IVA (Credito / Debito Fiscal)</label>' +
+        '<select id="aj-iva-account" class="form-control">' + taxAoHtml + '</select>' +
+        '<small style="color:var(--text-muted);font-size:11px">Se generara una linea adicional en el asiento para el IVA de la factura</small>' +
+      '</div>';
+  }
+  if (type.has_percepciones) {
+    body +=
+      '<div class="form-group">' +
+        '<label>Cuenta Percepciones IVA</label>' +
+        '<select id="aj-perc-iva-account" class="form-control">' + taxAoHtml + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label>Cuenta Percepciones IIBB / Sel. Ingresos</label>' +
+        '<select id="aj-perc-iibb-account" class="form-control">' + taxAoHtml + '</select>' +
+      '</div>';
+  }
+
   var footer =
     '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
     '<button class="btn btn-primary" onclick="ajSaveEdit(\'' + typeId + '\')"><i class="fas fa-save"></i> Guardar</button>';
@@ -153,6 +180,18 @@ function ajEditType(typeId) {
     if (cfg.account_name) {
       var nf = document.getElementById('aj-account-name');
       if (nf) nf.value = cfg.account_name;
+    }
+    if (cfg.iva_account) {
+      var s2 = document.getElementById('aj-iva-account');
+      if (s2) s2.value = cfg.iva_account;
+    }
+    if (cfg.perc_iva_account) {
+      var s3 = document.getElementById('aj-perc-iva-account');
+      if (s3) s3.value = cfg.perc_iva_account;
+    }
+    if (cfg.perc_iibb_account) {
+      var s4 = document.getElementById('aj-perc-iibb-account');
+      if (s4) s4.value = cfg.perc_iibb_account;
     }
   }, 50);
 }
@@ -174,13 +213,29 @@ function ajSaveEdit(typeId) {
 
   if (!account) { toast('Debe seleccionar una cuenta contable', 'error'); return; }
 
-  ajSaveConfig(typeId, {
+  var typeForSave = AJ_TYPES.find(function(t) { return t.id === typeId; });
+  var configData = {
     account: account,
     account_name: accountName,
     account_side: accountSide,
     concept_template: concept,
     active: active
-  });
+  };
+  if (typeForSave && typeForSave.has_iva) {
+    var ivaEl = document.getElementById('aj-iva-account');
+    configData.iva_account = ivaEl ? ivaEl.value : '';
+    configData.iva_account_name = (ivaEl && ivaEl.selectedIndex >= 0)
+      ? (ivaEl.options[ivaEl.selectedIndex].getAttribute('data-name') || '') : '';
+  }
+  if (typeForSave && typeForSave.has_percepciones) {
+    var pIvaEl  = document.getElementById('aj-perc-iva-account');
+    var pIibbEl = document.getElementById('aj-perc-iibb-account');
+    configData.perc_iva_account      = pIvaEl  ? pIvaEl.value  : '';
+    configData.perc_iva_account_name = (pIvaEl  && pIvaEl.selectedIndex  >= 0) ? (pIvaEl.options[pIvaEl.selectedIndex].getAttribute('data-name')   || '') : '';
+    configData.perc_iibb_account     = pIibbEl ? pIibbEl.value : '';
+    configData.perc_iibb_account_name= (pIibbEl && pIibbEl.selectedIndex >= 0) ? (pIibbEl.options[pIibbEl.selectedIndex].getAttribute('data-name') || '') : '';
+  }
+  ajSaveConfig(typeId, configData);
   closeModal();
   var tbody = document.getElementById('aj-tbody');
   if (tbody) tbody.innerHTML = ajBuildRows();
@@ -231,15 +286,18 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
   }
 }
 
-// Generates a multi-line journal entry from imputacion rubros.
-// The configured operation account (AP or AR) is the counter line.
+// Generates a multi-line journal entry from imputacion rubros + tax lines.
+// neto   = sum of rubro imputacion lines (subtotal sin impuestos)
+// total  = full invoice total (what goes to AP/AR counter account)
+// taxes  = { iva, percIva, percIibb } — optional tax amounts for separate ledger lines
 // imputacion = [{account_code, account_name, amount}, ...]
-function autoJournalEntryFromImputacion(operationTypeId, imputacion, total, date, ref) {
+function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total, taxes, date, ref) {
   try {
     var cfg = ajGetConfig(operationTypeId);
     if (!cfg || !cfg.active || !cfg.account) return null;
     var validLines = (imputacion || []).filter(function(l) { return l.account_code && l.amount > 0; });
     if (!validLines.length) return autoJournalEntry(operationTypeId, total, date, ref, '');
+    taxes = taxes || {};
 
     var concept = (cfg.concept_template || 'Asiento auto - {ref}')
       .replace(/\{ref\}/g, ref || '')
@@ -248,10 +306,11 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, total, date
 
     var entries = DB.getAll('journalEntries');
     var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
-    var isDebit = (cfg.account_side === 'debit');  // true = AR debit (client), false = AP credit (supplier)
+    var isDebit = (cfg.account_side === 'debit');  // true = AR (fact_emitida), false = AP (fact_proveedor)
+    var typeObj = AJ_TYPES.find(function(t) { return t.id === operationTypeId; });
 
     var lines = [];
-    // Imputacion lines go on the OPPOSITE side to the operation account
+    // Rubro imputacion lines (neto allocation) — opposite side to the AP/AR account
     validLines.forEach(function(l) {
       lines.push({
         account_code: l.account_code,
@@ -261,7 +320,37 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, total, date
         description: concept
       });
     });
-    // Counter line = configured operation account
+    // Tax lines (same direction as rubro lines — they are also "expense" or "revenue" components)
+    if (typeObj && typeObj.has_iva && taxes.iva && cfg.iva_account) {
+      lines.push({
+        account_code: cfg.iva_account,
+        account_name: cfg.iva_account_name || cfg.iva_account,
+        debit:  isDebit ? 0 : taxes.iva,
+        credit: isDebit ? taxes.iva : 0,
+        description: concept
+      });
+    }
+    if (typeObj && typeObj.has_percepciones) {
+      if (taxes.percIva && cfg.perc_iva_account) {
+        lines.push({
+          account_code: cfg.perc_iva_account,
+          account_name: cfg.perc_iva_account_name || cfg.perc_iva_account,
+          debit:  isDebit ? 0 : taxes.percIva,
+          credit: isDebit ? taxes.percIva : 0,
+          description: concept
+        });
+      }
+      if (taxes.percIibb && cfg.perc_iibb_account) {
+        lines.push({
+          account_code: cfg.perc_iibb_account,
+          account_name: cfg.perc_iibb_account_name || cfg.perc_iibb_account,
+          debit:  isDebit ? 0 : taxes.percIibb,
+          credit: isDebit ? taxes.percIibb : 0,
+          description: concept
+        });
+      }
+    }
+    // Counter line = configured AP/AR account (full invoice total including taxes)
     lines.push({
       account_code: cfg.account,
       account_name: cfg.account_name || cfg.account,
