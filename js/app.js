@@ -55,6 +55,11 @@ const MODULES = {
   // Stock
   stock:           { title: 'Stock / Almacén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
 
+  // Notas Crédito / Débito
+  notas:           { title: 'Notas Cr./Déb.',                  icon: 'fa-file-circle-minus',      render: renderNotas },
+  notas_rec:       { title: 'Notas Recibidas (Proveedores)',    icon: 'fa-file-circle-minus',      render: renderNotas },
+  notas_emi:       { title: 'Notas Emitidas (Clientes)',        icon: 'fa-file-circle-plus',       render: function() { renderNotas(); setTimeout(function(){ var t=document.querySelector('#notas-tabs .tab-btn[data-tab="tab-notas-emi"]');if(t)t.click();},80); } },
+
   // Administracion
   empresas:        { title: 'Empresas',                      icon: 'fa-city',                   render: renderEmpresas },
   asientos:        { title: 'Asientos Automaticos',          icon: 'fa-magic',                  render: renderAsientos },
