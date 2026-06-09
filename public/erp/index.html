@@ -82,6 +82,11 @@
                 <i class="fas fa-percentage"></i><span>Retenciones</span>
               </a>
             </li>
+            <li class="nav-item" data-module="notas_rec">
+              <a href="#" onclick="navigate('notas_rec')">
+                <i class="fas fa-file-circle-minus"></i><span>Notas Cr./Déb. Recibidas</span>
+              </a>
+            </li>
           </ul>
         </li>
 
@@ -174,6 +179,11 @@
             <li class="nav-item" data-module="cashflow_cli">
               <a href="#" onclick="navigate('cashflow_cli')">
                 <i class="fas fa-money-bill-trend-up"></i><span>Cash Flow</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="notas_emi">
+              <a href="#" onclick="navigate('notas_emi')">
+                <i class="fas fa-file-circle-plus"></i><span>Notas Cr./Déb. Emitidas</span>
               </a>
             </li>
           </ul>
@@ -376,7 +386,7 @@
 <script src="js/modules/retenciones.js?v=6"></script>
 <script src="js/modules/indices.js?v=7"></script>
 <script src="js/modules/empresas.js?v=2"></script>
-<script src="js/modules/asientos.js?v=4"></script>
+<script src="js/modules/asientos.js?v=5"></script>
 <script src="js/modules/aprobaciones.js?v=1"></script>
 <script src="js/modules/contratos.js?v=7"></script>
 <script src="js/modules/reportes.js?v=6"></script>
@@ -387,7 +397,8 @@
 <script src="js/modules/bancos.js?v=1"></script>
 <script src="js/modules/ventas.js?v=4"></script>
 <script src="js/modules/stock.js?v=1"></script>
-<script src="js/app.js?v=15"></script>
+<script src="js/modules/notas.js?v=1"></script>
+<script src="js/app.js?v=16"></script>
 
 <!-- Mobile FAB nav button — shows only on mobile when sidebar is closed -->
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">

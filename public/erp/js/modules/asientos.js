@@ -3,6 +3,9 @@
 var AJ_TYPES = [
   { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta a Cobrar (AR) — contraparte de cada rubro de venta', has_iva: true },
   { id: 'nc_emitida',          name: 'Nota de Credito Emitida',  desc: 'Al emitir nota de credito a cliente',   icon: 'fa-file-circle-minus',   default_side: 'debit',  side_label: 'Cuenta de Ventas (devolucion)' },
+  { id: 'nd_emitida',          name: 'Nota de Debito Emitida',   desc: 'Al emitir nota de debito a cliente',    icon: 'fa-file-circle-plus',    default_side: 'debit',  side_label: 'Cuenta a Cobrar (AR)' },
+  { id: 'nc_proveedor',        name: 'Nota de Credito Recibida', desc: 'Al recibir nota de credito de proveedor',icon: 'fa-file-circle-minus',  default_side: 'debit',  side_label: 'Cuenta a Pagar (AP) — devolucion' },
+  { id: 'nd_proveedor',        name: 'Nota de Debito Recibida',  desc: 'Al recibir nota de debito de proveedor', icon: 'fa-file-circle-plus',   default_side: 'credit', side_label: 'Cuenta a Pagar (AP) — cargo adicional' },
   { id: 'cobro_cliente',       name: 'Cobro de Cliente',         desc: 'Al registrar cobro de cliente',         icon: 'fa-hand-holding-dollar', default_side: 'debit',  side_label: 'Cuenta Caja / Banco (ingreso)' },
   { id: 'certificacion',       name: 'Certificacion de Obra',    desc: 'Al aprobar certificacion',              icon: 'fa-certificate',         default_side: 'credit', side_label: 'Cuenta de Certificaciones' },
   { id: 'fact_proveedor',      name: 'Factura Proveedor',        desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice',        default_side: 'credit', side_label: 'Cuenta a Pagar (AP) — contraparte de cada rubro de costo', has_iva: true, has_percepciones: true },
