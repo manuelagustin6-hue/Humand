@@ -1097,6 +1097,17 @@ function openSIForm(id, prefillPoId, prefillCertId) {
     '<div class="form-grid form-grid-2">' +
       '<div class="form-group"><label class="form-label">N° Factura Proveedor</label>' +
         '<input class="form-control" id="si-num" value="' + ((si && si.number) || nextNum) + '"></div>' +
+      '<div class="form-group"><label class="form-label">Tipo de Comprobante</label>' +
+        '<select class="form-control" id="si-tipo-comp">' +
+          '<option value="A"'        + ((si && si.tipo_comprobante === 'A')        ? ' selected' : (!si ? ' selected' : '')) + '>Factura A (IVA discriminado)</option>' +
+          '<option value="B"'        + ((si && si.tipo_comprobante === 'B')        ? ' selected' : '') + '>Factura B</option>' +
+          '<option value="C"'        + ((si && si.tipo_comprobante === 'C')        ? ' selected' : '') + '>Factura C (Monotributo)</option>' +
+          '<option value="M"'        + ((si && si.tipo_comprobante === 'M')        ? ' selected' : '') + '>Factura M</option>' +
+          '<option value="X"'        + ((si && si.tipo_comprobante === 'X')        ? ' selected' : '') + '>Sin IVA / No AFIP</option>' +
+          '<option value="informal"' + ((si && si.tipo_comprobante === 'informal') ? ' selected' : '') + '>Informal / Sin comprobante</option>' +
+        '</select>' +
+        '<small style="color:var(--text-muted)">A/B/C/M van al Libro IVA. X e Informal se excluyen.</small>' +
+      '</div>' +
       '<div class="form-group"><label class="form-label">Estado</label>' +
         '<select class="form-control" id="si-status">' +
           '<option value="pending"'   + ((!si || si.status === 'pending')  ? ' selected' : '') + '>Pendiente de Pago</option>' +
@@ -1291,15 +1302,16 @@ function saveSI(id) {
     }
   }
   var data = {
-    number:      document.getElementById('si-num').value,
-    po_id:       document.getElementById('si-po').value || '',
-    cert_id:     certId,
-    supplier_id: supplierId,
-    project_id:  document.getElementById('si-project').value || '',
-    date:        document.getElementById('si-date').value,
-    due_date:    document.getElementById('si-due').value,
-    subtotal:    sub,
-    iva_rate:    ivaRate,
+    number:           document.getElementById('si-num').value,
+    tipo_comprobante: document.getElementById('si-tipo-comp').value,
+    po_id:            document.getElementById('si-po').value || '',
+    cert_id:          certId,
+    supplier_id:      supplierId,
+    project_id:       document.getElementById('si-project').value || '',
+    date:             document.getElementById('si-date').value,
+    due_date:         document.getElementById('si-due').value,
+    subtotal:         sub,
+    iva_rate:         ivaRate,
     tax:         tax,
     perc_iva:    percIva,
     perc_iibb:   percIibb,

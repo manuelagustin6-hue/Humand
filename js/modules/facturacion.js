@@ -221,10 +221,14 @@ function openInvoiceForm(id = null) {
   <div class="form-group">
     <label class="form-label">Tipo</label>
     <select class="form-control" id="if-type">
-      <option value="A" ${inv?.type==='A'?'selected':''}>Factura A</option>
+      <option value="A" ${inv?.type==='A'?'selected':''}>Factura A (IVA discriminado)</option>
       <option value="B" ${inv?.type==='B'?'selected':''}>Factura B</option>
-      <option value="C" ${inv?.type==='C'?'selected':''}>Factura C</option>
+      <option value="C" ${inv?.type==='C'?'selected':''}>Factura C (Monotributo)</option>
+      <option value="M" ${inv?.type==='M'?'selected':''}>Factura M</option>
+      <option value="X" ${inv?.type==='X'?'selected':''}>Sin IVA / No AFIP</option>
+      <option value="I" ${inv?.type==='I'?'selected':''}>Interna / Informal</option>
     </select>
+    <small style="color:var(--text-muted)">A/B/C/M van al Libro IVA. X e Interna se excluyen.</small>
   </div>
   <div class="form-group">
     <label class="form-label">Origen</label>

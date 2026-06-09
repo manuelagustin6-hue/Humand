@@ -51,6 +51,7 @@ const MODULES = {
   conta_resultados:{ title: 'Estado de Resultados',          icon: 'fa-chart-bar',              render: renderContaResultados },
   conta_plan:      { title: 'Plan de Cuentas',               icon: 'fa-sitemap',                render: renderContaPlan },
   conta_mayores:   { title: 'Libro Mayor',                   icon: 'fa-book',                   render: renderContaMayores },
+  libro_iva:       { title: 'Libro IVA Compras / Ventas',   icon: 'fa-receipt',                render: renderLibroIVA },
 
   // Stock
   stock:           { title: 'Stock / Almacén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
