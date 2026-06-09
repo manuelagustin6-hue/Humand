@@ -52,6 +52,9 @@ const MODULES = {
   conta_plan:      { title: 'Plan de Cuentas',               icon: 'fa-sitemap',                render: renderContaPlan },
   conta_mayores:   { title: 'Libro Mayor',                   icon: 'fa-book',                   render: renderContaMayores },
 
+  // Stock
+  stock:           { title: 'Stock / Almacén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
+
   // Administracion
   empresas:        { title: 'Empresas',                      icon: 'fa-city',                   render: renderEmpresas },
   asientos:        { title: 'Asientos Automaticos',          icon: 'fa-magic',                  render: renderAsientos },
