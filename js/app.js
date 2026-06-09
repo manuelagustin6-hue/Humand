@@ -25,6 +25,7 @@ const MODULES = {
   seguimiento:     { title: 'Control Presupuestal',          icon: 'fa-chart-line',             render: renderSeguimiento },
   gantt:           { title: 'Diagrama de Gantt',             icon: 'fa-stream',                 render: renderGantt },
   rubros:          { title: 'Rubros de Obra',                icon: 'fa-list-ol',                render: renderRubros },
+  apu:             { title: 'APU — Análisis de Precios Unitarios', icon: 'fa-calculator',       render: renderAPU },
   indices:         { title: 'Indices de Ajuste',             icon: 'fa-chart-line',             render: renderIndices },
 
   // Clientes
