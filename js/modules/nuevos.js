@@ -21,23 +21,6 @@ function _renderStub(icon, title, subtitle, features) {
     '</div></div>';
 }
 
-// ---- COMPRAS: WRAPPERS DE TABS ----
-function renderPedidos() {
-  renderCompras();
-  setTimeout(function() {
-    var btn = document.querySelector('#compras-tabs .tab-btn[data-tab="tab-pedidos"]');
-    if (btn) btn.click();
-  }, 80);
-}
-
-function renderOrdenesCompra() {
-  renderCompras();
-  setTimeout(function() {
-    var btn = document.querySelector('#compras-tabs .tab-btn[data-tab="tab-oc"]');
-    if (btn) btn.click();
-  }, 80);
-}
-
 function renderDocumentosProv() {
   document.getElementById('content').innerHTML =
     '<div class="page-header">' +
