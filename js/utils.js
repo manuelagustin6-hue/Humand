@@ -143,9 +143,23 @@ function confirmDialog(msg, onConfirm) {
 // ---- PROJECT SELECTOR ----
 function populateProjectSelector() {
   const sel = document.getElementById('global-project');
-  const projects = DB.getAll('projects');
+  if (!sel) return;
+  var projects = DB.getAll('projects');
+  var accessibleIds = typeof getAccessibleProjectIds === 'function' ? getAccessibleProjectIds() : null;
+  if (accessibleIds) {
+    projects = projects.filter(function(p) { return accessibleIds.indexOf(p.id) !== -1; });
+  }
   sel.innerHTML = '<option value="">Todos los proyectos</option>' +
-    projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    projects.map(function(p) { return '<option value="' + p.id + '">' + p.name + '</option>'; }).join('');
+  // Restore previously active project if still accessible
+  var cur = window.APP_STATE && window.APP_STATE.activeProject;
+  if (cur && projects.find(function(p) { return p.id === cur; })) {
+    sel.value = cur;
+  } else if (cur && accessibleIds) {
+    // Previous project no longer accessible — reset
+    window.APP_STATE.activeProject = '';
+    sel.value = '';
+  }
 }
 
 function setActiveProject(pid) {
