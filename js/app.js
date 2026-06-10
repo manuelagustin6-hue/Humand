@@ -92,6 +92,7 @@ function navigate(module) {
 
   // Render
   window.APP_STATE.currentModule = module;
+  try { localStorage.setItem('erp_active_module', module); } catch(e) {}
   var content = document.getElementById('content');
   content.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:var(--text-muted)"></i></div>';
 
@@ -198,8 +199,10 @@ document.addEventListener('DOMContentLoaded', function() {
   populateCompanySelector();
   populateProjectSelector();
 
-  // Navigate to dashboard
-  navigate('dashboard');
+  // Navigate to last active module (or dashboard on first load)
+  var savedModule = null;
+  try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
+  navigate(savedModule && MODULES[savedModule] ? savedModule : 'dashboard');
 
   // Sync exchange rates once per day (non-blocking)
   setTimeout(syncExchangeRates, 1500);
