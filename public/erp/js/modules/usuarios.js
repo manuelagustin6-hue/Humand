@@ -270,9 +270,8 @@ function openUserForm(id = null) {
     </select>
   </div>
   <div class="form-group full">
-    <label class="form-label">PIN de Acceso <span style="font-weight:400;color:var(--text-muted)">${u ? '(dejá vacío para no cambiar)' : '(opcional)'}</span></label>
-    <input class="form-control" id="usr-pin" type="password" placeholder="Nuevo PIN de acceso" autocomplete="new-password">
-    <div style="font-size:11px;color:var(--text-muted);margin-top:4px"><i class="fas fa-info-circle"></i> Sin PIN, el usuario inicia sesión con un solo clic.</div>
+    <label class="form-label">Contraseña <span style="font-weight:400;color:var(--text-muted)">${u ? '(dejá vacío para no cambiar)' : '(opcional — si no se asigna, cualquier contraseña permite el ingreso)'}</span></label>
+    <input class="form-control" id="usr-pin" type="password" placeholder="Nueva contraseña" autocomplete="new-password">
   </div>
 </div>
 `, '', `
@@ -532,95 +531,60 @@ function canEdit(moduleId) {
 // =====================================================
 // LOGIN UI
 // =====================================================
-var _loginSelectedUid = null;
 
 function showLoginScreen() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
-  showLoginUserGrid();
+  var emailEl = document.getElementById('login-email');
+  var pwEl    = document.getElementById('login-password');
+  var errEl   = document.getElementById('login-error-txt');
+  if (emailEl) { emailEl.value = ''; setTimeout(function() { emailEl.focus(); }, 60); }
+  if (pwEl)    pwEl.value = '';
+  if (errEl)   errEl.innerHTML = '';
+  // Reset password field to type=password (in case toggle was used)
+  if (pwEl) pwEl.type = 'password';
+  var icon = document.getElementById('login-pw-icon');
+  if (icon) icon.className = 'fas fa-eye';
 }
 
-function showLoginUserGrid() {
-  _loginSelectedUid = null;
-  var users = DB.getAll('users').filter(function(u) { return u.active; });
-
-  var pinSection = document.getElementById('login-pin-section');
-  var gridEl = document.getElementById('login-user-grid');
-  if (pinSection) pinSection.style.display = 'none';
-  if (!gridEl) return;
-  gridEl.style.display = '';
-
-  if (users.length === 0) {
-    gridEl.innerHTML = '<div style="text-align:center;color:#64748b;font-size:13px;padding:20px 0">No hay usuarios activos.<br>Agregá usuarios desde el módulo de Usuarios.</div>';
-    return;
-  }
-
-  var cols = users.length === 1 ? '1fr' : 'repeat(2,1fr)';
-  gridEl.innerHTML =
-    '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:14px;text-align:center">Seleccioná tu usuario</div>' +
-    '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px">' +
-    users.map(function(u) {
-      return '<button class="login-user-btn" onclick="selectLoginUser(\'' + u.id + '\')">' +
-        '<div class="login-user-avatar">' + escapeHtml((u.name || '?').charAt(0).toUpperCase()) + '</div>' +
-        '<div style="overflow:hidden;text-align:left">' +
-        '<div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(u.name || '') + '</div>' +
-        '<div style="font-size:11px;color:#64748b">' + escapeHtml(usrRoleLabel(u.role)) + '</div>' +
-        (u.password ? '<div style="font-size:10px;color:#94a3b8;margin-top:1px"><i class="fas fa-lock"></i> PIN requerido</div>' : '') +
-        '</div>' +
-        '</button>';
-    }).join('') +
-    '</div>';
+function toggleLoginPw() {
+  var el   = document.getElementById('login-password');
+  var icon = document.getElementById('login-pw-icon');
+  if (!el) return;
+  el.type = (el.type === 'password') ? 'text' : 'password';
+  if (icon) icon.className = (el.type === 'password') ? 'fas fa-eye' : 'fas fa-eye-slash';
 }
 
-function selectLoginUser(uid) {
-  _loginSelectedUid = uid;
-  var user = DB.getById('users', uid);
-  if (!user) return;
-
-  if (!user.password) {
-    completeLogin(uid, false);
-    return;
-  }
-
-  var gridEl = document.getElementById('login-user-grid');
-  var pinSection = document.getElementById('login-pin-section');
-  if (gridEl) gridEl.style.display = 'none';
-  if (pinSection) pinSection.style.display = '';
-
-  var av = document.getElementById('login-user-avatar-txt');
-  var nm = document.getElementById('login-user-name-txt');
-  var rl = document.getElementById('login-user-role-txt');
-  if (av) av.textContent = (user.name || '?').charAt(0).toUpperCase();
-  if (nm) nm.textContent = user.name || user.email;
-  if (rl) rl.textContent = usrRoleLabel(user.role);
-
-  var pinEl = document.getElementById('login-pin');
-  var errEl = document.getElementById('login-error-txt');
-  if (pinEl) { pinEl.value = ''; setTimeout(function() { pinEl.focus(); }, 50); }
-  if (errEl) errEl.textContent = '';
+function _loginError(msg) {
+  var el = document.getElementById('login-error-txt');
+  if (el) el.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + escapeHtml(msg);
 }
 
 function doLogin() {
-  var uid = _loginSelectedUid;
-  if (!uid) return;
-  var user = DB.getById('users', uid);
-  if (!user) return;
+  var email    = ((document.getElementById('login-email')    || {}).value || '').trim().toLowerCase();
+  var password = ((document.getElementById('login-password') || {}).value || '');
 
-  var pinEl = document.getElementById('login-pin');
-  var pin = pinEl ? pinEl.value : '';
+  if (!email) { _loginError('Ingresá tu email'); return; }
 
-  var encoded;
-  try { encoded = btoa(pin); } catch(e) { encoded = pin; }
+  var users = DB.getAll('users');
+  var user  = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; });
 
-  if (user.password && user.password !== encoded) {
-    var errEl = document.getElementById('login-error-txt');
-    if (errEl) errEl.textContent = 'PIN incorrecto. Intentá de nuevo.';
-    if (pinEl) pinEl.select();
-    return;
+  if (!user) { _loginError('Email o contraseña incorrectos'); return; }
+
+  if (user.password) {
+    var encoded;
+    try { encoded = btoa(password); } catch(e) { encoded = password; }
+    if (user.password !== encoded) {
+      _loginError('Email o contraseña incorrectos');
+      var pwEl = document.getElementById('login-password');
+      if (pwEl) pwEl.select();
+      return;
+    }
   }
+  // user.password null/unset → first-access, accept any input
 
   var remEl = document.getElementById('login-remember');
-  completeLogin(uid, !!(remEl && remEl.checked));
+  completeLogin(user.id, !!(remEl && remEl.checked));
 }
 
 function completeLogin(uid, remember) {
