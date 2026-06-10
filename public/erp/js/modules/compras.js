@@ -682,13 +682,15 @@ ${po.notes ? `<div class="mt-2"><strong>Notas:</strong> ${po.notes}</div>` : ''}
    <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>`);
 }
 
-function openPOForm(id = null) {
+function openPOForm(id) {
+  id = (id != null && id !== '') ? id : null;
+  try {
   const po = id ? DB.getById('purchaseOrders', id) : null;
   const projects = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
-  const items = po?.items || [{ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }];
-  const nextNum = `OC-${new Date().getFullYear()}-${String(DB.getAll('purchaseOrders').length + 1).padStart(3, '0')}`;
-  window._poItems = items.map(it => Object.assign({}, it));
+  const items = po ? (po.items || []) : [{ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }];
+  const nextNum = 'OC-' + new Date().getFullYear() + '-' + String(DB.getAll('purchaseOrders').length + 1).padStart(3, '0');
+  window._poItems = items.map(function(it) { return Object.assign({}, it); });
 
   openModal(po ? 'Editar OC' : 'Nueva Orden de Compra', `
 <div class="form-grid form-grid-2">
@@ -749,10 +751,11 @@ function openPOForm(id = null) {
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="savePO('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
 `);
+  } catch(e) { console.error('openPOForm error:', e); toast('Error al abrir formulario: ' + e.message, 'error'); }
 }
 
 function poItemRow(it, i) {
-  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => a.code.localeCompare(b.code));
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
   const rubroOpts = '<option value="">— Sin rubro —</option>' +
     rubros.map(r => '<option value="' + r.id + '"' + (it.rubro_id === r.id ? ' selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('');
   return `<div id="poi-row-${i}" style="display:grid;grid-template-columns:2fr 2fr 70px 80px 110px 110px 36px;gap:6px;margin-bottom:6px;align-items:center">
