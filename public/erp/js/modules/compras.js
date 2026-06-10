@@ -38,6 +38,48 @@ function renderCompras() {
   initTabs('compras-tabs');
 }
 
+// ==== STANDALONE PAGE RENDERS (for sidebar navigation) ====
+
+function renderPedidos() {
+  document.getElementById('content').innerHTML = `
+<div class="page-header">
+  <div>
+    <div class="page-title">Pedidos de Materiales</div>
+    <div class="page-subtitle">Solicitudes de compra de materiales y equipos para obra</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-primary" onclick="openRequisitionForm()"><i class="fas fa-plus"></i> Nuevo Pedido</button>
+  </div>
+</div>
+<div id="pedidos-page-content">
+  ${renderRequisitionsTab()}
+</div>`;
+}
+
+function renderOrdenesCompra() {
+  document.getElementById('content').innerHTML = `
+<div class="page-header">
+  <div>
+    <div class="page-title">Órdenes de Compra</div>
+    <div class="page-subtitle">Órdenes de compra emitidas a proveedores</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-secondary" onclick="openSupplierForm()"><i class="fas fa-truck"></i> Proveedor</button>
+    <button class="btn btn-primary" onclick="openPOForm()"><i class="fas fa-plus"></i> Nueva OC</button>
+  </div>
+</div>
+<div id="oc-page-content">
+  ${renderPOTable()}
+</div>`;
+}
+
+function _refreshCurrentComprasView() {
+  var mod = window.APP_STATE && window.APP_STATE.currentModule;
+  if (mod === 'pedidos') renderPedidos();
+  else if (mod === 'ordenes_compra') renderOrdenesCompra();
+  else renderCompras();
+}
+
 // ==== REQUISITIONS (PEDIDOS DE MATERIALES) ====
 
 function renderRequisitionsTab() {
@@ -358,15 +400,15 @@ function saveRequisition(id) {
 
   window._reqItems = [];
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 // ---- WORKFLOW ACTIONS ----
 function submitRequisition(id) {
   confirmDialog('¿Enviar el pedido para aprobación?', () => {
     DB.update('purchaseRequisitions', id, { submitted_date: todayStr() });
-    submitForApproval('purchase_requisition', id); // engine sets status + creates instance if workflow configured
-    renderCompras();
+    submitForApproval('purchase_requisition', id);
+    _refreshCurrentComprasView();
   });
 }
 
@@ -401,7 +443,7 @@ function rejectRequisition(id) {
   });
   toast('Pedido rechazado', 'warning');
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function convertRequisitionToOC(reqId) {
@@ -477,14 +519,14 @@ function doConvertToOC(reqId) {
     toast(`OC ${nextNum} creada correctamente`, 'success');
   }
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deleteRequisition(id) {
   confirmDialog('¿Eliminar este pedido?', () => {
     DB.remove('purchaseRequisitions', id);
     toast('Pedido eliminado', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
@@ -795,20 +837,20 @@ function savePO(id) {
 
   window._poItems = [];
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function receivePO(id) {
   DB.update('purchaseOrders', id, { status: 'received' });
   toast('OC marcada como recibida', 'success');
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deletePO(id) {
   confirmDialog('¿Eliminar esta orden de compra?', () => {
     DB.remove('purchaseOrders', id);
     toast('OC eliminada', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
@@ -939,14 +981,14 @@ function saveSupplier(id) {
   if (id) { DB.update('suppliers', id, data); toast('Proveedor actualizado', 'success'); }
   else { DB.insert('suppliers', data); toast('Proveedor creado', 'success'); }
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deleteSupplier(id) {
   confirmDialog('¿Eliminar este proveedor?', () => {
     DB.remove('suppliers', id);
     toast('Proveedor eliminado', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
@@ -1402,20 +1444,20 @@ function saveSI(id) {
   window._siImpLines = [];
   window._siTaxLines = [];
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function markSIPaid(id) {
   DB.update('supplierInvoices', id, { status: 'paid' });
   toast('Factura marcada como pagada', 'success');
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deleteSI(id) {
   confirmDialog('¿Eliminar esta factura de proveedor?', () => {
     DB.remove('supplierInvoices', id);
     toast('Factura eliminada', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
