@@ -4,11 +4,12 @@ function renderCompras() {
 <div class="page-header">
   <div>
     <div class="page-title">Compras</div>
-    <div class="page-subtitle">Pedidos de materiales y órdenes de compra</div>
+    <div class="page-subtitle">Pedidos de materiales, órdenes de compra y facturas de proveedores</div>
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="openSupplierForm()"><i class="fas fa-truck"></i> Nuevo Proveedor</button>
     <button class="btn btn-secondary" onclick="openPOForm()"><i class="fas fa-file-alt"></i> Nueva OC</button>
+    <button class="btn btn-secondary" onclick="openSIForm()"><i class="fas fa-file-invoice"></i> Nueva Factura</button>
     <button class="btn btn-primary" onclick="openRequisitionForm()"><i class="fas fa-plus"></i> Nuevo Pedido</button>
   </div>
 </div>
@@ -17,6 +18,7 @@ function renderCompras() {
   <div class="tabs">
     <button class="tab-btn" data-tab="tab-pedidos">Pedidos de Materiales</button>
     <button class="tab-btn" data-tab="tab-oc">Órdenes de Compra</button>
+    <button class="tab-btn" data-tab="tab-facturas">Facturas Proveedor</button>
     <button class="tab-btn" data-tab="tab-suppliers">Proveedores</button>
   </div>
   <div id="tab-pedidos" class="tab-content">
@@ -24,6 +26,9 @@ function renderCompras() {
   </div>
   <div id="tab-oc" class="tab-content">
     ${renderPOTable()}
+  </div>
+  <div id="tab-facturas" class="tab-content">
+    ${renderSupplierInvoicesTab()}
   </div>
   <div id="tab-suppliers" class="tab-content">
     ${renderSuppliersTable()}
@@ -114,8 +119,7 @@ function buildRequisitionRows(reqs, projects) {
           <button class="btn btn-sm btn-primary" onclick="submitRequisition('${req.id}')"><i class="fas fa-paper-plane"></i> Enviar</button>
         ` : ''}
         ${req.status === 'submitted' ? `
-          <button class="btn btn-sm btn-success" onclick="approveRequisition('${req.id}')"><i class="fas fa-check"></i> Aprobar</button>
-          <button class="btn btn-sm btn-danger" onclick="openRejectRequisition('${req.id}')"><i class="fas fa-times"></i> Rechazar</button>
+          <button class="btn btn-sm btn-secondary" onclick="navigate('aprobaciones')" title="Ir al módulo de Aprobaciones"><i class="fas fa-check-double"></i> Ver Aprobación</button>
         ` : ''}
         ${req.status === 'approved' ? `
           <button class="btn btn-sm btn-primary" onclick="convertRequisitionToOC('${req.id}')"><i class="fas fa-file-alt"></i> Generar OC</button>
@@ -194,8 +198,7 @@ ${(req.items || []).map(it => `<tr>
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
 ${req.status === 'draft' ? `<button class="btn btn-secondary" onclick="closeModal(); openRequisitionForm('${req.id}')"><i class="fas fa-edit"></i> Editar</button><button class="btn btn-primary" onclick="closeModal(); submitRequisition('${req.id}')"><i class="fas fa-paper-plane"></i> Enviar</button>` : ''}
 ${req.status === 'submitted' ? `
-  <button class="btn btn-success" onclick="closeModal(); approveRequisition('${req.id}')"><i class="fas fa-check"></i> Aprobar</button>
-  <button class="btn btn-danger" onclick="closeModal(); openRejectRequisition('${req.id}')"><i class="fas fa-times"></i> Rechazar</button>
+  <button class="btn btn-secondary" onclick="closeModal(); navigate('aprobaciones')"><i class="fas fa-check-double"></i> Ver en Aprobaciones</button>
 ` : ''}
 ${req.status === 'approved' ? `<button class="btn btn-primary" onclick="closeModal(); convertRequisitionToOC('${req.id}')"><i class="fas fa-file-alt"></i> Generar OC</button>` : ''}
 <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
@@ -278,7 +281,7 @@ function reqItemRow(it, i, rubroOpts) {
     <input class="form-control" style="font-size:12px" value="${it.unit || 'un'}" oninput="updateReqItem(${i},'unit',this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity || 1}" oninput="updateReqItem(${i},'quantity',+this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price || 0}" placeholder="0" oninput="updateReqItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total || 0).replace('$', '').trim()}" id="reqitem-total-${i}">
+    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total || 0)}" id="reqitem-total-${i}">
     <button class="btn-ghost btn danger" onclick="removeReqItem(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }
@@ -299,7 +302,7 @@ function updateReqItem(i, field, val) {
   window._reqItems[i][field] = val;
   window._reqItems[i].total = (window._reqItems[i].quantity || 0) * (window._reqItems[i].unit_price || 0);
   const totEl = document.getElementById(`reqitem-total-${i}`);
-  if (totEl) totEl.value = fmtMoney(window._reqItems[i].total).replace('$', '').trim();
+  if (totEl) totEl.value = fmtMoney(window._reqItems[i].total);
   document.getElementById('req-totals').innerHTML = calcReqTotalsHtml(window._reqItems.filter(Boolean));
 }
 
@@ -368,19 +371,12 @@ function submitRequisition(id) {
 }
 
 function approveRequisition(id) {
-  // If a workflow instance exists, route through the engine; otherwise direct approve
   const inst = getApprovalInstance('purchase_requisition', id);
   if (inst && inst.status === 'pending') {
-    openApproveApprModal(inst.id);
+    navigate('aprobaciones');
     return;
   }
-  DB.update('purchaseRequisitions', id, {
-    status: 'approved',
-    approved_by: 'Administrador',
-    approved_date: todayStr(),
-  });
-  toast('Pedido aprobado', 'success');
-  renderCompras();
+  navigate('aprobaciones');
 }
 
 function openRejectRequisition(id) {
@@ -559,8 +555,9 @@ function buildPORows(pos, projects, suppliers) {
   ${pos.map(po => {
     const proj = projects.find(p => p.id === po.project_id);
     const sup = suppliers.find(s => s.id === po.supplier_id);
+    const srcReq = po.req_id ? DB.getById('purchaseRequisitions', po.req_id) : null;
     return `<tr>
-      <td><strong>${po.number}</strong></td>
+      <td><strong>${po.number}</strong>${srcReq ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px"><i class="fas fa-clipboard-list" style="font-size:9px"></i> ${srcReq.number}</div>` : ''}</td>
       <td>${proj ? proj.name : '-'}</td>
       <td>${sup ? sup.name : '-'}</td>
       <td>${fmtDate(po.date)}</td>
@@ -599,12 +596,14 @@ function viewPO(id) {
   const po = DB.getById('purchaseOrders', id);
   const proj = DB.getById('projects', po.project_id);
   const sup = DB.getById('suppliers', po.supplier_id);
+  const srcReq = po.req_id ? DB.getById('purchaseRequisitions', po.req_id) : null;
   openModal(`OC ${po.number}`, `
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
   <div>
     <div class="form-label">Proyecto</div><p>${proj?.name || '-'}</p>
     <div class="form-label mt-1">Proveedor</div><p>${sup?.name || '-'}</p>
     <div class="form-label mt-1">CUIT Proveedor</div><p>${sup?.cuit || '-'}</p>
+    ${srcReq ? `<div class="form-label mt-1">Pedido de Origen</div><p style="color:var(--primary);font-weight:600"><i class="fas fa-clipboard-list"></i> ${srcReq.number}</p>` : ''}
   </div>
   <div>
     <div class="form-label">Fecha OC</div><p>${fmtDate(po.date)}</p>
@@ -645,6 +644,7 @@ function openPOForm(id = null) {
   const suppliers = DB.getAll('suppliers');
   const items = po?.items || [{ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }];
   const nextNum = `OC-${new Date().getFullYear()}-${String(DB.getAll('purchaseOrders').length + 1).padStart(3, '0')}`;
+  window._poItems = items.map(it => Object.assign({}, it));
 
   openModal(po ? 'Editar OC' : 'Nueva Orden de Compra', `
 <div class="form-grid form-grid-2">
@@ -713,7 +713,7 @@ function poItemRow(it, i) {
     <input class="form-control" style="font-size:12px" value="${it.unit}" oninput="updatePOItem(${i},'unit',this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity}" oninput="updatePOItem(${i},'quantity',+this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price}" oninput="updatePOItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total).replace('$','').trim()}" id="poi-total-${i}">
+    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total)}" id="poi-total-${i}">
     <button class="btn-ghost btn danger" onclick="removePOItem(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }
@@ -733,7 +733,7 @@ function updatePOItem(i, field, val) {
   window._poItems[i][field] = val;
   window._poItems[i].total = (window._poItems[i].quantity || 0) * (window._poItems[i].unit_price || 0);
   const totEl = document.getElementById(`poi-total-${i}`);
-  if (totEl) totEl.value = fmtMoney(window._poItems[i].total).replace('$','').trim();
+  if (totEl) totEl.value = fmtMoney(window._poItems[i].total);
   document.getElementById('po-totals').innerHTML = calcPOTotalsHtml(window._poItems);
 }
 
