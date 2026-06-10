@@ -9,19 +9,91 @@ const BUILTIN_ROLES = [
   { id: 'viewer',          label: 'Lector',          color: 'badge-gray', builtin: true, perms: ['Solo lectura', 'Sin modificar datos'] },
 ];
 
-// Permission areas a custom role can be granted (used as checklist)
-const PERM_AREAS = [
-  { id: 'compras',         label: 'Compras y Proveedores' },
-  { id: 'obra',            label: 'Gestión de Obra' },
-  { id: 'certificaciones', label: 'Certificaciones' },
-  { id: 'clientes',        label: 'Clientes y Facturación' },
-  { id: 'tesoreria',       label: 'Tesorería y Bancos' },
-  { id: 'contabilidad',    label: 'Contabilidad' },
-  { id: 'rrhh',            label: 'RRHH / Personal' },
-  { id: 'aprobaciones',    label: 'Aprobaciones' },
-  { id: 'reportes',        label: 'Reportes' },
-  { id: 'config',          label: 'Configuración y Usuarios' },
+// Granular permission map — grouped by area, each item is an accessible module.
+// A role grants, per item, one of: 'none' | 'view' | 'edit'.
+const PERM_MODULES = [
+  { group: 'Compras', items: [
+    { id: 'pedidos',         label: 'Órdenes de Pedido' },
+    { id: 'ordenes_compra',  label: 'Órdenes de Compra' },
+  ]},
+  { group: 'Proveedores', items: [
+    { id: 'cuentas_prov',    label: 'Cuentas Corrientes' },
+    { id: 'documentos_prov', label: 'Documentos / Facturas' },
+    { id: 'ordenes_pago',    label: 'Órdenes de Pago' },
+    { id: 'retenciones',     label: 'Retenciones' },
+  ]},
+  { group: 'Gestión de Obra', items: [
+    { id: 'projects',        label: 'Proyectos' },
+    { id: 'contratos',       label: 'Contratos' },
+    { id: 'certificaciones', label: 'Certificaciones' },
+    { id: 'presupuesto',     label: 'Cómputo y Presupuesto' },
+    { id: 'seguimiento',     label: 'Control Presupuestal' },
+    { id: 'gantt',           label: 'Diagrama de Gantt' },
+    { id: 'rubros',          label: 'Rubros de Obra' },
+    { id: 'apu',             label: 'APU' },
+    { id: 'indices',         label: 'Índices de Ajuste' },
+  ]},
+  { group: 'Clientes', items: [
+    { id: 'clientes',        label: 'Clientes' },
+    { id: 'facturacion',     label: 'Facturación' },
+    { id: 'cobranzas',       label: 'Cobranzas / Ingresos' },
+    { id: 'cuentas_cli',     label: 'Cuentas Corrientes' },
+    { id: 'cashflow_cli',    label: 'Cash Flow' },
+  ]},
+  { group: 'Comercial', items: [
+    { id: 'leads',           label: 'Leads' },
+    { id: 'unidades',        label: 'Detalle de Unidades' },
+  ]},
+  { group: 'Tesorería', items: [
+    { id: 'cuentas_banco',   label: 'Cuentas Bancarias y Cajas' },
+    { id: 'tesoreria',       label: 'Operaciones' },
+    { id: 'cheques',         label: 'Cheques' },
+  ]},
+  { group: 'Contabilidad', items: [
+    { id: 'contabilidad',    label: 'Contabilidad' },
+    { id: 'conta_diario',    label: 'Libro Diario' },
+    { id: 'conta_balance',   label: 'Balance General' },
+    { id: 'conta_resultados',label: 'Estado de Resultados' },
+    { id: 'conta_plan',      label: 'Plan de Cuentas' },
+    { id: 'libro_iva',       label: 'Libro IVA' },
+  ]},
+  { group: 'RRHH / Stock', items: [
+    { id: 'rrhh',            label: 'RRHH — Personal' },
+    { id: 'stock',           label: 'Stock / Almacén' },
+    { id: 'notas',           label: 'Notas Cr./Déb.' },
+  ]},
+  { group: 'Administración', items: [
+    { id: 'empresas',        label: 'Empresas' },
+    { id: 'asientos',        label: 'Asientos Automáticos' },
+    { id: 'aprobaciones',    label: 'Aprobaciones' },
+    { id: 'reportes',        label: 'Reportes' },
+    { id: 'usuarios',        label: 'Usuarios y Roles' },
+    { id: 'ajustes',         label: 'Ajustes del Sistema' },
+  ]},
 ];
+
+const PERM_LEVELS = [
+  { id: 'none', label: 'Sin acceso' },
+  { id: 'view', label: 'Ver' },
+  { id: 'edit', label: 'Ver y Editar' },
+];
+
+function permItemLabel(id) {
+  let label = id;
+  PERM_MODULES.forEach(function(g) { g.items.forEach(function(it) { if (it.id === id) label = it.label; }); });
+  return label;
+}
+
+// Summarise a role's permission map → { edit, view }
+function permCountSummary(perms) {
+  perms = perms || {};
+  let edit = 0, view = 0;
+  Object.keys(perms).forEach(function(k) {
+    if (perms[k] === 'edit') edit++;
+    else if (perms[k] === 'view') view++;
+  });
+  return { edit: edit, view: view };
+}
 
 const ROLE_COLORS = [
   { id: 'badge-red',    label: 'Rojo' },
@@ -136,17 +208,25 @@ function usrBuildRolesList() {
   </div>
   <div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr>
-      <th>Rol</th><th>Permisos / Áreas</th><th>Tipo</th><th>Usuarios</th><th>Acciones</th>
+      <th>Rol</th><th>Permisos</th><th>Tipo</th><th>Usuarios</th><th>Acciones</th>
     </tr></thead>
     <tbody>
       ${roles.map(r => {
         const count = users.filter(u => u.role === r.id).length;
-        const perms = (r.perms && r.perms.length) ? r.perms : (r.areas || []).map(a => {
-          const pa = PERM_AREAS.find(x => x.id === a); return pa ? pa.label : a;
-        });
+        let permsHtml;
+        if (r.builtin && (!r.permissions)) {
+          permsHtml = `<span style="font-size:11px;color:var(--text-muted)">${(r.perms||[]).join(' · ') || '—'}</span>`;
+        } else {
+          const s = permCountSummary(r.permissions);
+          if (!s.edit && !s.view) {
+            permsHtml = '<span style="font-size:11px;color:var(--text-muted)">Sin permisos asignados</span>';
+          } else {
+            permsHtml = `${s.edit?`<span class="badge badge-green" style="font-size:10px">${s.edit} editar</span> `:''}${s.view?`<span class="badge badge-blue" style="font-size:10px">${s.view} ver</span>`:''}`;
+          }
+        }
         return `<tr>
           <td><span class="badge ${r.color||'badge-gray'}">${r.label}</span></td>
-          <td style="font-size:11px;color:var(--text-muted)">${perms.length ? perms.join(' · ') : '—'}</td>
+          <td>${permsHtml}</td>
           <td>${r.builtin ? '<span class="badge badge-gray">Sistema</span>' : '<span class="badge badge-blue">Personalizado</span>'}</td>
           <td style="font-size:12px">${count} usuario${count!==1?'s':''}</td>
           <td><div class="table-actions">
@@ -228,9 +308,35 @@ function deleteUser(id) {
 }
 
 // ---- ROLE FORM ----
+function roleLevelSelect(itemId, current) {
+  return `<select class="form-control role-perm" data-item="${itemId}" style="font-size:12px;padding:4px 8px;height:auto">
+    ${PERM_LEVELS.map(l => `<option value="${l.id}" ${current===l.id?'selected':''}>${l.label}</option>`).join('')}
+  </select>`;
+}
+
 function openRoleForm(id = null) {
   const role = id ? (DB.getById('roles', id) || null) : null;
-  const selectedAreas = role ? (role.areas || []) : [];
+  const perms = (role && role.permissions) ? role.permissions : {};
+
+  const matrixHtml = PERM_MODULES.map(g => `
+    <div class="role-perm-group" style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);padding:8px 12px">
+        <strong style="font-size:12px">${g.group}</strong>
+        <div style="display:flex;gap:4px">
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 8px" onclick="roleSetGroup(this,'none')">Sin acceso</button>
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 8px" onclick="roleSetGroup(this,'view')">Todo Ver</button>
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 8px" onclick="roleSetGroup(this,'edit')">Todo Editar</button>
+        </div>
+      </div>
+      <div style="padding:6px 12px">
+        ${g.items.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-soft,#f0f0f0)">
+          <span style="font-size:12px">${it.label}</span>
+          <div style="width:150px;flex-shrink:0">${roleLevelSelect(it.id, perms[it.id] || 'none')}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+
   openModal(role ? 'Editar Rol' : 'Nuevo Rol Personalizado', `
 <div class="form-grid form-grid-2">
   <div class="form-group">
@@ -245,30 +351,48 @@ function openRoleForm(id = null) {
   </div>
 </div>
 <div class="divider"></div>
-<div style="font-size:13px;font-weight:600;margin-bottom:10px">Áreas / Permisos de Acceso</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-  ${PERM_AREAS.map(a => `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;background:var(--bg);padding:8px 10px;border-radius:6px">
-    <input type="checkbox" class="role-area-cb" value="${a.id}" ${selectedAreas.includes(a.id)?'checked':''}>
-    <span>${a.label}</span>
-  </label>`).join('')}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+  <div>
+    <div style="font-size:13px;font-weight:600">Permisos por Módulo</div>
+    <div style="font-size:11px;color:var(--text-muted)">Definí, para cada módulo, si el rol puede <strong>Ver</strong>, <strong>Ver y Editar</strong> o no tiene acceso</div>
+  </div>
+  <div style="display:flex;gap:4px">
+    <button type="button" class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="roleSetAll('none')">Limpiar todo</button>
+    <button type="button" class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="roleSetAll('view')">Todo Ver</button>
+    <button type="button" class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="roleSetAll('edit')">Todo Editar</button>
+  </div>
 </div>
+<div style="max-height:42vh;overflow-y:auto;padding-right:4px">${matrixHtml}</div>
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="saveRole('${id||''}')"><i class="fas fa-save"></i> Guardar Rol</button>
 `);
 }
 
+function roleSetGroup(btn, level) {
+  const groupBox = btn.closest('.role-perm-group');
+  if (groupBox) groupBox.querySelectorAll('.role-perm').forEach(sel => { sel.value = level; });
+}
+
+function roleSetAll(level) {
+  document.querySelectorAll('.role-perm').forEach(sel => { sel.value = level; });
+}
+
 function saveRole(id) {
   const label = document.getElementById('role-name').value.trim();
   if (!label) { toast('El nombre del rol es obligatorio', 'error'); return; }
   const color = document.getElementById('role-color').value;
-  const areas = Array.from(document.querySelectorAll('.role-area-cb:checked')).map(cb => cb.value);
+  const permissions = {};
+  document.querySelectorAll('.role-perm').forEach(sel => {
+    const lvl = sel.value;
+    if (lvl && lvl !== 'none') permissions[sel.getAttribute('data-item')] = lvl;
+  });
 
   if (id) {
-    DB.update('roles', id, { label, color, areas });
+    DB.update('roles', id, { label, color, permissions });
     toast('Rol actualizado', 'success');
   } else {
-    DB.insert('roles', { label, color, areas, builtin: false });
+    DB.insert('roles', { label, color, permissions, builtin: false });
     toast('Rol creado', 'success');
   }
   closeModal();
