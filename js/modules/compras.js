@@ -1061,10 +1061,21 @@ function createOPFromSI(siId) {
 function openSIForm(id, prefillPoId, prefillCertId) {
   id = id || null; prefillPoId = prefillPoId || null; prefillCertId = prefillCertId || null;
   const si        = id ? DB.getById('supplierInvoices', id) : null;
-  // Include sent + received OCs (invoice can arrive before goods receipt), plus any already linked to this SI
-  const pos       = DB.getAll('purchaseOrders').filter(function(p) {
+  // Build set of PO ids that already have a SI (excluding the current SI being edited)
+  const invoicedPoIds = new Set(
+    DB.getAll('supplierInvoices').filter(function(s) { return s.po_id && s.id !== id; }).map(function(s) { return s.po_id; })
+  );
+  // Pendiente de facturar = received with no SI yet; also show sent (en camino) without SI
+  // Always include the OC already linked to this SI (for editing)
+  const pos = DB.getAll('purchaseOrders').filter(function(p) {
     if (si && si.po_id === p.id) return true;
-    return p.status === 'sent' || p.status === 'received';
+    if (p.status !== 'sent' && p.status !== 'received') return false;
+    return !invoicedPoIds.has(p.id);
+  });
+  // Sort: received first (pendiente de facturar), then sent (pendiente de entrega)
+  pos.sort(function(a, b) {
+    if (a.status === b.status) return 0;
+    return a.status === 'received' ? -1 : 1;
   });
   const suppliers = DB.getAll('suppliers');
   const projects  = DB.getAll('projects');
@@ -1130,7 +1141,8 @@ function openSIForm(id, prefillPoId, prefillCertId) {
           '<option value="">Sin OC de referencia</option>' +
           pos.map(function(p) {
             var sName = (suppliers.find(function(s) { return s.id === p.supplier_id; }) || {}).name || '';
-            return '<option value="' + p.id + '"' + (selectedPoId === p.id ? ' selected' : '') + '>' + p.number + ' — ' + sName + '</option>';
+            var stateLabel = p.status === 'received' ? '✓ Pend. de facturar' : '⏳ Pend. de entrega';
+            return '<option value="' + p.id + '"' + (selectedPoId === p.id ? ' selected' : '') + '>' + p.number + ' — ' + sName + ' [' + stateLabel + ']</option>';
           }).join('') +
         '</select></div>' +
       '<div class="form-group"><label class="form-label"><i class="fas fa-certificate" style="font-size:10px;color:var(--primary)"></i> Certificado de Obra</label>' +
