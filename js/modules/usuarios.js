@@ -250,16 +250,16 @@ function openUserForm(id = null) {
 <div class="form-grid form-grid-2">
   <div class="form-group full">
     <label class="form-label">Nombre Completo *</label>
-    <input class="form-control" id="usr-name" value="${u?.name || ''}" placeholder="Juan Pérez">
+    <input class="form-control" id="usr-name" value="${u ? escapeHtml(u.name) : ''}" placeholder="Juan Pérez">
   </div>
   <div class="form-group full">
     <label class="form-label">Email *</label>
-    <input class="form-control" id="usr-email" type="email" value="${u?.email || ''}" placeholder="usuario@empresa.com">
+    <input class="form-control" id="usr-email" type="email" value="${u ? escapeHtml(u.email) : ''}" placeholder="usuario@empresa.com">
   </div>
   <div class="form-group">
     <label class="form-label">Rol *</label>
     <select class="form-control" id="usr-role">
-      ${roles.map(r => `<option value="${r.id}" ${ (u?.role===r.id) || (!u && r.id==='viewer') ? 'selected':''}>${r.label}</option>`).join('')}
+      ${roles.map(r => `<option value="${r.id}" ${ (u?.role===r.id) || (!u && r.id==='viewer') ? 'selected':''}>${escapeHtml(r.label)}</option>`).join('')}
     </select>
   </div>
   <div class="form-group">
@@ -268,6 +268,11 @@ function openUserForm(id = null) {
       <option value="true" ${u?.active!==false?'selected':''}>Activo</option>
       <option value="false" ${u?.active===false?'selected':''}>Inactivo</option>
     </select>
+  </div>
+  <div class="form-group full">
+    <label class="form-label">PIN de Acceso <span style="font-weight:400;color:var(--text-muted)">${u ? '(dejá vacío para no cambiar)' : '(opcional)'}</span></label>
+    <input class="form-control" id="usr-pin" type="password" placeholder="Nuevo PIN de acceso" autocomplete="new-password">
+    <div style="font-size:11px;color:var(--text-muted);margin-top:4px"><i class="fas fa-info-circle"></i> Sin PIN, el usuario inicia sesión con un solo clic.</div>
   </div>
 </div>
 `, '', `
@@ -281,11 +286,19 @@ function saveUser(id) {
   const email = document.getElementById('usr-email').value.trim();
   if (!name || !email) { toast('Nombre y email son obligatorios', 'error'); return; }
 
+  const pin = document.getElementById('usr-pin').value;
   const data = {
     name, email,
     role: document.getElementById('usr-role').value,
     active: document.getElementById('usr-active').value === 'true',
   };
+
+  if (pin) {
+    try { data.password = btoa(pin); } catch(e) { data.password = pin; }
+  } else if (!id) {
+    data.password = null;
+  }
+  // Editing without entering a PIN leaves existing password unchanged
 
   if (id) { DB.update('users', id, data); toast('Usuario actualizado', 'success'); }
   else { DB.insert('users', { ...data, last_login: null }); toast('Usuario creado', 'success'); }
@@ -409,4 +422,229 @@ function deleteRole(id) {
     toast('Rol eliminado', 'warning');
     renderUsuarios();
   });
+}
+
+// =====================================================
+// SESSION MANAGEMENT
+// =====================================================
+var SESS_KEY = 'erp_session_v1';
+var SESS_REMEMBER_KEY = 'erp_session_remember_v1';
+
+function sessionGet() {
+  try {
+    var raw = sessionStorage.getItem(SESS_KEY);
+    if (raw) return JSON.parse(raw);
+    raw = localStorage.getItem(SESS_REMEMBER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function sessionSet(uid, remember) {
+  var sess = JSON.stringify({ uid: uid, ts: Date.now() });
+  try {
+    sessionStorage.setItem(SESS_KEY, sess);
+    if (remember) localStorage.setItem(SESS_REMEMBER_KEY, sess);
+    else localStorage.removeItem(SESS_REMEMBER_KEY);
+  } catch(e) {}
+}
+
+function sessionClear() {
+  try { sessionStorage.removeItem(SESS_KEY); } catch(e) {}
+  try { localStorage.removeItem(SESS_REMEMBER_KEY); } catch(e) {}
+  if (window.APP_STATE) window.APP_STATE.currentUser = null;
+}
+
+function sessionCurrentUser() {
+  var s = sessionGet();
+  if (!s || !s.uid) return null;
+  var user = DB.getById('users', s.uid);
+  return (user && user.active) ? user : null;
+}
+
+// =====================================================
+// PERMISSION HELPERS
+// =====================================================
+
+// Returns a { moduleId: 'view'|'edit' } map for a given role.
+// Admin → edit all; viewer → view all; built-ins use hardcoded defaults;
+// custom roles use their stored permissions object.
+function getEffectivePermissions(roleId) {
+  if (roleId === 'admin') {
+    var all = {};
+    PERM_MODULES.forEach(function(g) { g.items.forEach(function(it) { all[it.id] = 'edit'; }); });
+    return all;
+  }
+  if (roleId === 'viewer') {
+    var allView = {};
+    PERM_MODULES.forEach(function(g) { g.items.forEach(function(it) { allView[it.id] = 'view'; }); });
+    return allView;
+  }
+
+  var role = usrRoleById(roleId);
+  if (role && role.permissions) return role.permissions;
+
+  // Hardcoded defaults for built-in roles without explicit permissions
+  var defaults = {
+    project_manager: {
+      pedidos:'edit', ordenes_compra:'edit',
+      projects:'edit', contratos:'edit', certificaciones:'edit',
+      presupuesto:'edit', seguimiento:'edit', gantt:'edit',
+      rubros:'edit', apu:'edit', indices:'edit',
+      cuentas_prov:'view', documentos_prov:'view',
+      ordenes_pago:'view', retenciones:'view',
+      rrhh:'view', stock:'edit', notas:'view',
+      reportes:'view', aprobaciones:'edit',
+    },
+    accountant: {
+      facturacion:'edit', cobranzas:'edit', cuentas_cli:'edit',
+      cashflow_cli:'edit', ordenes_pago:'edit', cuentas_prov:'edit',
+      documentos_prov:'edit', retenciones:'edit',
+      contabilidad:'edit', conta_diario:'edit', conta_balance:'edit',
+      conta_resultados:'edit', conta_plan:'edit', conta_mayores:'edit',
+      conta_sumas:'edit', libro_iva:'edit',
+      tesoreria:'edit', cuentas_banco:'edit', cheques:'edit',
+      notas:'edit', reportes:'view', aprobaciones:'view',
+    },
+    inspector: {
+      projects:'view', contratos:'view', certificaciones:'view',
+      presupuesto:'view', seguimiento:'view', gantt:'view', rubros:'view',
+    },
+  };
+  return defaults[roleId] || {};
+}
+
+// Returns true if the logged-in user can at least view the given module.
+function canView(moduleId) {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!user) return true; // no session → admin-mode (dev)
+  var perms = getEffectivePermissions(user.role);
+  return !!(perms[moduleId] === 'view' || perms[moduleId] === 'edit');
+}
+
+// Returns true if the logged-in user can edit the given module.
+function canEdit(moduleId) {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!user) return true;
+  var perms = getEffectivePermissions(user.role);
+  return perms[moduleId] === 'edit';
+}
+
+// =====================================================
+// LOGIN UI
+// =====================================================
+var _loginSelectedUid = null;
+
+function showLoginScreen() {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  showLoginUserGrid();
+}
+
+function showLoginUserGrid() {
+  _loginSelectedUid = null;
+  var users = DB.getAll('users').filter(function(u) { return u.active; });
+
+  var pinSection = document.getElementById('login-pin-section');
+  var gridEl = document.getElementById('login-user-grid');
+  if (pinSection) pinSection.style.display = 'none';
+  if (!gridEl) return;
+  gridEl.style.display = '';
+
+  if (users.length === 0) {
+    gridEl.innerHTML = '<div style="text-align:center;color:#64748b;font-size:13px;padding:20px 0">No hay usuarios activos.<br>Agregá usuarios desde el módulo de Usuarios.</div>';
+    return;
+  }
+
+  var cols = users.length === 1 ? '1fr' : 'repeat(2,1fr)';
+  gridEl.innerHTML =
+    '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:14px;text-align:center">Seleccioná tu usuario</div>' +
+    '<div style="display:grid;grid-template-columns:' + cols + ';gap:10px">' +
+    users.map(function(u) {
+      return '<button class="login-user-btn" onclick="selectLoginUser(\'' + u.id + '\')">' +
+        '<div class="login-user-avatar">' + escapeHtml((u.name || '?').charAt(0).toUpperCase()) + '</div>' +
+        '<div style="overflow:hidden;text-align:left">' +
+        '<div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(u.name || '') + '</div>' +
+        '<div style="font-size:11px;color:#64748b">' + escapeHtml(usrRoleLabel(u.role)) + '</div>' +
+        (u.password ? '<div style="font-size:10px;color:#94a3b8;margin-top:1px"><i class="fas fa-lock"></i> PIN requerido</div>' : '') +
+        '</div>' +
+        '</button>';
+    }).join('') +
+    '</div>';
+}
+
+function selectLoginUser(uid) {
+  _loginSelectedUid = uid;
+  var user = DB.getById('users', uid);
+  if (!user) return;
+
+  if (!user.password) {
+    completeLogin(uid, false);
+    return;
+  }
+
+  var gridEl = document.getElementById('login-user-grid');
+  var pinSection = document.getElementById('login-pin-section');
+  if (gridEl) gridEl.style.display = 'none';
+  if (pinSection) pinSection.style.display = '';
+
+  var av = document.getElementById('login-user-avatar-txt');
+  var nm = document.getElementById('login-user-name-txt');
+  var rl = document.getElementById('login-user-role-txt');
+  if (av) av.textContent = (user.name || '?').charAt(0).toUpperCase();
+  if (nm) nm.textContent = user.name || user.email;
+  if (rl) rl.textContent = usrRoleLabel(user.role);
+
+  var pinEl = document.getElementById('login-pin');
+  var errEl = document.getElementById('login-error-txt');
+  if (pinEl) { pinEl.value = ''; setTimeout(function() { pinEl.focus(); }, 50); }
+  if (errEl) errEl.textContent = '';
+}
+
+function doLogin() {
+  var uid = _loginSelectedUid;
+  if (!uid) return;
+  var user = DB.getById('users', uid);
+  if (!user) return;
+
+  var pinEl = document.getElementById('login-pin');
+  var pin = pinEl ? pinEl.value : '';
+
+  var encoded;
+  try { encoded = btoa(pin); } catch(e) { encoded = pin; }
+
+  if (user.password && user.password !== encoded) {
+    var errEl = document.getElementById('login-error-txt');
+    if (errEl) errEl.textContent = 'PIN incorrecto. Intentá de nuevo.';
+    if (pinEl) pinEl.select();
+    return;
+  }
+
+  var remEl = document.getElementById('login-remember');
+  completeLogin(uid, !!(remEl && remEl.checked));
+}
+
+function completeLogin(uid, remember) {
+  sessionSet(uid, remember);
+  var user = DB.getById('users', uid);
+  window.APP_STATE.currentUser = user;
+  DB.update('users', uid, { last_login: new Date().toISOString() });
+
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+
+  updateSidebarUserInfo();
+  applyPermissionsToSidebar();
+
+  var savedModule = null;
+  try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
+  var targetModule = (savedModule && window.MODULES && window.MODULES[savedModule] && canView(savedModule))
+    ? savedModule : 'dashboard';
+  navigate(targetModule);
+  setTimeout(syncExchangeRates, 1500);
+  toast('Bienvenido, ' + escapeHtml(user.name || user.email) + '!', 'success');
+}
+
+function doLogout() {
+  sessionClear();
+  showLoginScreen();
 }
