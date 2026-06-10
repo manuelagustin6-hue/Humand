@@ -319,11 +319,12 @@ function _apprBuildWorkflowConfig() {
       // Steps
       html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
       (wf.steps || []).forEach(function(s, idx) {
-        const user = users.find(function(u) { return u.id === s.approver_user_id; });
+        const pool = _apprStepPool(s);
         if (idx > 0) html += '<i class="fas fa-arrow-right" style="font-size:10px;color:var(--text-muted)"></i>';
         html += '<span style="background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px">';
         html += '<strong style="color:var(--primary)">P' + s.step + '</strong> ' + escHtml(s.name);
-        if (user) html += ' <span style="color:var(--text-muted)">(' + escHtml(user.name || user.email || '') + ')</span>';
+        if (s.selectable) html += ' <span style="background:var(--primary-soft,#e8f0fe);color:var(--primary);border-radius:8px;padding:0 6px;font-size:10px;font-weight:600">elegible</span>';
+        if (pool.length) html += ' <span style="color:var(--text-muted)">(' + escHtml(pool.map(_apprUserName).join(', ')) + ')</span>';
         html += '</span>';
       });
       html += '</div></div>';
@@ -425,19 +426,54 @@ function _apprCondRowHtml(docType, cond) {
   return html;
 }
 
+// Returns the pool of eligible approver user ids for a step (back-compat with legacy single approver)
+function _apprStepPool(s) {
+  if (!s) return [];
+  if (s.approver_user_ids && s.approver_user_ids.length) return s.approver_user_ids.slice();
+  if (s.approver_user_id) return [s.approver_user_id];
+  return [];
+}
+
+function _apprUserName(uid) {
+  const u = DB.getById('users', uid);
+  return u ? (u.name || u.email || uid) : uid;
+}
+
+// Human label for an instance step: the resolved approver, or the eligible pool
+function _apprApproverLabel(pool, resolvedId) {
+  if (resolvedId) return _apprUserName(resolvedId);
+  if (pool && pool.length === 1) return _apprUserName(pool[0]);
+  if (pool && pool.length > 1) return 'Cualquiera de: ' + pool.map(_apprUserName).join(', ');
+  return 'Sin asignar';
+}
+
+// Checkbox grid of users for a step's eligible-approver pool
+function _apprStepUserCheckboxes(users, selectedIds) {
+  selectedIds = selectedIds || [];
+  if (!users.length) return '<div style="font-size:12px;color:var(--text-muted)">No hay usuarios activos. Creá usuarios en el módulo Usuarios.</div>';
+  return users.map(function(u) {
+    const checked = selectedIds.indexOf(u.id) !== -1 ? ' checked' : '';
+    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--card-bg);border:1px solid var(--border);padding:5px 10px;border-radius:16px;cursor:pointer">' +
+      '<input type="checkbox" class="s_user" value="' + u.id + '"' + checked + '>' + escHtml(u.name || u.email || u.id) + '</label>';
+  }).join('');
+}
+
 function _apprStepRowHtml(users, step) {
   const stepNum = step ? step.step : 1;
-  const approverId = step ? step.approver_user_id : '';
-  const userOpts = '<option value="">— Sin asignar —</option>' +
-    users.map(function(u) {
-      return '<option value="' + u.id + '"' + (approverId === u.id ? ' selected' : '') + '>' + escHtml(u.name || u.email || u.id) + '</option>';
-    }).join('');
+  const pool = _apprStepPool(step);
+  const selectable = step && step.selectable;
 
-  var html = '<div class="appr-step-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;background:var(--bg);padding:10px;border-radius:8px">';
+  var html = '<div class="appr-step-row" style="background:var(--bg);padding:12px;border-radius:8px;margin-bottom:10px">';
+  html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">';
   html += '<span class="appr-step-num" style="background:var(--primary);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">' + stepNum + '</span>';
-  html += '<input type="text" class="form-control" style="flex:1" name="s_name" placeholder="Nombre del paso (ej: Gerente de Obra)" value="' + escHtml(step ? step.name : '') + '">';
-  html += '<select class="form-control" style="flex:1" name="s_approver">' + userOpts + '</select>';
+  html += '<input type="text" class="form-control" style="flex:1" name="s_name" placeholder="Nombre del paso (ej: Director de Área)" value="' + escHtml(step ? step.name : '') + '">';
   html += '<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="apprRemoveStepRow(this)"><i class="fas fa-times"></i></button>';
+  html += '</div>';
+  html += '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Aprobadores elegibles (podés marcar varios)</div>';
+  html += '<div class="appr-step-users" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + _apprStepUserCheckboxes(users, pool) + '</div>';
+  html += '<label style="display:inline-flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">';
+  html += '<input type="checkbox" name="s_selectable"' + (selectable ? ' checked' : '') + ' style="width:16px;height:16px">';
+  html += '<span>Permitir que <strong>quien carga</strong> elija el aprobador al enviar</span></label>';
   html += '</div>';
   return html;
 }
@@ -481,16 +517,7 @@ function apprAddStepRow() {
   if (empty) empty.remove();
   const nextNum = container.querySelectorAll('.appr-step-row').length + 1;
   const users = DB.getAll('users').filter(function(u) { return u.active !== false; });
-  const userOpts = '<option value="">— Sin asignar —</option>' +
-    users.map(function(u) { return '<option value="' + u.id + '">' + escHtml(u.name || u.email || u.id) + '</option>'; }).join('');
-
-  var html = '<div class="appr-step-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;background:var(--bg);padding:10px;border-radius:8px">';
-  html += '<span class="appr-step-num" style="background:var(--primary);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">' + nextNum + '</span>';
-  html += '<input type="text" class="form-control" style="flex:1" name="s_name" placeholder="Nombre del paso (ej: Gerente de Obra)">';
-  html += '<select class="form-control" style="flex:1" name="s_approver">' + userOpts + '</select>';
-  html += '<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="apprRemoveStepRow(this)"><i class="fas fa-times"></i></button>';
-  html += '</div>';
-  container.insertAdjacentHTML('beforeend', html);
+  container.insertAdjacentHTML('beforeend', _apprStepRowHtml(users, { step: nextNum }));
 }
 
 function apprRemoveStepRow(btn) {
@@ -528,10 +555,20 @@ function saveApprWorkflow(id) {
   let valid = true;
   document.querySelectorAll('.appr-step-row').forEach(function(row, idx) {
     const sName = row.querySelector('[name="s_name"]').value.trim();
-    const sApp  = row.querySelector('[name="s_approver"]').value;
     if (!sName) { toast('El nombre del paso ' + (idx + 1) + ' es obligatorio', 'error'); valid = false; return; }
-    const user = DB.getAll('users').find(function(u) { return u.id === sApp; });
-    steps.push({ step: idx + 1, name: sName, approver_user_id: sApp, approver_name: user ? (user.name || user.email || '') : '' });
+    const ids = Array.prototype.slice.call(row.querySelectorAll('.s_user:checked')).map(function(cb) { return cb.value; });
+    if (!ids.length) { toast('Elegí al menos un aprobador para el paso ' + (idx + 1), 'error'); valid = false; return; }
+    const selectableEl = row.querySelector('[name="s_selectable"]');
+    const selectable = selectableEl ? selectableEl.checked : false;
+    const poolLabel = _apprApproverLabel(ids, '');
+    steps.push({
+      step: idx + 1,
+      name: sName,
+      approver_user_ids: ids,
+      approver_user_id: ids.length === 1 ? ids[0] : '', // legacy/back-compat
+      approver_name: poolLabel,
+      selectable: selectable,
+    });
   });
   if (!valid) return;
   if (!steps.length) { toast('Agregá al menos un paso de aprobación', 'error'); return; }
@@ -604,7 +641,8 @@ function getApprovalInstance(docType, docId) {
 }
 
 // Submit document into the approval workflow. Returns instance or null.
-function submitForApproval(docType, docId) {
+// `chosen` (optional) maps step index → chosen approver user id, for selectable steps.
+function submitForApproval(docType, docId, chosen) {
   const doc = apprGetDocument(docType, docId);
   if (!doc) { toast('Documento no encontrado', 'error'); return null; }
 
@@ -624,8 +662,27 @@ function submitForApproval(docType, docId) {
     return null;
   }
 
-  const steps = (wf.steps || []).map(function(s) {
-    return { step: s.step, name: s.name, approver_user_id: s.approver_user_id, approver_name: s.approver_name || '', status: 'pending', comment: '', date: '' };
+  // If any step lets the loader choose the approver, ask them first (unless already chosen)
+  const hasSelectable = (wf.steps || []).some(function(s) { return s.selectable && _apprStepPool(s).length; });
+  if (hasSelectable && !chosen) {
+    openApprSelectApproversModal(docType, docId, wf.id);
+    return null;
+  }
+
+  const steps = (wf.steps || []).map(function(s, idx) {
+    const pool = _apprStepPool(s);
+    let resolvedId = '';
+    if (s.selectable && chosen && chosen[idx]) resolvedId = chosen[idx];
+    else if (pool.length === 1) resolvedId = pool[0];
+    return {
+      step: s.step,
+      name: s.name,
+      eligible_user_ids: pool,
+      selectable: !!s.selectable,
+      approver_user_id: resolvedId,
+      approver_name: _apprApproverLabel(pool, resolvedId),
+      status: 'pending', comment: '', date: '',
+    };
   });
 
   const instance = DB.insert('approvalInstances', {
@@ -644,6 +701,47 @@ function submitForApproval(docType, docId) {
   _apprAppendLog(docType, docId, { action: 'submitted', comment: 'Enviado al flujo: ' + wf.name });
   toast('Enviado a aprobación (' + wf.name + ')', 'success');
   return instance;
+}
+
+// Modal shown at submission so the loader picks approvers for selectable steps
+function openApprSelectApproversModal(docType, docId, workflowId) {
+  const wf = DB.getById('approvalWorkflows', workflowId);
+  if (!wf) return;
+  var body = '<div style="font-size:13px;margin-bottom:14px;color:var(--text-muted)">Elegí a quién solicitar la aprobación en cada paso. Cada responsable aprobará el gasto de su área.</div>';
+  (wf.steps || []).forEach(function(s, idx) {
+    const pool = _apprStepPool(s);
+    body += '<div class="form-group">';
+    body += '<label class="form-label">Paso ' + (idx + 1) + ': ' + escHtml(s.name);
+    if (s.selectable) body += ' <span class="badge badge-blue">Elegible</span>';
+    body += '</label>';
+    if (s.selectable && pool.length) {
+      body += '<select class="form-control appr-pick" data-step="' + idx + '">';
+      body += '<option value="">— Seleccionar aprobador —</option>';
+      pool.forEach(function(uid) { body += '<option value="' + uid + '">' + escHtml(_apprUserName(uid)) + '</option>'; });
+      body += '</select>';
+    } else {
+      body += '<div style="font-size:12px;color:var(--text-muted);padding:4px 0">Aprobador: ' + escHtml(_apprApproverLabel(pool, '')) + '</div>';
+    }
+    body += '</div>';
+  });
+  openModal('Solicitar Aprobación', body, '',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="apprConfirmSelectApprovers(\'' + docType + '\',\'' + docId + '\')"><i class="fas fa-paper-plane"></i> Enviar a Aprobación</button>'
+  );
+}
+
+function apprConfirmSelectApprovers(docType, docId) {
+  const chosen = {};
+  let ok = true;
+  document.querySelectorAll('.appr-pick').forEach(function(sel) {
+    const idx = parseInt(sel.getAttribute('data-step'), 10);
+    if (!sel.value) { ok = false; return; }
+    chosen[idx] = sel.value;
+  });
+  if (!ok) { toast('Seleccioná un aprobador para cada paso elegible', 'error'); return; }
+  closeModal();
+  submitForApproval(docType, docId, chosen);
+  if (window.APP_STATE && window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
 }
 
 // Approve current step
