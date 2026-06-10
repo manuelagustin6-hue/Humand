@@ -973,9 +973,8 @@ function renderSupplierInvoicesTab() {
   </div>
   <select class="form-control" style="width:160px" onchange="filterSIs(undefined, this.value)">
     <option value="">Todos los estados</option>
-    <option value="pending">Pendiente</option>
+    <option value="pending">Pendiente de pago</option>
     <option value="paid">Pagada</option>
-    <option value="cancelled">Cancelada</option>
   </select>
   <button class="btn btn-secondary" onclick="exportSIs()"><i class="fas fa-download"></i> Exportar</button>
   <button class="btn btn-primary" onclick="openSIForm()"><i class="fas fa-plus"></i> Nueva Factura</button>
@@ -991,8 +990,8 @@ function renderSupplierInvoicesTab() {
 
 function buildSITable(sis, suppliers, projects, pos) {
   if (!sis.length) return '<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas de proveedores. Generalas desde una OC recibida, desde una certificación aprobada o creá una manualmente.</p></div>';
-  const statusColor = { pending: 'badge-yellow', paid: 'badge-green', cancelled: 'badge-red' };
-  const statusLabel = { pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
+  const statusColor = { pending: 'badge-yellow', paid: 'badge-green' };
+  const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
   const certs = DB.getAll('certificates');
   const contracts = DB.getAll('contracts');
   return '<table><thead><tr>' +
@@ -1062,7 +1061,11 @@ function createOPFromSI(siId) {
 function openSIForm(id, prefillPoId, prefillCertId) {
   id = id || null; prefillPoId = prefillPoId || null; prefillCertId = prefillCertId || null;
   const si        = id ? DB.getById('supplierInvoices', id) : null;
-  const pos       = DB.getAll('purchaseOrders').filter(function(p) { return p.status === 'received'; });
+  // Include sent + received OCs (invoice can arrive before goods receipt), plus any already linked to this SI
+  const pos       = DB.getAll('purchaseOrders').filter(function(p) {
+    if (si && si.po_id === p.id) return true;
+    return p.status === 'sent' || p.status === 'received';
+  });
   const suppliers = DB.getAll('suppliers');
   const projects  = DB.getAll('projects');
   const nextNum   = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
@@ -1117,11 +1120,11 @@ function openSIForm(id, prefillPoId, prefillCertId) {
         '<small style="color:var(--text-muted)">A/B/C/M van al Libro IVA. X e Informal se excluyen.</small>' +
       '</div>' +
       '<div class="form-group"><label class="form-label">Estado</label>' +
-        '<select class="form-control" id="si-status">' +
-          '<option value="pending"'   + ((!si || si.status === 'pending')  ? ' selected' : '') + '>Pendiente de Pago</option>' +
-          '<option value="paid"'      + ((si && si.status === 'paid')       ? ' selected' : '') + '>Pagada</option>' +
-          '<option value="cancelled"' + ((si && si.status === 'cancelled')  ? ' selected' : '') + '>Cancelada</option>' +
-        '</select></div>' +
+        '<div style="padding:7px 12px;background:var(--bg);border-radius:var(--radius-sm);font-size:13px;display:flex;align-items:center;gap:8px;border:1px solid var(--border)">' +
+          (si && si.status === 'paid'
+            ? '<span class="badge badge-green">Pagada</span><span style="font-size:11px;color:var(--text-muted)">El pago se registra a través de la Orden de Pago</span>'
+            : '<span class="badge badge-yellow">Pendiente de pago</span><span style="font-size:11px;color:var(--text-muted)">Se actualiza automáticamente al pagar</span>') +
+        '</div></div>' +
       '<div class="form-group"><label class="form-label"><i class="fas fa-shopping-cart" style="font-size:10px;color:var(--text-muted)"></i> OC de Origen</label>' +
         '<select class="form-control" id="si-po" onchange="prefillSIFromPO(this.value)">' +
           '<option value="">Sin OC de referencia</option>' +
@@ -1325,7 +1328,7 @@ function saveSI(id) {
     perc_iibb:   percIibb,
     taxes:       taxes,
     total:       sub + tax + otherTaxTotal,
-    status:      document.getElementById('si-status').value,
+    status:      id ? ((DB.getById('supplierInvoices', id) || {}).status || 'pending') : 'pending',
     notes:       document.getElementById('si-notes').value.trim(),
     imputacion:  imputacion,
   };
