@@ -438,12 +438,14 @@ function doConvertToOC(reqId) {
   const expectedDate = document.getElementById('req-conv-date').value;
   if (!supplierId) { toast('Seleccioná un proveedor', 'error'); return; }
 
+  const allRubros = DB.getAll('rubros');
   const items = (req.items || []).map(it => ({
     description: it.description,
     unit: it.unit,
     quantity: it.quantity,
     unit_price: it.unit_price,
     total: it.total,
+    rubro_id: (allRubros.find(r => r.name === it.rubro || r.id === it.rubro_id) || {}).id || '',
   }));
   const subtotal = items.reduce((s, it) => s + (it.total || 0), 0);
   const tax = subtotal * 0.21;
@@ -692,8 +694,8 @@ function openPOForm(id = null) {
   <button class="btn btn-sm btn-secondary" onclick="addPOItem()"><i class="fas fa-plus"></i> Agregar ítem</button>
 </div>
 <div id="po-items">
-  <div style="display:grid;grid-template-columns:3fr 80px 80px 120px 120px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
-    <span>Descripción</span><span>Unidad</span><span>Cantidad</span><span>P.Unitario</span><span>Total</span><span></span>
+  <div style="display:grid;grid-template-columns:2fr 2fr 70px 80px 110px 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
+    <span>Descripción</span><span>Rubro / Imputación</span><span>Unidad</span><span>Cantidad</span><span>P.Unitario</span><span>Total</span><span></span>
   </div>
   ${items.map((it, i) => poItemRow(it, i)).join('')}
 </div>
@@ -708,23 +710,28 @@ function openPOForm(id = null) {
 }
 
 function poItemRow(it, i) {
-  return `<div id="poi-row-${i}" style="display:grid;grid-template-columns:3fr 80px 80px 120px 120px 36px;gap:6px;margin-bottom:6px;align-items:center">
-    <input class="form-control" style="font-size:12px" placeholder="Descripción" value="${it.description}" oninput="updatePOItem(${i},'description',this.value)">
-    <input class="form-control" style="font-size:12px" value="${it.unit}" oninput="updatePOItem(${i},'unit',this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity}" oninput="updatePOItem(${i},'quantity',+this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price}" oninput="updatePOItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total)}" id="poi-total-${i}">
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => a.code.localeCompare(b.code));
+  const rubroOpts = '<option value="">— Sin rubro —</option>' +
+    rubros.map(r => '<option value="' + r.id + '"' + (it.rubro_id === r.id ? ' selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('');
+  return `<div id="poi-row-${i}" style="display:grid;grid-template-columns:2fr 2fr 70px 80px 110px 110px 36px;gap:6px;margin-bottom:6px;align-items:center">
+    <input class="form-control" style="font-size:12px" placeholder="Descripción" value="${it.description||''}" oninput="updatePOItem(${i},'description',this.value)">
+    <select class="form-control" style="font-size:12px" onchange="updatePOItem(${i},'rubro_id',this.value)">${rubroOpts}</select>
+    <input class="form-control" style="font-size:12px" value="${it.unit||'un'}" oninput="updatePOItem(${i},'unit',this.value)">
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity||1}" oninput="updatePOItem(${i},'quantity',+this.value)">
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price||0}" oninput="updatePOItem(${i},'unit_price',+this.value)">
+    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total||0)}" id="poi-total-${i}">
     <button class="btn-ghost btn danger" onclick="removePOItem(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }
 
 window._poItems = [];
 function addPOItem() {
-  window._poItems.push({ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 });
+  const blank = { description: '', rubro_id: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 };
+  window._poItems.push(blank);
   const cont = document.getElementById('po-items');
   const i = window._poItems.length - 1;
   const div = document.createElement('div');
-  div.innerHTML = poItemRow({ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }, i);
+  div.innerHTML = poItemRow(blank, i);
   cont.appendChild(div.firstElementChild);
 }
 
@@ -1246,10 +1253,42 @@ function prefillSIFromPO(poId) {
   const supEl  = document.getElementById('si-supplier');
   const projEl = document.getElementById('si-project');
   if (subEl)  subEl.value  = po.subtotal || 0;
-  if (taxEl)  taxEl.value  = po.tax || 0;
+  if (taxEl)  taxEl.value  = (po.tax || 0).toFixed ? (po.tax || 0).toFixed(2) : po.tax || 0;
   if (supEl)  supEl.value  = po.supplier_id || '';
   if (projEl) projEl.value = po.project_id || '';
   siRecalcTotal();
+
+  // Build imputacion lines from PO items that have rubro_id
+  const allRubros = DB.getAll('rubros').filter(r => r.active !== false);
+  const impMap = {}; // rubro_id → accumulated amount
+  (po.items || []).forEach(function(it) {
+    if (!it.rubro_id) return;
+    impMap[it.rubro_id] = (impMap[it.rubro_id] || 0) + (it.total || 0);
+  });
+  const impLines = Object.keys(impMap).map(function(rubroId) {
+    const rubro = allRubros.find(r => r.id === rubroId);
+    return {
+      rubro_id:     rubroId,
+      account_code: (rubro && rubro.account_code) || '',
+      account_name: (rubro && rubro.account_name) || '',
+      amount:       impMap[rubroId],
+    };
+  });
+
+  if (impLines.length) {
+    window._siImpLines = impLines;
+    const rubros = allRubros.sort((a, b) => a.code.localeCompare(b.code));
+    const cont   = document.getElementById('si-imp-lines');
+    if (cont) {
+      cont.innerHTML =
+        '<div style="display:grid;grid-template-columns:3fr 2fr 130px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted);padding:0 2px">' +
+          '<span>Rubro</span><span>Cuenta contable</span><span>Importe</span><span></span>' +
+        '</div>' +
+        impLines.map(function(l, i) { return buildSiImpRow(l, i, rubros); }).join('');
+    }
+    const totEl = document.getElementById('si-imp-totals');
+    if (totEl) totEl.innerHTML = calcSiImpTotalsHtml(impLines, parseFloat(subEl && subEl.value) || 0);
+  }
 }
 
 function prefillSIFromCert(certId) {
