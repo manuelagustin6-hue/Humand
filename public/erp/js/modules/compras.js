@@ -745,7 +745,7 @@ function openPOForm(id) {
 </div>
 <div class="divider"></div>
 <div id="po-totals" style="text-align:right;font-size:13px">
-  ${calcPOTotalsHtml(items)}
+  ${_calcPOItemsTotals(items)}
 </div>
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -786,17 +786,17 @@ function updatePOItem(i, field, val) {
   window._poItems[i].total = (window._poItems[i].quantity || 0) * (window._poItems[i].unit_price || 0);
   const totEl = document.getElementById(`poi-total-${i}`);
   if (totEl) totEl.value = fmtMoney(window._poItems[i].total);
-  document.getElementById('po-totals').innerHTML = calcPOTotalsHtml(window._poItems);
+  document.getElementById('po-totals').innerHTML = _calcPOItemsTotals(window._poItems);
 }
 
 function removePOItem(i) {
   const row = document.getElementById(`poi-row-${i}`);
   if (row) row.remove();
   window._poItems[i] = null;
-  document.getElementById('po-totals').innerHTML = calcPOTotalsHtml(window._poItems.filter(Boolean));
+  document.getElementById('po-totals').innerHTML = _calcPOItemsTotals(window._poItems.filter(Boolean));
 }
 
-function calcPOTotalsHtml(items) {
+function _calcPOItemsTotals(items) {
   const validItems = items.filter(Boolean);
   const subtotal = validItems.reduce((s, it) => s + (it.total || 0), 0);
   const tax = subtotal * 0.21;
