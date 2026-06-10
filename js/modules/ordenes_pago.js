@@ -355,7 +355,11 @@ function markPOPaid(id) {
     toast('La orden de pago debe estar aprobada antes de ejecutarla', 'error');
     return;
   }
+  const o = DB.getById('paymentOrders', id);
   DB.update('paymentOrders', id, { status: 'paid' });
+  if (o && o.supplier_invoice_id) {
+    DB.update('supplierInvoices', o.supplier_invoice_id, { status: 'paid' });
+  }
   toast('Orden marcada como pagada', 'success');
   renderOrdenesPago();
 }
