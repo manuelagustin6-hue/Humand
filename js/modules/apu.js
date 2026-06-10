@@ -218,9 +218,10 @@ function apuRebuildSection(section) {
 
   const items = window._apuItems[section];
   const total = items.reduce((s, it) => s + (it.subtotal||0), 0);
+  const cur   = document.getElementById('apu-currency')?.value || _activeCurrency();
 
   const titleEl = document.getElementById('apu-sec-total-' + section);
-  if (titleEl) titleEl.textContent = fmtMoney(total);
+  if (titleEl) titleEl.textContent = fmtMoney(total, cur);
 
   tbody.innerHTML = items.map((it, i) => {
     const cols = [];
@@ -240,7 +241,7 @@ function apuRebuildSection(section) {
       cols.push(`<td style="width:70px"><div style="display:flex;align-items:center;gap:2px"><input class="form-control form-control-sm text-right" type="number" min="0" max="100" step="1" value="${it.waste_pct||0}" onchange="apuUpdateItem('${section}',${i},'waste_pct',this.value)" style="padding-right:2px"><span style="font-size:11px">%</span></div></td>`);
     }
 
-    cols.push(`<td class="text-right" style="width:100px;font-weight:600;font-size:13px">${fmtMoney(it.subtotal||0)}</td>`);
+    cols.push(`<td class="text-right" style="width:100px;font-weight:600;font-size:13px">${fmtMoney(it.subtotal||0, cur)}</td>`);
     cols.push(`<td style="width:36px"><button class="btn btn-xs btn-danger" onclick="apuRemoveItem('${section}',${i})"><i class="fas fa-times"></i></button></td>`);
 
     return `<tr>${cols.join('')}</tr>`;
@@ -264,7 +265,8 @@ function apuRecalcSummary() {
   const imp     = (totDir + gg + ut) * impPct / 100;
   const total   = totDir + gg + ut + imp;
 
-  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = fmtMoney(val); };
+  const cur = document.getElementById('apu-currency')?.value || _activeCurrency();
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = fmtMoney(val, cur); };
   set('apu-sum-mat',  totMat);
   set('apu-sum-mdo',  totMdo);
   set('apu-sum-eq',   totEq);
