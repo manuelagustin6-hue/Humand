@@ -158,6 +158,19 @@
 
         <li class="nav-group">
           <button class="nav-section" onclick="toggleSection(this)">
+            <span>RRHH / PERSONAL</span><i class="fas fa-chevron-down nav-section-arrow"></i>
+          </button>
+          <ul class="nav-group-items">
+            <li class="nav-item" data-module="rrhh">
+              <a href="#" onclick="navigate('rrhh')">
+                <i class="fas fa-hard-hat"></i><span>Empleados y Liquidaciones</span>
+              </a>
+            </li>
+          </ul>
+        </li>
+
+        <li class="nav-group">
+          <button class="nav-section" onclick="toggleSection(this)">
             <span>CLIENTES</span><i class="fas fa-chevron-down nav-section-arrow"></i>
           </button>
           <ul class="nav-group-items">
@@ -410,7 +423,8 @@
 <script src="js/modules/notas.js?v=1"></script>
 <script src="js/modules/libro_iva.js?v=1"></script>
 <script src="js/modules/apu.js?v=1"></script>
-<script src="js/app.js?v=18"></script>
+<script src="js/modules/rrhh.js?v=1"></script>
+<script src="js/app.js?v=19"></script>
 
 <!-- Mobile FAB nav button — shows only on mobile when sidebar is closed -->
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">
