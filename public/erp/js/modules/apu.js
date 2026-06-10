@@ -41,6 +41,11 @@ function apuConversionsHtml(amount, fromCur) {
   return lines ? `<div style="font-size:11px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border)">${lines}</div>` : '';
 }
 
+// Active currency for the currently-open APU form — set in openAPUForm,
+// updated when the selector changes. More reliable than DOM lookup in callbacks.
+window._apuFormCurrency = null;
+function _apuCur() { return window._apuFormCurrency || _activeCurrency(); }
+
 const APU_SECTIONS = [
   { id: 'materiales',   label: 'Materiales',        icon: 'fa-boxes-stacking', color: 'blue',   haswaste: true  },
   { id: 'mano_obra',    label: 'Mano de Obra',       icon: 'fa-hard-hat',       color: 'green',  haswaste: false },
@@ -218,7 +223,7 @@ function apuRebuildSection(section) {
 
   const items = window._apuItems[section];
   const total = items.reduce((s, it) => s + (it.subtotal||0), 0);
-  const cur   = document.getElementById('apu-currency')?.value || _activeCurrency();
+  const cur   = _apuCur();
 
   const titleEl = document.getElementById('apu-sec-total-' + section);
   if (titleEl) titleEl.textContent = fmtMoney(total, cur);
@@ -265,7 +270,7 @@ function apuRecalcSummary() {
   const imp     = (totDir + gg + ut) * impPct / 100;
   const total   = totDir + gg + ut + imp;
 
-  const cur = document.getElementById('apu-currency')?.value || _activeCurrency();
+  const cur = _apuCur();
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = fmtMoney(val, cur); };
   set('apu-sum-mat',  totMat);
   set('apu-sum-mdo',  totMdo);
@@ -289,7 +294,7 @@ function apuRecalcSummary() {
   window._apuCurrentTotals = { totMat, totMdo, totEq, totSub, totDir, gg, ut, imp, total };
 
   // Currency conversions
-  const fromCur = document.getElementById('apu-currency')?.value || _activeCurrency();
+  const fromCur = _apuCur();
   const convEl = document.getElementById('apu-conversions');
   if (convEl && total > 0) {
     const others = _apuCurrencies().filter(c => c.id !== fromCur);
@@ -316,6 +321,9 @@ function openAPUForm(id) {
   const apu     = id ? DB.getById('apuAnalysis', id) : null;
   const rubros  = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => a.code.localeCompare(b.code));
   const projects= DB.getAll('projects');
+
+  // Set form currency immediately so apuRebuildSection can use it synchronously
+  window._apuFormCurrency = apuCurrency;
 
   // Initialize item state
   window._apuItems = {
@@ -354,7 +362,7 @@ function openAPUForm(id) {
               padding:8px 12px;border:1px solid var(--border);border-bottom:none">
     <div style="display:flex;align-items:center;gap:8px">
       <span class="badge badge-${sec.color}"><i class="fas ${sec.icon}"></i> ${sec.label}</span>
-      <strong id="apu-sec-total-${sec.id}" style="font-size:13px">${fmtMoney(0)}</strong>
+      <strong id="apu-sec-total-${sec.id}" style="font-size:13px">${fmtMoney(0, apuCurrency)}</strong>
     </div>
     <button class="btn btn-xs btn-secondary" onclick="apuAddItem('${sec.id}')">
       <i class="fas fa-plus"></i> Agregar
@@ -453,7 +461,7 @@ function openAPUForm(id) {
   </div>
   <div class="form-group">
     <label class="form-label">Moneda de Cálculo</label>
-    <select class="form-control" id="apu-currency" onchange="apuRecalcSummary()">${currencyOpts}</select>
+    <select class="form-control" id="apu-currency" onchange="window._apuFormCurrency=this.value;APU_SECTIONS.forEach(s=>apuRebuildSection(s.id));apuRecalcSummary()">${currencyOpts}</select>
     <small style="color:var(--text-muted)">Los precios unitarios se ingresan en esta moneda.</small>
   </div>
   <div class="form-group" style="grid-column:1/-1">
