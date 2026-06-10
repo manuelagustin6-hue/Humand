@@ -8,8 +8,30 @@ const DB = {
   get() {
     try {
       var raw = localStorage.getItem(this.KEY);
-      return raw ? JSON.parse(raw) : this.init();
+      var data = raw ? JSON.parse(raw) : this.init();
+      // Migration: seed default users if the collection is missing or empty
+      if (!data.users || !data.users.length) {
+        data.users = this._defaultUsers();
+        this.save(data);
+      }
+      return data;
     } catch(e) { return this.init(); }
+  },
+
+  _defaultUsers() {
+    // Comp-specific defaults keyed by company id
+    var byCompany = {
+      'comp-002': [
+        { id: 'usr-uy-001', name: 'Administrador UY',  email: 'admin@isur.com.uy',   role: 'admin',           active: true,  password: null, last_login: null, created_at: now() },
+        { id: 'usr-uy-002', name: 'Gerente de Obra UY', email: 'gerente@isur.com.uy', role: 'project_manager', active: true,  password: null, last_login: null, created_at: now() },
+      ],
+    };
+    return byCompany[this._companyId] || [
+      { id: 'usr-001', name: 'Administrador',   email: 'admin@constructerp.com',     role: 'admin',           active: true,  password: null, last_login: null, created_at: now() },
+      { id: 'usr-002', name: 'Gerente de Obra', email: 'gerente@constructerp.com',   role: 'project_manager', active: true,  password: null, last_login: null, created_at: now() },
+      { id: 'usr-003', name: 'Contador',        email: 'contador@constructerp.com',  role: 'accountant',      active: true,  password: null, last_login: null, created_at: now() },
+      { id: 'usr-004', name: 'Inspector',       email: 'inspector@constructerp.com', role: 'inspector',       active: true,  password: null, last_login: null, created_at: now() },
+    ];
   },
 
   save(data) {
