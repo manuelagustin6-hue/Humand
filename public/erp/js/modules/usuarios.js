@@ -560,28 +560,63 @@ function _loginError(msg) {
   if (el) el.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + escapeHtml(msg);
 }
 
+function _loginScanCompanyIds() {
+  // Collect company IDs: from global store + scan localStorage keys directly
+  var ids = [];
+  try {
+    DB.getAllCompanies().forEach(function(c) { if (ids.indexOf(c.id) === -1) ids.push(c.id); });
+  } catch(e) {}
+  try {
+    for (var k = 0; k < localStorage.length; k++) {
+      var key = localStorage.key(k);
+      if (key && /^erp_company_.+_v1$/.test(key)) {
+        var cid = key.replace('erp_company_', '').replace(/_v1$/, '');
+        if (ids.indexOf(cid) === -1) ids.push(cid);
+      }
+    }
+  } catch(e) {}
+  // Always include standard IDs as fallback
+  ['comp-001', 'comp-002'].forEach(function(cid) { if (ids.indexOf(cid) === -1) ids.push(cid); });
+  return ids;
+}
+
+function _loginEnsureUsers(companyId) {
+  DB.setCompany(companyId);
+  var db = DB.get();
+  var users = Array.isArray(db.users) ? db.users : [];
+  // Merge default users in (add missing ones, never delete existing)
+  var defaults = DB._defaultUsers ? DB._defaultUsers() : [];
+  defaults.forEach(function(def) {
+    if (!users.find(function(u) { return u.id === def.id; })) users.push(def);
+  });
+  if (users.length !== (db.users || []).length) {
+    db.users = users;
+    DB.save(db);
+  }
+  return users;
+}
+
 function doLogin() {
   var email    = ((document.getElementById('login-email')    || {}).value || '').trim().toLowerCase();
   var password = ((document.getElementById('login-password') || {}).value || '');
 
   if (!email) { _loginError('Ingresá tu email'); return; }
 
-  // Search across ALL companies so the active company doesn't block login
-  var companies = DB.getAllCompanies();
+  var companyIds = _loginScanCompanyIds();
   var foundUser = null;
   var foundCompanyId = null;
+  var allEmails = []; // collect for debug
 
-  for (var i = 0; i < companies.length; i++) {
-    DB.setCompany(companies[i].id);
-    var users = DB.getAll('users'); // also triggers the users migration per company
+  for (var i = 0; i < companyIds.length; i++) {
+    var users = _loginEnsureUsers(companyIds[i]);
+    users.forEach(function(u) { if (u.email) allEmails.push(u.email); });
     var match = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; });
-    if (match) { foundUser = match; foundCompanyId = companies[i].id; break; }
+    if (match) { foundUser = match; foundCompanyId = companyIds[i]; break; }
   }
 
   if (!foundUser) {
-    // Restore original company on failure
     DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
-    _loginError('Email o contraseña incorrectos');
+    _loginError('Email no encontrado. Probá con: ' + (allEmails.length ? allEmails.slice(0,3).join(', ') : 'ningún usuario activo aún'));
     return;
   }
 
@@ -590,15 +625,13 @@ function doLogin() {
     try { encoded = btoa(password); } catch(e) { encoded = password; }
     if (foundUser.password !== encoded) {
       DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
-      _loginError('Email o contraseña incorrectos');
+      _loginError('Contraseña incorrecta');
       var pwEl = document.getElementById('login-password');
       if (pwEl) pwEl.select();
       return;
     }
   }
-  // user.password null/unset → first-access, accept any input
 
-  // Switch to the company that owns this user
   window.APP_STATE.activeCompany = foundCompanyId;
   try { localStorage.setItem('erp_active_company', foundCompanyId); } catch(e) {}
 
