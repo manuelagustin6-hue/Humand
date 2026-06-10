@@ -566,15 +566,30 @@ function doLogin() {
 
   if (!email) { _loginError('Ingresá tu email'); return; }
 
-  var users = DB.getAll('users');
-  var user  = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; });
+  // Search across ALL companies so the active company doesn't block login
+  var companies = DB.getAllCompanies();
+  var foundUser = null;
+  var foundCompanyId = null;
 
-  if (!user) { _loginError('Email o contraseña incorrectos'); return; }
+  for (var i = 0; i < companies.length; i++) {
+    DB.setCompany(companies[i].id);
+    var users = DB.getAll('users'); // also triggers the users migration per company
+    var match = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; });
+    if (match) { foundUser = match; foundCompanyId = companies[i].id; break; }
+  }
 
-  if (user.password) {
+  if (!foundUser) {
+    // Restore original company on failure
+    DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
+    _loginError('Email o contraseña incorrectos');
+    return;
+  }
+
+  if (foundUser.password) {
     var encoded;
     try { encoded = btoa(password); } catch(e) { encoded = password; }
-    if (user.password !== encoded) {
+    if (foundUser.password !== encoded) {
+      DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
       _loginError('Email o contraseña incorrectos');
       var pwEl = document.getElementById('login-password');
       if (pwEl) pwEl.select();
@@ -583,8 +598,12 @@ function doLogin() {
   }
   // user.password null/unset → first-access, accept any input
 
+  // Switch to the company that owns this user
+  window.APP_STATE.activeCompany = foundCompanyId;
+  try { localStorage.setItem('erp_active_company', foundCompanyId); } catch(e) {}
+
   var remEl = document.getElementById('login-remember');
-  completeLogin(user.id, !!(remEl && remEl.checked));
+  completeLogin(foundUser.id, !!(remEl && remEl.checked));
 }
 
 function completeLogin(uid, remember) {
@@ -598,6 +617,7 @@ function completeLogin(uid, remember) {
 
   updateSidebarUserInfo();
   applyPermissionsToSidebar();
+  if (typeof populateProjectSelector === 'function') populateProjectSelector();
 
   var savedModule = null;
   try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
