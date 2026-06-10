@@ -171,38 +171,33 @@ function usrBuildUserList(users) {
       <th>Usuario</th><th>Email</th><th>Rol</th><th>Proyectos</th><th>Último Acceso</th><th>Estado</th><th>Acciones</th>
     </tr></thead>
     <tbody>
-      ${users.map(u => {
-        const projIds = u.project_ids && u.project_ids.length ? u.project_ids : null;
-        const allProjects = DB.getAll('projects');
-        let projCell;
+      ${users.map(function(u) {
+        var projIds = u.project_ids && u.project_ids.length ? u.project_ids : null;
+        var allProjects = DB.getAll('projects');
+        var projCell;
         if (!projIds) {
           projCell = '<span style="font-size:11px;color:var(--text-muted)">Todos</span>';
         } else {
-          const names = projIds.map(pid => { const p = allProjects.find(x=>x.id===pid); return p ? p.name : pid; });
-          projCell = '<span style="font-size:11px" title="' + escapeHtml(names.join(', ')) + '">' + names.length + ' proyecto' + (names.length!==1?'s':'') + '</span>';
+          var names = projIds.map(function(pid) { var p = allProjects.find(function(x){return x.id===pid;}); return p ? escapeHtml(p.name) : pid; });
+          projCell = '<span style="font-size:11px" title="' + names.join(', ') + '">' + names.length + ' proyecto' + (names.length!==1?'s':'') + '</span>';
         }
-        return `<tr>
-        <td>
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">
-              ${(u.name||'?').charAt(0).toUpperCase()}
-            </div>
-            <div><div style="font-weight:600">${u.name}</div></div>
-          </div>
-        </td>
-        <td style="font-size:12px">${u.email}</td>
-        <td><span class="badge ${usrRoleColor(u.role)}">${usrRoleLabel(u.role)}</span></td>
-        <td>${projCell}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${u.last_login ? fmtDatetime(u.last_login) : 'Nunca'}</td>
-        <td>${u.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>`}).join('')}
-        <td><div class="table-actions">
-          <button class="btn-ghost btn btn-sm" onclick="openUserForm('${u.id}')"><i class="fas fa-edit"></i></button>
-          <button class="btn-ghost btn btn-sm" onclick="toggleUser('${u.id}', ${!u.active})">
-            <i class="fas fa-${u.active?'ban':'check'}"></i>
-          </button>
-          <button class="btn-ghost btn btn-sm danger" onclick="deleteUser('${u.id}')"><i class="fas fa-trash"></i></button>
-        </div></td>
-      </tr>`).join('')}
+        return '<tr>' +
+          '<td><div style="display:flex;align-items:center;gap:10px">' +
+            '<div style="width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">' + (u.name||'?').charAt(0).toUpperCase() + '</div>' +
+            '<div><div style="font-weight:600">' + escapeHtml(u.name||'') + '</div></div>' +
+          '</div></td>' +
+          '<td style="font-size:12px">' + escapeHtml(u.email||'') + '</td>' +
+          '<td><span class="badge ' + usrRoleColor(u.role) + '">' + usrRoleLabel(u.role) + '</span></td>' +
+          '<td>' + projCell + '</td>' +
+          '<td style="font-size:12px;color:var(--text-muted)">' + (u.last_login ? fmtDatetime(u.last_login) : 'Nunca') + '</td>' +
+          '<td>' + (u.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>') + '</td>' +
+          '<td><div class="table-actions">' +
+            '<button class="btn-ghost btn btn-sm" onclick="openUserForm(\'' + u.id + '\')"><i class="fas fa-edit"></i></button>' +
+            '<button class="btn-ghost btn btn-sm" onclick="toggleUser(\'' + u.id + '\',' + (!u.active) + ')"><i class="fas fa-' + (u.active?'ban':'check') + '"></i></button>' +
+            '<button class="btn-ghost btn btn-sm danger" onclick="deleteUser(\'' + u.id + '\')"><i class="fas fa-trash"></i></button>' +
+          '</div></td>' +
+        '</tr>';
+      }).join('')}
     </tbody></table>
   </div></div>
 </div>`;
