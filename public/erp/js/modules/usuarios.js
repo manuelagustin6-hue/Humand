@@ -168,10 +168,20 @@ function usrBuildUserList(users) {
   <div class="card-header"><span class="card-title"><i class="fas fa-users text-primary"></i> Lista de Usuarios</span></div>
   <div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr>
-      <th>Usuario</th><th>Email</th><th>Rol</th><th>Último Acceso</th><th>Estado</th><th>Acciones</th>
+      <th>Usuario</th><th>Email</th><th>Rol</th><th>Proyectos</th><th>Último Acceso</th><th>Estado</th><th>Acciones</th>
     </tr></thead>
     <tbody>
-      ${users.map(u => `<tr>
+      ${users.map(u => {
+        const projIds = u.project_ids && u.project_ids.length ? u.project_ids : null;
+        const allProjects = DB.getAll('projects');
+        let projCell;
+        if (!projIds) {
+          projCell = '<span style="font-size:11px;color:var(--text-muted)">Todos</span>';
+        } else {
+          const names = projIds.map(pid => { const p = allProjects.find(x=>x.id===pid); return p ? p.name : pid; });
+          projCell = '<span style="font-size:11px" title="' + escapeHtml(names.join(', ')) + '">' + names.length + ' proyecto' + (names.length!==1?'s':'') + '</span>';
+        }
+        return `<tr>
         <td>
           <div style="display:flex;align-items:center;gap:10px">
             <div style="width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">
@@ -182,8 +192,9 @@ function usrBuildUserList(users) {
         </td>
         <td style="font-size:12px">${u.email}</td>
         <td><span class="badge ${usrRoleColor(u.role)}">${usrRoleLabel(u.role)}</span></td>
+        <td>${projCell}</td>
         <td style="font-size:12px;color:var(--text-muted)">${u.last_login ? fmtDatetime(u.last_login) : 'Nunca'}</td>
-        <td>${u.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
+        <td>${u.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>`}).join('')}
         <td><div class="table-actions">
           <button class="btn-ghost btn btn-sm" onclick="openUserForm('${u.id}')"><i class="fas fa-edit"></i></button>
           <button class="btn-ghost btn btn-sm" onclick="toggleUser('${u.id}', ${!u.active})">
@@ -246,38 +257,68 @@ function usrBuildRolesList() {
 function openUserForm(id = null) {
   const u = id ? DB.getById('users', id) : null;
   const roles = usrGetAllRoles();
-  openModal(u ? 'Editar Usuario' : 'Nuevo Usuario', `
-<div class="form-grid form-grid-2">
-  <div class="form-group full">
-    <label class="form-label">Nombre Completo *</label>
-    <input class="form-control" id="usr-name" value="${u ? escapeHtml(u.name) : ''}" placeholder="Juan Pérez">
-  </div>
-  <div class="form-group full">
-    <label class="form-label">Email *</label>
-    <input class="form-control" id="usr-email" type="email" value="${u ? escapeHtml(u.email) : ''}" placeholder="usuario@empresa.com">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Rol *</label>
-    <select class="form-control" id="usr-role">
-      ${roles.map(r => `<option value="${r.id}" ${ (u?.role===r.id) || (!u && r.id==='viewer') ? 'selected':''}>${escapeHtml(r.label)}</option>`).join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Estado</label>
-    <select class="form-control" id="usr-active">
-      <option value="true" ${u?.active!==false?'selected':''}>Activo</option>
-      <option value="false" ${u?.active===false?'selected':''}>Inactivo</option>
-    </select>
-  </div>
-  <div class="form-group full">
-    <label class="form-label">Contraseña <span style="font-weight:400;color:var(--text-muted)">${u ? '(dejá vacío para no cambiar)' : '(opcional — si no se asigna, cualquier contraseña permite el ingreso)'}</span></label>
-    <input class="form-control" id="usr-pin" type="password" placeholder="Nueva contraseña" autocomplete="new-password">
-  </div>
-</div>
-`, '', `
-<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-<button class="btn btn-primary" onclick="saveUser('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
-`);
+  const projects = DB.getAll('projects');
+  const userProjIds = (u && u.project_ids && u.project_ids.length) ? u.project_ids : null;
+  const accessMode = userProjIds ? 'specific' : 'all';
+
+  const projCheckboxes = projects.map(function(p) {
+    var checked = !userProjIds || userProjIds.indexOf(p.id) !== -1 ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg);border-radius:6px;cursor:pointer">' +
+      '<input type="checkbox" class="usr-proj-cb" value="' + p.id + '" ' + checked + '>' +
+      '<span><strong>' + escapeHtml(p.name) + '</strong>' + (p.client ? ' <span style="color:var(--text-muted)">— ' + escapeHtml(p.client) + '</span>' : '') + '</span>' +
+      '</label>';
+  }).join('');
+
+  openModal(u ? 'Editar Usuario' : 'Nuevo Usuario',
+    '<div class="form-grid form-grid-2">' +
+      '<div class="form-group full">' +
+        '<label class="form-label">Nombre Completo *</label>' +
+        '<input class="form-control" id="usr-name" value="' + (u ? escapeHtml(u.name) : '') + '" placeholder="Juan Pérez">' +
+      '</div>' +
+      '<div class="form-group full">' +
+        '<label class="form-label">Email *</label>' +
+        '<input class="form-control" id="usr-email" type="email" value="' + (u ? escapeHtml(u.email) : '') + '" placeholder="usuario@empresa.com">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Rol *</label>' +
+        '<select class="form-control" id="usr-role">' +
+          roles.map(function(r) { return '<option value="' + r.id + '"' + ((u ? u.role===r.id : r.id==='viewer') ? ' selected' : '') + '>' + escapeHtml(r.label) + '</option>'; }).join('') +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Estado</label>' +
+        '<select class="form-control" id="usr-active">' +
+          '<option value="true"' + (u && u.active===false ? '' : ' selected') + '>Activo</option>' +
+          '<option value="false"' + (u && u.active===false ? ' selected' : '') + '>Inactivo</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group full">' +
+        '<label class="form-label">Contraseña <span style="font-weight:400;color:var(--text-muted)">' + (u ? '(dejá vacío para no cambiar)' : '(opcional — si no se asigna, cualquier contraseña permite el ingreso)') + '</span></label>' +
+        '<input class="form-control" id="usr-pin" type="password" placeholder="Nueva contraseña" autocomplete="new-password">' +
+      '</div>' +
+    '</div>' +
+    '<div class="divider" style="margin:14px 0"></div>' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="fas fa-building" style="color:var(--primary);margin-right:6px"></i>Acceso a Proyectos</div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
+        '<input type="radio" name="usr-proj-mode" value="all" id="usr-proj-all"' + (accessMode==='all' ? ' checked' : '') + ' onchange="usrToggleProjMode(this.value)">' +
+        '<span>Todos los proyectos <span style="color:var(--text-muted);font-size:11px">(sin restricción)</span></span>' +
+      '</label>' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
+        '<input type="radio" name="usr-proj-mode" value="specific" id="usr-proj-specific"' + (accessMode==='specific' ? ' checked' : '') + ' onchange="usrToggleProjMode(this.value)">' +
+        '<span>Proyectos específicos</span>' +
+      '</label>' +
+    '</div>' +
+    '<div id="usr-proj-list" style="margin-top:10px;display:' + (accessMode==='specific' ? 'grid' : 'none') + ';grid-template-columns:1fr 1fr;gap:6px">' +
+      (projects.length ? projCheckboxes : '<div style="font-size:12px;color:var(--text-muted);padding:8px">No hay proyectos creados aún.</div>') +
+    '</div>',
+  '', '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="saveUser(\'' + (id||'') + '\')"><i class="fas fa-save"></i> Guardar</button>');
+}
+
+function usrToggleProjMode(mode) {
+  var list = document.getElementById('usr-proj-list');
+  if (list) list.style.display = mode === 'specific' ? 'grid' : 'none';
 }
 
 function saveUser(id) {
@@ -286,10 +327,21 @@ function saveUser(id) {
   if (!name || !email) { toast('Nombre y email son obligatorios', 'error'); return; }
 
   const pin = document.getElementById('usr-pin').value;
+
+  // Project access
+  var projMode = document.querySelector('input[name="usr-proj-mode"]:checked');
+  var projectIds = null;
+  if (projMode && projMode.value === 'specific') {
+    var checked = Array.from(document.querySelectorAll('.usr-proj-cb:checked'));
+    projectIds = checked.map(function(cb) { return cb.value; });
+    if (!projectIds.length) { toast('Seleccioná al menos un proyecto', 'error'); return; }
+  }
+
   const data = {
     name, email,
     role: document.getElementById('usr-role').value,
     active: document.getElementById('usr-active').value === 'true',
+    project_ids: projectIds,
   };
 
   if (pin) {
@@ -297,7 +349,6 @@ function saveUser(id) {
   } else if (!id) {
     data.password = null;
   }
-  // Editing without entering a PIN leaves existing password unchanged
 
   if (id) { DB.update('users', id, data); toast('Usuario actualizado', 'success'); }
   else { DB.insert('users', { ...data, last_login: null }); toast('Usuario creado', 'success'); }
@@ -510,6 +561,21 @@ function getEffectivePermissions(roleId) {
     },
   };
   return defaults[roleId] || {};
+}
+
+// Returns array of project IDs the current user can access, or null meaning all projects.
+// Admin always gets null (unrestricted). Any user without project_ids gets null too.
+function getAccessibleProjectIds() {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!user || user.role === 'admin') return null;
+  if (!user.project_ids || !user.project_ids.length) return null;
+  return user.project_ids;
+}
+
+function canAccessProject(projectId) {
+  var ids = getAccessibleProjectIds();
+  if (!ids) return true;
+  return ids.indexOf(projectId) !== -1;
 }
 
 // Returns true if the logged-in user can at least view the given module.
