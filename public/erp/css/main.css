@@ -1169,3 +1169,37 @@ body.sidebar-open #mobile-nav-fab { display: none !important; }
   /* Extra bottom padding so FAB doesn't cover content */
   #content { padding-bottom: 80px; }
 }
+
+/* ===== LOGIN SCREEN ===== */
+.login-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+  width: 100%;
+}
+.login-user-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: 0 2px 8px rgba(37,99,235,.12);
+}
+.login-user-avatar {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  flex-shrink: 0;
+}

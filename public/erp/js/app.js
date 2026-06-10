@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-window.APP_STATE = { currentModule: 'dashboard', activeProject: '', activeCompany: 'comp-001' };
+window.APP_STATE = { currentModule: 'dashboard', activeProject: '', activeCompany: 'comp-001', currentUser: null };
 
 const MODULES = {
   // Core
@@ -78,6 +78,12 @@ function navigate(module) {
   var mod = MODULES[module];
   if (!mod) return;
 
+  // Permission gate — dashboard is always accessible
+  if (module !== 'dashboard' && window.APP_STATE.currentUser && !canView(module)) {
+    toast('Sin acceso: no tenés permiso para ver este módulo', 'warning');
+    return;
+  }
+
   // Close mobile sidebar drawer
   document.body.classList.remove('sidebar-open');
 
@@ -103,6 +109,17 @@ function navigate(module) {
     } catch(e) {
       content.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error al cargar modulo: ' + e.message + '</p></div>';
       console.error(e);
+    }
+    // Read-only banner when user has view-only access for this module
+    var existingBanner = document.getElementById('readonly-banner');
+    if (existingBanner) existingBanner.remove();
+    if (window.APP_STATE.currentUser && canView(module) && !canEdit(module)) {
+      var banner = document.createElement('div');
+      banner.id = 'readonly-banner';
+      banner.innerHTML = '<i class="fas fa-eye"></i> <strong>Solo lectura</strong> — podés consultar los datos pero no tenés permiso para modificarlos en este módulo.';
+      banner.style.cssText = 'background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:0 0 14px;font-size:12px;color:#92400e;display:flex;align-items:center;gap:10px;flex-shrink:0;';
+      var contentEl = document.getElementById('content');
+      if (contentEl) contentEl.insertBefore(banner, contentEl.firstChild);
     }
   }, 60);
 }
@@ -160,6 +177,36 @@ function syncExchangeRates() {
     .catch(function() {});
 }
 
+// ---- SIDEBAR PERMISSION FILTER ----
+function applyPermissionsToSidebar() {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+
+  document.querySelectorAll('#sidebar-nav .nav-item[data-module]').forEach(function(li) {
+    var moduleId = li.dataset.module;
+    // Dashboard always visible
+    var visible = moduleId === 'dashboard' || !user || canView(moduleId);
+    li.style.display = visible ? '' : 'none';
+  });
+
+  // Hide a nav-group if all its child items are hidden
+  document.querySelectorAll('#sidebar-nav .nav-group').forEach(function(group) {
+    var items = group.querySelectorAll('.nav-item[data-module]');
+    var anyVisible = Array.prototype.some.call(items, function(li) { return li.style.display !== 'none'; });
+    group.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function updateSidebarUserInfo() {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!user) return;
+  var av = document.getElementById('sidebar-user-avatar');
+  var nm = document.getElementById('sidebar-user-name');
+  var rl = document.getElementById('sidebar-user-role');
+  if (av) av.textContent = (user.name || '?').charAt(0).toUpperCase();
+  if (nm) nm.textContent = user.name || user.email;
+  if (rl && typeof usrRoleLabel === 'function') rl.textContent = usrRoleLabel(user.role);
+}
+
 // ---- COMPANY SELECTOR (kept for backward compat; topbar selector removed) ----
 function populateCompanySelector() {}
 
@@ -199,11 +246,21 @@ document.addEventListener('DOMContentLoaded', function() {
   populateCompanySelector();
   populateProjectSelector();
 
-  // Navigate to last active module (or dashboard on first load)
-  var savedModule = null;
-  try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
-  navigate(savedModule && MODULES[savedModule] ? savedModule : 'dashboard');
-
-  // Sync exchange rates once per day (non-blocking)
-  setTimeout(syncExchangeRates, 1500);
+  // Check for an existing session
+  var user = (typeof sessionCurrentUser === 'function') ? sessionCurrentUser() : null;
+  if (user) {
+    // Resume session
+    window.APP_STATE.currentUser = user;
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('login-screen').style.display = 'none';
+    updateSidebarUserInfo();
+    applyPermissionsToSidebar();
+    var savedModule = null;
+    try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
+    navigate(savedModule && MODULES[savedModule] ? savedModule : 'dashboard');
+    setTimeout(syncExchangeRates, 1500);
+  } else {
+    // Show login
+    showLoginScreen();
+  }
 });

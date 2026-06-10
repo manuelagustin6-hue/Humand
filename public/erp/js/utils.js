@@ -295,3 +295,10 @@ function debounce(fn, ms = 300) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
+
+// ---- HTML ESCAPE ----
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
