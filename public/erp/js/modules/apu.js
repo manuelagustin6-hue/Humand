@@ -322,7 +322,14 @@ function openAPUForm(id) {
   const rubros  = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => a.code.localeCompare(b.code));
   const projects= DB.getAll('projects');
 
-  // Set form currency immediately so apuRebuildSection can use it synchronously
+  const activeCur = _activeCurrency();
+  const apuCurrency = apu?.currency || activeCur;
+  const allCurrencies = _apuCurrencies();
+  const currencyOpts = allCurrencies.length
+    ? allCurrencies.map(c => `<option value="${c.id}" ${apuCurrency===c.id?'selected':''}>${c.id}${c.name?' — '+c.name:''}</option>`).join('')
+    : `<option value="${activeCur}" selected>${activeCur}</option>`;
+
+  // Set form currency AFTER apuCurrency is defined
   window._apuFormCurrency = apuCurrency;
 
   // Initialize item state
@@ -340,13 +347,6 @@ function openAPUForm(id) {
 
   const projOpts = `<option value="">Plantilla (sin proyecto)</option>`
     + projects.map(p => `<option value="${p.id}" ${apu?.project_id===p.id?'selected':''}>${p.name}</option>`).join('');
-
-  const activeCur = _activeCurrency();
-  const apuCurrency = apu?.currency || activeCur;
-  const allCurrencies = _apuCurrencies();
-  const currencyOpts = allCurrencies.length
-    ? allCurrencies.map(c => `<option value="${c.id}" ${apuCurrency===c.id?'selected':''}>${c.id}${c.name?' — '+c.name:''}</option>`).join('')
-    : `<option value="${activeCur}" selected>${activeCur}</option>`;
 
   const sectionHTML = APU_SECTIONS.map(sec => {
     const hasWaste  = sec.haswaste;
