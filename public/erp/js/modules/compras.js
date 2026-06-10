@@ -4,11 +4,12 @@ function renderCompras() {
 <div class="page-header">
   <div>
     <div class="page-title">Compras</div>
-    <div class="page-subtitle">Pedidos de materiales y órdenes de compra</div>
+    <div class="page-subtitle">Pedidos de materiales, órdenes de compra y facturas de proveedores</div>
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="openSupplierForm()"><i class="fas fa-truck"></i> Nuevo Proveedor</button>
     <button class="btn btn-secondary" onclick="openPOForm()"><i class="fas fa-file-alt"></i> Nueva OC</button>
+    <button class="btn btn-secondary" onclick="openSIForm()"><i class="fas fa-file-invoice"></i> Nueva Factura</button>
     <button class="btn btn-primary" onclick="openRequisitionForm()"><i class="fas fa-plus"></i> Nuevo Pedido</button>
   </div>
 </div>
@@ -17,6 +18,7 @@ function renderCompras() {
   <div class="tabs">
     <button class="tab-btn" data-tab="tab-pedidos">Pedidos de Materiales</button>
     <button class="tab-btn" data-tab="tab-oc">Órdenes de Compra</button>
+    <button class="tab-btn" data-tab="tab-facturas">Facturas Proveedor</button>
     <button class="tab-btn" data-tab="tab-suppliers">Proveedores</button>
   </div>
   <div id="tab-pedidos" class="tab-content">
@@ -25,12 +27,57 @@ function renderCompras() {
   <div id="tab-oc" class="tab-content">
     ${renderPOTable()}
   </div>
+  <div id="tab-facturas" class="tab-content">
+    ${renderSupplierInvoicesTab()}
+  </div>
   <div id="tab-suppliers" class="tab-content">
     ${renderSuppliersTable()}
   </div>
 </div>
   `;
   initTabs('compras-tabs');
+}
+
+// ==== STANDALONE PAGE RENDERS (for sidebar navigation) ====
+
+function renderPedidos() {
+  document.getElementById('content').innerHTML = `
+<div class="page-header">
+  <div>
+    <div class="page-title">Pedidos de Materiales</div>
+    <div class="page-subtitle">Solicitudes de compra de materiales y equipos para obra</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-primary" onclick="openRequisitionForm()"><i class="fas fa-plus"></i> Nuevo Pedido</button>
+  </div>
+</div>
+<div id="pedidos-page-content">
+  ${renderRequisitionsTab()}
+</div>`;
+}
+
+function renderOrdenesCompra() {
+  document.getElementById('content').innerHTML = `
+<div class="page-header">
+  <div>
+    <div class="page-title">Órdenes de Compra</div>
+    <div class="page-subtitle">Órdenes de compra emitidas a proveedores</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-secondary" onclick="openSupplierForm()"><i class="fas fa-truck"></i> Proveedor</button>
+    <button class="btn btn-primary" onclick="openPOForm()"><i class="fas fa-plus"></i> Nueva OC</button>
+  </div>
+</div>
+<div id="oc-page-content">
+  ${renderPOTable()}
+</div>`;
+}
+
+function _refreshCurrentComprasView() {
+  var mod = window.APP_STATE && window.APP_STATE.currentModule;
+  if (mod === 'pedidos') renderPedidos();
+  else if (mod === 'ordenes_compra') renderOrdenesCompra();
+  else renderCompras();
 }
 
 // ==== REQUISITIONS (PEDIDOS DE MATERIALES) ====
@@ -114,8 +161,7 @@ function buildRequisitionRows(reqs, projects) {
           <button class="btn btn-sm btn-primary" onclick="submitRequisition('${req.id}')"><i class="fas fa-paper-plane"></i> Enviar</button>
         ` : ''}
         ${req.status === 'submitted' ? `
-          <button class="btn btn-sm btn-success" onclick="approveRequisition('${req.id}')"><i class="fas fa-check"></i> Aprobar</button>
-          <button class="btn btn-sm btn-danger" onclick="openRejectRequisition('${req.id}')"><i class="fas fa-times"></i> Rechazar</button>
+          <button class="btn btn-sm btn-secondary" onclick="navigate('aprobaciones')" title="Ir al módulo de Aprobaciones"><i class="fas fa-check-double"></i> Ver Aprobación</button>
         ` : ''}
         ${req.status === 'approved' ? `
           <button class="btn btn-sm btn-primary" onclick="convertRequisitionToOC('${req.id}')"><i class="fas fa-file-alt"></i> Generar OC</button>
@@ -194,8 +240,7 @@ ${(req.items || []).map(it => `<tr>
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
 ${req.status === 'draft' ? `<button class="btn btn-secondary" onclick="closeModal(); openRequisitionForm('${req.id}')"><i class="fas fa-edit"></i> Editar</button><button class="btn btn-primary" onclick="closeModal(); submitRequisition('${req.id}')"><i class="fas fa-paper-plane"></i> Enviar</button>` : ''}
 ${req.status === 'submitted' ? `
-  <button class="btn btn-success" onclick="closeModal(); approveRequisition('${req.id}')"><i class="fas fa-check"></i> Aprobar</button>
-  <button class="btn btn-danger" onclick="closeModal(); openRejectRequisition('${req.id}')"><i class="fas fa-times"></i> Rechazar</button>
+  <button class="btn btn-secondary" onclick="closeModal(); navigate('aprobaciones')"><i class="fas fa-check-double"></i> Ver en Aprobaciones</button>
 ` : ''}
 ${req.status === 'approved' ? `<button class="btn btn-primary" onclick="closeModal(); convertRequisitionToOC('${req.id}')"><i class="fas fa-file-alt"></i> Generar OC</button>` : ''}
 <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
@@ -278,7 +323,7 @@ function reqItemRow(it, i, rubroOpts) {
     <input class="form-control" style="font-size:12px" value="${it.unit || 'un'}" oninput="updateReqItem(${i},'unit',this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity || 1}" oninput="updateReqItem(${i},'quantity',+this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price || 0}" placeholder="0" oninput="updateReqItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total || 0).replace('$', '').trim()}" id="reqitem-total-${i}">
+    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total || 0)}" id="reqitem-total-${i}">
     <button class="btn-ghost btn danger" onclick="removeReqItem(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }
@@ -299,7 +344,7 @@ function updateReqItem(i, field, val) {
   window._reqItems[i][field] = val;
   window._reqItems[i].total = (window._reqItems[i].quantity || 0) * (window._reqItems[i].unit_price || 0);
   const totEl = document.getElementById(`reqitem-total-${i}`);
-  if (totEl) totEl.value = fmtMoney(window._reqItems[i].total).replace('$', '').trim();
+  if (totEl) totEl.value = fmtMoney(window._reqItems[i].total);
   document.getElementById('req-totals').innerHTML = calcReqTotalsHtml(window._reqItems.filter(Boolean));
 }
 
@@ -355,32 +400,25 @@ function saveRequisition(id) {
 
   window._reqItems = [];
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 // ---- WORKFLOW ACTIONS ----
 function submitRequisition(id) {
   confirmDialog('¿Enviar el pedido para aprobación?', () => {
     DB.update('purchaseRequisitions', id, { submitted_date: todayStr() });
-    submitForApproval('purchase_requisition', id); // engine sets status + creates instance if workflow configured
-    renderCompras();
+    submitForApproval('purchase_requisition', id);
+    _refreshCurrentComprasView();
   });
 }
 
 function approveRequisition(id) {
-  // If a workflow instance exists, route through the engine; otherwise direct approve
   const inst = getApprovalInstance('purchase_requisition', id);
   if (inst && inst.status === 'pending') {
-    openApproveApprModal(inst.id);
+    navigate('aprobaciones');
     return;
   }
-  DB.update('purchaseRequisitions', id, {
-    status: 'approved',
-    approved_by: 'Administrador',
-    approved_date: todayStr(),
-  });
-  toast('Pedido aprobado', 'success');
-  renderCompras();
+  navigate('aprobaciones');
 }
 
 function openRejectRequisition(id) {
@@ -405,7 +443,7 @@ function rejectRequisition(id) {
   });
   toast('Pedido rechazado', 'warning');
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function convertRequisitionToOC(reqId) {
@@ -442,12 +480,14 @@ function doConvertToOC(reqId) {
   const expectedDate = document.getElementById('req-conv-date').value;
   if (!supplierId) { toast('Seleccioná un proveedor', 'error'); return; }
 
+  const allRubros = DB.getAll('rubros');
   const items = (req.items || []).map(it => ({
     description: it.description,
     unit: it.unit,
     quantity: it.quantity,
     unit_price: it.unit_price,
     total: it.total,
+    rubro_id: (allRubros.find(r => r.name === it.rubro || r.id === it.rubro_id) || {}).id || '',
   }));
   const subtotal = items.reduce((s, it) => s + (it.total || 0), 0);
   const tax = subtotal * 0.21;
@@ -479,14 +519,14 @@ function doConvertToOC(reqId) {
     toast(`OC ${nextNum} creada correctamente`, 'success');
   }
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deleteRequisition(id) {
   confirmDialog('¿Eliminar este pedido?', () => {
     DB.remove('purchaseRequisitions', id);
     toast('Pedido eliminado', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
@@ -559,8 +599,9 @@ function buildPORows(pos, projects, suppliers) {
   ${pos.map(po => {
     const proj = projects.find(p => p.id === po.project_id);
     const sup = suppliers.find(s => s.id === po.supplier_id);
+    const srcReq = po.req_id ? DB.getById('purchaseRequisitions', po.req_id) : null;
     return `<tr>
-      <td><strong>${po.number}</strong></td>
+      <td><strong>${po.number}</strong>${srcReq ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px"><i class="fas fa-clipboard-list" style="font-size:9px"></i> ${srcReq.number}</div>` : ''}</td>
       <td>${proj ? proj.name : '-'}</td>
       <td>${sup ? sup.name : '-'}</td>
       <td>${fmtDate(po.date)}</td>
@@ -599,12 +640,14 @@ function viewPO(id) {
   const po = DB.getById('purchaseOrders', id);
   const proj = DB.getById('projects', po.project_id);
   const sup = DB.getById('suppliers', po.supplier_id);
+  const srcReq = po.req_id ? DB.getById('purchaseRequisitions', po.req_id) : null;
   openModal(`OC ${po.number}`, `
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
   <div>
     <div class="form-label">Proyecto</div><p>${proj?.name || '-'}</p>
     <div class="form-label mt-1">Proveedor</div><p>${sup?.name || '-'}</p>
     <div class="form-label mt-1">CUIT Proveedor</div><p>${sup?.cuit || '-'}</p>
+    ${srcReq ? `<div class="form-label mt-1">Pedido de Origen</div><p style="color:var(--primary);font-weight:600"><i class="fas fa-clipboard-list"></i> ${srcReq.number}</p>` : ''}
   </div>
   <div>
     <div class="form-label">Fecha OC</div><p>${fmtDate(po.date)}</p>
@@ -645,6 +688,7 @@ function openPOForm(id = null) {
   const suppliers = DB.getAll('suppliers');
   const items = po?.items || [{ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }];
   const nextNum = `OC-${new Date().getFullYear()}-${String(DB.getAll('purchaseOrders').length + 1).padStart(3, '0')}`;
+  window._poItems = items.map(it => Object.assign({}, it));
 
   openModal(po ? 'Editar OC' : 'Nueva Orden de Compra', `
 <div class="form-grid form-grid-2">
@@ -692,8 +736,8 @@ function openPOForm(id = null) {
   <button class="btn btn-sm btn-secondary" onclick="addPOItem()"><i class="fas fa-plus"></i> Agregar ítem</button>
 </div>
 <div id="po-items">
-  <div style="display:grid;grid-template-columns:3fr 80px 80px 120px 120px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
-    <span>Descripción</span><span>Unidad</span><span>Cantidad</span><span>P.Unitario</span><span>Total</span><span></span>
+  <div style="display:grid;grid-template-columns:2fr 2fr 70px 80px 110px 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
+    <span>Descripción</span><span>Rubro / Imputación</span><span>Unidad</span><span>Cantidad</span><span>P.Unitario</span><span>Total</span><span></span>
   </div>
   ${items.map((it, i) => poItemRow(it, i)).join('')}
 </div>
@@ -708,23 +752,28 @@ function openPOForm(id = null) {
 }
 
 function poItemRow(it, i) {
-  return `<div id="poi-row-${i}" style="display:grid;grid-template-columns:3fr 80px 80px 120px 120px 36px;gap:6px;margin-bottom:6px;align-items:center">
-    <input class="form-control" style="font-size:12px" placeholder="Descripción" value="${it.description}" oninput="updatePOItem(${i},'description',this.value)">
-    <input class="form-control" style="font-size:12px" value="${it.unit}" oninput="updatePOItem(${i},'unit',this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity}" oninput="updatePOItem(${i},'quantity',+this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price}" oninput="updatePOItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total).replace('$','').trim()}" id="poi-total-${i}">
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => a.code.localeCompare(b.code));
+  const rubroOpts = '<option value="">— Sin rubro —</option>' +
+    rubros.map(r => '<option value="' + r.id + '"' + (it.rubro_id === r.id ? ' selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('');
+  return `<div id="poi-row-${i}" style="display:grid;grid-template-columns:2fr 2fr 70px 80px 110px 110px 36px;gap:6px;margin-bottom:6px;align-items:center">
+    <input class="form-control" style="font-size:12px" placeholder="Descripción" value="${it.description||''}" oninput="updatePOItem(${i},'description',this.value)">
+    <select class="form-control" style="font-size:12px" onchange="updatePOItem(${i},'rubro_id',this.value)">${rubroOpts}</select>
+    <input class="form-control" style="font-size:12px" value="${it.unit||'un'}" oninput="updatePOItem(${i},'unit',this.value)">
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity||1}" oninput="updatePOItem(${i},'quantity',+this.value)">
+    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price||0}" oninput="updatePOItem(${i},'unit_price',+this.value)">
+    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total||0)}" id="poi-total-${i}">
     <button class="btn-ghost btn danger" onclick="removePOItem(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }
 
 window._poItems = [];
 function addPOItem() {
-  window._poItems.push({ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 });
+  const blank = { description: '', rubro_id: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 };
+  window._poItems.push(blank);
   const cont = document.getElementById('po-items');
   const i = window._poItems.length - 1;
   const div = document.createElement('div');
-  div.innerHTML = poItemRow({ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }, i);
+  div.innerHTML = poItemRow(blank, i);
   cont.appendChild(div.firstElementChild);
 }
 
@@ -733,7 +782,7 @@ function updatePOItem(i, field, val) {
   window._poItems[i][field] = val;
   window._poItems[i].total = (window._poItems[i].quantity || 0) * (window._poItems[i].unit_price || 0);
   const totEl = document.getElementById(`poi-total-${i}`);
-  if (totEl) totEl.value = fmtMoney(window._poItems[i].total).replace('$','').trim();
+  if (totEl) totEl.value = fmtMoney(window._poItems[i].total);
   document.getElementById('po-totals').innerHTML = calcPOTotalsHtml(window._poItems);
 }
 
@@ -788,20 +837,20 @@ function savePO(id) {
 
   window._poItems = [];
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function receivePO(id) {
   DB.update('purchaseOrders', id, { status: 'received' });
   toast('OC marcada como recibida', 'success');
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deletePO(id) {
   confirmDialog('¿Eliminar esta orden de compra?', () => {
     DB.remove('purchaseOrders', id);
     toast('OC eliminada', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
@@ -932,14 +981,14 @@ function saveSupplier(id) {
   if (id) { DB.update('suppliers', id, data); toast('Proveedor actualizado', 'success'); }
   else { DB.insert('suppliers', data); toast('Proveedor creado', 'success'); }
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deleteSupplier(id) {
   confirmDialog('¿Eliminar este proveedor?', () => {
     DB.remove('suppliers', id);
     toast('Proveedor eliminado', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
@@ -973,9 +1022,8 @@ function renderSupplierInvoicesTab() {
   </div>
   <select class="form-control" style="width:160px" onchange="filterSIs(undefined, this.value)">
     <option value="">Todos los estados</option>
-    <option value="pending">Pendiente</option>
+    <option value="pending">Pendiente de pago</option>
     <option value="paid">Pagada</option>
-    <option value="cancelled">Cancelada</option>
   </select>
   <button class="btn btn-secondary" onclick="exportSIs()"><i class="fas fa-download"></i> Exportar</button>
   <button class="btn btn-primary" onclick="openSIForm()"><i class="fas fa-plus"></i> Nueva Factura</button>
@@ -991,8 +1039,8 @@ function renderSupplierInvoicesTab() {
 
 function buildSITable(sis, suppliers, projects, pos) {
   if (!sis.length) return '<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas de proveedores. Generalas desde una OC recibida, desde una certificación aprobada o creá una manualmente.</p></div>';
-  const statusColor = { pending: 'badge-yellow', paid: 'badge-green', cancelled: 'badge-red' };
-  const statusLabel = { pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
+  const statusColor = { pending: 'badge-yellow', paid: 'badge-green' };
+  const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
   const certs = DB.getAll('certificates');
   const contracts = DB.getAll('contracts');
   return '<table><thead><tr>' +
@@ -1007,7 +1055,7 @@ function buildSITable(sis, suppliers, projects, pos) {
     var cert = si.cert_id ? certs.find(function(c) { return c.id === si.cert_id; }) : null;
     var contract = cert && cert.contract_id ? contracts.find(function(ct) { return ct.id === cert.contract_id; }) : null;
     var origenHtml = '';
-    if (po)   origenHtml += '<div style="font-size:11px;color:var(--text-muted)"><i class="fas fa-shopping-cart" style="font-size:9px"></i> ' + po.number + '</div>';
+    if (po)   origenHtml += '<div style="font-size:11px"><a href="#" onclick="event.preventDefault();viewPO(\'' + po.id + '\')" style="color:var(--primary);text-decoration:none"><i class="fas fa-shopping-cart" style="font-size:9px"></i> ' + po.number + '</a></div>';
     if (cert) origenHtml += '<div style="font-size:11px;color:var(--primary)"><i class="fas fa-certificate" style="font-size:9px"></i> ' + cert.number + (contract ? ' (' + contract.number + ')' : '') + '</div>';
     if (!origenHtml) origenHtml = '<span style="font-size:11px;color:var(--text-muted)">—</span>';
     var isOverdueFlag = si.due_date && si.due_date < todayStr() && si.status === 'pending';
@@ -1024,6 +1072,7 @@ function buildSITable(sis, suppliers, projects, pos) {
       '<td><span class="badge ' + (statusColor[si.status] || 'badge-gray') + '">' + (statusLabel[si.status] || si.status) + '</span></td>' +
       '<td><div class="table-actions">' +
         '<button class="btn-ghost btn btn-sm" onclick="openSIForm(\'' + si.id + '\')"><i class="fas fa-edit"></i></button>' +
+        (si.status === 'pending' ? '<button class="btn btn-sm btn-primary" onclick="createOPFromSI(\'' + si.id + '\')" title="Crear Orden de Pago"><i class="fas fa-file-invoice"></i> OP</button>' : '') +
         (si.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="markSIPaid(\'' + si.id + '\')"><i class="fas fa-check"></i> Pagar</button>' : '') +
         '<button class="btn-ghost btn btn-sm danger" onclick="deleteSI(\'' + si.id + '\')"><i class="fas fa-trash"></i></button>' +
       '</div></td>' +
@@ -1051,10 +1100,32 @@ function generateSIFromPO(poId) {
   openSIForm(null, poId);
 }
 
+function createOPFromSI(siId) {
+  navigate('ordenes_pago');
+  setTimeout(function() {
+    if (typeof openPaymentOrderForm === 'function') openPaymentOrderForm(null, siId);
+  }, 250);
+}
+
 function openSIForm(id, prefillPoId, prefillCertId) {
   id = id || null; prefillPoId = prefillPoId || null; prefillCertId = prefillCertId || null;
   const si        = id ? DB.getById('supplierInvoices', id) : null;
-  const pos       = DB.getAll('purchaseOrders').filter(function(p) { return p.status === 'received'; });
+  // Build set of PO ids that already have a SI (excluding the current SI being edited)
+  const invoicedPoIds = new Set(
+    DB.getAll('supplierInvoices').filter(function(s) { return s.po_id && s.id !== id; }).map(function(s) { return s.po_id; })
+  );
+  // Pendiente de facturar = received with no SI yet; also show sent (en camino) without SI
+  // Always include the OC already linked to this SI (for editing)
+  const pos = DB.getAll('purchaseOrders').filter(function(p) {
+    if (si && si.po_id === p.id) return true;
+    if (p.status !== 'sent' && p.status !== 'received') return false;
+    return !invoicedPoIds.has(p.id);
+  });
+  // Sort: received first (pendiente de facturar), then sent (pendiente de entrega)
+  pos.sort(function(a, b) {
+    if (a.status === b.status) return 0;
+    return a.status === 'received' ? -1 : 1;
+  });
   const suppliers = DB.getAll('suppliers');
   const projects  = DB.getAll('projects');
   const nextNum   = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
@@ -1097,18 +1168,30 @@ function openSIForm(id, prefillPoId, prefillCertId) {
     '<div class="form-grid form-grid-2">' +
       '<div class="form-group"><label class="form-label">N° Factura Proveedor</label>' +
         '<input class="form-control" id="si-num" value="' + ((si && si.number) || nextNum) + '"></div>' +
+      '<div class="form-group"><label class="form-label">Tipo de Comprobante</label>' +
+        '<select class="form-control" id="si-tipo-comp">' +
+          '<option value="A"'        + ((si && si.tipo_comprobante === 'A')        ? ' selected' : (!si ? ' selected' : '')) + '>Factura A (IVA discriminado)</option>' +
+          '<option value="B"'        + ((si && si.tipo_comprobante === 'B')        ? ' selected' : '') + '>Factura B</option>' +
+          '<option value="C"'        + ((si && si.tipo_comprobante === 'C')        ? ' selected' : '') + '>Factura C (Monotributo)</option>' +
+          '<option value="M"'        + ((si && si.tipo_comprobante === 'M')        ? ' selected' : '') + '>Factura M</option>' +
+          '<option value="X"'        + ((si && si.tipo_comprobante === 'X')        ? ' selected' : '') + '>Sin IVA / No AFIP</option>' +
+          '<option value="informal"' + ((si && si.tipo_comprobante === 'informal') ? ' selected' : '') + '>Informal / Sin comprobante</option>' +
+        '</select>' +
+        '<small style="color:var(--text-muted)">A/B/C/M van al Libro IVA. X e Informal se excluyen.</small>' +
+      '</div>' +
       '<div class="form-group"><label class="form-label">Estado</label>' +
-        '<select class="form-control" id="si-status">' +
-          '<option value="pending"'   + ((!si || si.status === 'pending')  ? ' selected' : '') + '>Pendiente de Pago</option>' +
-          '<option value="paid"'      + ((si && si.status === 'paid')       ? ' selected' : '') + '>Pagada</option>' +
-          '<option value="cancelled"' + ((si && si.status === 'cancelled')  ? ' selected' : '') + '>Cancelada</option>' +
-        '</select></div>' +
+        '<div style="padding:7px 12px;background:var(--bg);border-radius:var(--radius-sm);font-size:13px;display:flex;align-items:center;gap:8px;border:1px solid var(--border)">' +
+          (si && si.status === 'paid'
+            ? '<span class="badge badge-green">Pagada</span><span style="font-size:11px;color:var(--text-muted)">El pago se registra a través de la Orden de Pago</span>'
+            : '<span class="badge badge-yellow">Pendiente de pago</span><span style="font-size:11px;color:var(--text-muted)">Se actualiza automáticamente al pagar</span>') +
+        '</div></div>' +
       '<div class="form-group"><label class="form-label"><i class="fas fa-shopping-cart" style="font-size:10px;color:var(--text-muted)"></i> OC de Origen</label>' +
         '<select class="form-control" id="si-po" onchange="prefillSIFromPO(this.value)">' +
           '<option value="">Sin OC de referencia</option>' +
           pos.map(function(p) {
             var sName = (suppliers.find(function(s) { return s.id === p.supplier_id; }) || {}).name || '';
-            return '<option value="' + p.id + '"' + (selectedPoId === p.id ? ' selected' : '') + '>' + p.number + ' — ' + sName + '</option>';
+            var stateLabel = p.status === 'received' ? '✓ Pend. de facturar' : '⏳ Pend. de entrega';
+            return '<option value="' + p.id + '"' + (selectedPoId === p.id ? ' selected' : '') + '>' + p.number + ' — ' + sName + ' [' + stateLabel + ']</option>';
           }).join('') +
         '</select></div>' +
       '<div class="form-group"><label class="form-label"><i class="fas fa-certificate" style="font-size:10px;color:var(--primary)"></i> Certificado de Obra</label>' +
@@ -1212,10 +1295,42 @@ function prefillSIFromPO(poId) {
   const supEl  = document.getElementById('si-supplier');
   const projEl = document.getElementById('si-project');
   if (subEl)  subEl.value  = po.subtotal || 0;
-  if (taxEl)  taxEl.value  = po.tax || 0;
+  if (taxEl)  taxEl.value  = (po.tax || 0).toFixed ? (po.tax || 0).toFixed(2) : po.tax || 0;
   if (supEl)  supEl.value  = po.supplier_id || '';
   if (projEl) projEl.value = po.project_id || '';
   siRecalcTotal();
+
+  // Build imputacion lines from PO items that have rubro_id
+  const allRubros = DB.getAll('rubros').filter(r => r.active !== false);
+  const impMap = {}; // rubro_id → accumulated amount
+  (po.items || []).forEach(function(it) {
+    if (!it.rubro_id) return;
+    impMap[it.rubro_id] = (impMap[it.rubro_id] || 0) + (it.total || 0);
+  });
+  const impLines = Object.keys(impMap).map(function(rubroId) {
+    const rubro = allRubros.find(r => r.id === rubroId);
+    return {
+      rubro_id:     rubroId,
+      account_code: (rubro && rubro.account_code) || '',
+      account_name: (rubro && rubro.account_name) || '',
+      amount:       impMap[rubroId],
+    };
+  });
+
+  if (impLines.length) {
+    window._siImpLines = impLines;
+    const rubros = allRubros.sort((a, b) => a.code.localeCompare(b.code));
+    const cont   = document.getElementById('si-imp-lines');
+    if (cont) {
+      cont.innerHTML =
+        '<div style="display:grid;grid-template-columns:3fr 2fr 130px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted);padding:0 2px">' +
+          '<span>Rubro</span><span>Cuenta contable</span><span>Importe</span><span></span>' +
+        '</div>' +
+        impLines.map(function(l, i) { return buildSiImpRow(l, i, rubros); }).join('');
+    }
+    const totEl = document.getElementById('si-imp-totals');
+    if (totEl) totEl.innerHTML = calcSiImpTotalsHtml(impLines, parseFloat(subEl && subEl.value) || 0);
+  }
 }
 
 function prefillSIFromCert(certId) {
@@ -1291,21 +1406,22 @@ function saveSI(id) {
     }
   }
   var data = {
-    number:      document.getElementById('si-num').value,
-    po_id:       document.getElementById('si-po').value || '',
-    cert_id:     certId,
-    supplier_id: supplierId,
-    project_id:  document.getElementById('si-project').value || '',
-    date:        document.getElementById('si-date').value,
-    due_date:    document.getElementById('si-due').value,
-    subtotal:    sub,
-    iva_rate:    ivaRate,
+    number:           document.getElementById('si-num').value,
+    tipo_comprobante: document.getElementById('si-tipo-comp').value,
+    po_id:            document.getElementById('si-po').value || '',
+    cert_id:          certId,
+    supplier_id:      supplierId,
+    project_id:       document.getElementById('si-project').value || '',
+    date:             document.getElementById('si-date').value,
+    due_date:         document.getElementById('si-due').value,
+    subtotal:         sub,
+    iva_rate:         ivaRate,
     tax:         tax,
     perc_iva:    percIva,
     perc_iibb:   percIibb,
     taxes:       taxes,
     total:       sub + tax + otherTaxTotal,
-    status:      document.getElementById('si-status').value,
+    status:      id ? ((DB.getById('supplierInvoices', id) || {}).status || 'pending') : 'pending',
     notes:       document.getElementById('si-notes').value.trim(),
     imputacion:  imputacion,
   };
@@ -1328,20 +1444,20 @@ function saveSI(id) {
   window._siImpLines = [];
   window._siTaxLines = [];
   closeModal();
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function markSIPaid(id) {
   DB.update('supplierInvoices', id, { status: 'paid' });
   toast('Factura marcada como pagada', 'success');
-  renderCompras();
+  _refreshCurrentComprasView();
 }
 
 function deleteSI(id) {
   confirmDialog('¿Eliminar esta factura de proveedor?', () => {
     DB.remove('supplierInvoices', id);
     toast('Factura eliminada', 'warning');
-    renderCompras();
+    _refreshCurrentComprasView();
   });
 }
 
