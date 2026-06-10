@@ -21,7 +21,11 @@ function fmtMoney(n, currency) {
     var currencyObj = currencies.find(function(c) { return c.id === cur; });
     if (currencyObj) decimals = currencyObj.decimals || 0;
   } catch(e) {}
-  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur, minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+  try {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur, minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+  } catch(e) {
+    return new Intl.NumberFormat('es-AR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+  }
 }
 
 function fmtNum(n) {
