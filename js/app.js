@@ -54,6 +54,9 @@ const MODULES = {
   conta_mayores:   { title: 'Libro Mayor',                   icon: 'fa-book',                   render: renderContaMayores },
   libro_iva:       { title: 'Libro IVA Compras / Ventas',   icon: 'fa-receipt',                render: renderLibroIVA },
 
+  // RRHH
+  rrhh:            { title: 'RRHH — Empleados y Liquidaciones', icon: 'fa-hard-hat',              render: renderRRHH },
+
   // Stock
   stock:           { title: 'Stock / Almacén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
 

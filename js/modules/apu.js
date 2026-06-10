@@ -1,5 +1,46 @@
 /* ===== APU — ANÁLISIS DE PRECIOS UNITARIOS ===== */
 
+// ---- currency helpers ----
+function _apuLatestRate(from, to) {
+  const rates = (DB.getGlobal().exchangeRates || []);
+  const direct = rates.filter(r => r.from === from && r.to === to).sort((a,b) => b.date.localeCompare(a.date))[0];
+  if (direct) return direct.rate;
+  const inv = rates.filter(r => r.from === to && r.to === from).sort((a,b) => b.date.localeCompare(a.date))[0];
+  if (inv) return 1 / inv.rate;
+  return null;
+}
+function apuConvertCurrency(amount, from, to) {
+  if (!amount || from === to) return amount;
+  const direct = _apuLatestRate(from, to);
+  if (direct != null) return amount * direct;
+  // via ARS pivot
+  const toArs = _apuLatestRate(from, 'ARS');
+  const arsTo = _apuLatestRate('ARS', to);
+  if (toArs != null && arsTo != null) return amount * toArs * arsTo;
+  return null;
+}
+function _apuCurrencies() {
+  try { return (DB.getGlobal().currencies || []).filter(c => c.id); } catch(e) { return []; }
+}
+function apuFmtPrice(amount, currency) {
+  return fmtMoney(amount, currency || _activeCurrency());
+}
+function apuConversionsHtml(amount, fromCur) {
+  if (!amount) return '';
+  const cur = fromCur || _activeCurrency();
+  const others = _apuCurrencies().filter(c => c.id !== cur);
+  if (!others.length) return '';
+  const lines = others.map(c => {
+    const v = apuConvertCurrency(amount, cur, c.id);
+    if (v == null) return '';
+    try {
+      const fmt = new Intl.NumberFormat('es-AR', { style:'currency', currency:c.id, minimumFractionDigits:2, maximumFractionDigits:2 }).format(v);
+      return `<div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">${c.id}</span><span>${fmt}</span></div>`;
+    } catch(e) { return `<div><span style="color:var(--text-muted)">${c.id}</span> ${v.toFixed(2)}</div>`; }
+  }).filter(Boolean).join('');
+  return lines ? `<div style="font-size:11px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border)">${lines}</div>` : '';
+}
+
 const APU_SECTIONS = [
   { id: 'materiales',   label: 'Materiales',        icon: 'fa-boxes-stacking', color: 'blue',   haswaste: true  },
   { id: 'mano_obra',    label: 'Mano de Obra',       icon: 'fa-hard-hat',       color: 'green',  haswaste: false },
@@ -103,8 +144,8 @@ function apuBuildTable(apus, rubros, projects) {
           ${pctEq ?`<span class="badge badge-yellow" style="font-size:10px">Eq ${pctEq}%</span>`:''}
         </div>
       </td>
-      <td class="text-right" style="font-size:12px">${fmtMoney(a.total_directo||0)}</td>
-      <td class="text-right"><strong style="font-size:14px;color:var(--primary)">${fmtMoney(a.unit_price||0)}</strong><div style="font-size:10px;color:var(--text-muted)">/${a.rubro_unit||'u'}</div></td>
+      <td class="text-right" style="font-size:12px">${apuFmtPrice(a.total_directo||0, a.currency)}</td>
+      <td class="text-right"><strong style="font-size:14px;color:var(--primary)">${apuFmtPrice(a.unit_price||0, a.currency)}</strong><div style="font-size:10px;color:var(--text-muted)">/${a.rubro_unit||'u'}${a.currency?' · '+a.currency:''}</div></td>
       <td><span class="badge badge-${statusColor[a.status]||'gray'}">${statusLabel[a.status]||a.status}</span></td>
       <td>
         <button class="btn btn-xs btn-secondary" onclick="viewAPU('${a.id}')"><i class="fas fa-eye"></i></button>
@@ -244,6 +285,26 @@ function apuRecalcSummary() {
   }
 
   window._apuCurrentTotals = { totMat, totMdo, totEq, totSub, totDir, gg, ut, imp, total };
+
+  // Currency conversions
+  const fromCur = document.getElementById('apu-currency')?.value || _activeCurrency();
+  const convEl = document.getElementById('apu-conversions');
+  if (convEl && total > 0) {
+    const others = _apuCurrencies().filter(c => c.id !== fromCur);
+    const lines = others.map(c => {
+      const converted = apuConvertCurrency(total, fromCur, c.id);
+      if (converted == null) return '';
+      try {
+        const fmt = new Intl.NumberFormat('es-AR', { style:'currency', currency:c.id, minimumFractionDigits:2, maximumFractionDigits:2 }).format(converted);
+        return `<div style="display:flex;justify-content:space-between"><span>${c.id}</span><span>${fmt}</span></div>`;
+      } catch(e) { return `<div style="display:flex;justify-content:space-between"><span>${c.id}</span><span>${converted.toFixed(2)}</span></div>`; }
+    }).filter(Boolean).join('');
+    convEl.innerHTML = lines
+      ? `<div style="border-top:1px dashed var(--border);padding-top:6px;margin-top:2px">${lines}</div>`
+      : '';
+  } else if (convEl) {
+    convEl.innerHTML = '';
+  }
 }
 
 // =====================================================================
@@ -269,6 +330,13 @@ function openAPUForm(id) {
 
   const projOpts = `<option value="">Plantilla (sin proyecto)</option>`
     + projects.map(p => `<option value="${p.id}" ${apu?.project_id===p.id?'selected':''}>${p.name}</option>`).join('');
+
+  const activeCur = _activeCurrency();
+  const apuCurrency = apu?.currency || activeCur;
+  const allCurrencies = _apuCurrencies();
+  const currencyOpts = allCurrencies.length
+    ? allCurrencies.map(c => `<option value="${c.id}" ${apuCurrency===c.id?'selected':''}>${c.id}${c.name?' — '+c.name:''}</option>`).join('')
+    : `<option value="${activeCur}" selected>${activeCur}</option>`;
 
   const sectionHTML = APU_SECTIONS.map(sec => {
     const hasWaste  = sec.haswaste;
@@ -350,6 +418,7 @@ function openAPUForm(id) {
     <span style="font-size:14px;font-weight:700">PRECIO UNITARIO</span>
     <span id="apu-sum-tot" style="font-size:18px;font-weight:800;color:var(--primary)">$0</span>
   </div>
+  <div id="apu-conversions" style="margin-top:8px;font-size:11px;color:var(--text-muted)"></div>
 </div>`;
 
   const body = `
@@ -379,6 +448,11 @@ function openAPUForm(id) {
       <option value="active"   ${apu?.status==='active'             ?'selected':''}>Activo</option>
       <option value="archived" ${apu?.status==='archived'           ?'selected':''}>Archivado</option>
     </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Moneda de Cálculo</label>
+    <select class="form-control" id="apu-currency" onchange="apuRecalcSummary()">${currencyOpts}</select>
+    <small style="color:var(--text-muted)">Los precios unitarios se ingresan en esta moneda.</small>
   </div>
   <div class="form-group" style="grid-column:1/-1">
     <label class="form-label">Descripción / Notas</label>
@@ -436,6 +510,7 @@ function saveAPU(id, statusOverride) {
     equipos:      window._apuItems.equipos.filter(it => it.description||it.subtotal>0),
     subcontratos: window._apuItems.subcontratos.filter(it => it.description||it.subtotal>0),
 
+    currency:             document.getElementById('apu-currency')?.value || _activeCurrency(),
     gastos_generales_pct: parseFloat(document.getElementById('apu-gg-pct')?.value)||0,
     utilidad_pct:         parseFloat(document.getElementById('apu-ut-pct')?.value)||0,
     impuestos_pct:        parseFloat(document.getElementById('apu-imp-pct')?.value)||0,
@@ -511,8 +586,9 @@ function viewAPU(id) {
       ${apu.description?`<div style="margin-top:4px;color:var(--text-muted)">${apu.description}</div>`:''}
     </div>
     <div style="text-align:right">
-      <div style="font-size:24px;font-weight:900;color:var(--primary)">${fmtMoney(apu.unit_price||0)}</div>
-      <div style="color:var(--text-muted)">por ${apu.rubro_unit||'unidad'}</div>
+      <div style="font-size:24px;font-weight:900;color:var(--primary)">${apuFmtPrice(apu.unit_price||0, apu.currency)}</div>
+      <div style="color:var(--text-muted)">por ${apu.rubro_unit||'unidad'}${apu.currency?' · '+apu.currency:''}</div>
+      ${apuConversionsHtml(apu.unit_price||0, apu.currency)}
     </div>
   </div>
 
@@ -544,8 +620,9 @@ function viewAPU(id) {
       <div style="margin-top:8px;padding-top:8px;border-top:2px solid var(--primary);
                   display:flex;justify-content:space-between;font-weight:900">
         <span style="font-size:14px">PRECIO UNITARIO</span>
-        <span style="font-size:18px;color:var(--primary)">${fmtMoney(apu.unit_price||0)}</span>
+        <span style="font-size:18px;color:var(--primary)">${apuFmtPrice(apu.unit_price||0, apu.currency)}</span>
       </div>
+      ${apuConversionsHtml(apu.unit_price||0, apu.currency)}
     </div>
   </div>
 </div>`;
