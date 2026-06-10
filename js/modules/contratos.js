@@ -934,6 +934,7 @@ function openContractForm(id = null) {
   const suppliers = DB.getAll('suppliers');
   const boqItems  = DB.getAll('boqItems');
   const indices   = DB.getAll('priceIndices');
+  const rubros    = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
   const nextNum   = 'CONT-' + new Date().getFullYear() + '-' + String(DB.getAll('contracts').length + 1).padStart(3, '0');
   const items     = (contract && contract.items && contract.items.length) ? contract.items : [{ description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, boq_item_id: '' }];
   const cashflow  = (contract && contract.cash_flow && contract.cash_flow.length) ? contract.cash_flow : [];
@@ -973,6 +974,11 @@ function openContractForm(id = null) {
         '<select class="form-control" id="cont-contractor">' +
           '<option value="">Seleccionar...</option>' +
           suppliers.map(s => '<option value="' + s.id + '" ' + ((contract && contract.contractor_id === s.id) ? 'selected' : '') + '>' + s.name + '</option>').join('') +
+        '</select></div>' +
+      '<div class="form-group"><label class="form-label">Partida / Rubro</label>' +
+        '<select class="form-control" id="cont-rubro">' +
+          '<option value="">Sin asignar</option>' +
+          rubros.map(r => '<option value="' + r.id + '" ' + ((contract && contract.rubro_id === r.id) ? 'selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('') +
         '</select></div>' +
       '<div class="form-group"><label class="form-label">Tipo de Contrato</label>' +
         '<select class="form-control" id="cont-type">' +
@@ -1278,6 +1284,7 @@ function saveContract(id) {
     anticipo_pct:          parseFloat(document.getElementById('cont-anticipo').value) || 0,
     fondo_reparo_pct:      parseFloat(document.getElementById('cont-fondo').value) || 0,
     deposito_garantia_pct: parseFloat(document.getElementById('cont-deposito').value) || 0,
+    rubro_id:              document.getElementById('cont-rubro')?.value || '',
     indice_id:             document.getElementById('cont-indice').value || '',
     forma_pago:            document.getElementById('cont-forma-pago').value,
     items,

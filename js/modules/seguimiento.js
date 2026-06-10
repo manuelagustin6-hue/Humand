@@ -6,29 +6,54 @@ function renderSeguimiento() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
-    <div class="page-title">Seguimiento de Presupuesto</div>
-    <div class="page-subtitle">Control de desvíos, avance financiero y análisis de costos</div>
+    <div class="page-title">Control Presupuestal</div>
+    <div class="page-subtitle">Seguimiento de costos, desvíos y control por partida de obra</div>
   </div>
   <div class="page-actions">
     <select class="form-control" id="seg-project-sel" onchange="loadSeguimiento(this.value)" style="min-width:220px">
       <option value="">Seleccionar proyecto...</option>
       ${projects.map(p => `<option value="${p.id}" ${p.id===activeProjectId?'selected':''}>${p.name}</option>`).join('')}
     </select>
-    <button class="btn btn-primary" onclick="openActualCostForm()"><i class="fas fa-plus"></i> Registrar Costo Real</button>
+    <button class="btn btn-primary" onclick="openActualCostForm()"><i class="fas fa-plus"></i> Registrar Costo</button>
   </div>
 </div>
-<div id="seg-container">
-  ${activeProjectId ? renderSeguimientoContent(activeProjectId) : `<div class="empty-state"><i class="fas fa-chart-line"></i><p>Seleccioná un proyecto para ver el seguimiento</p></div>`}
+<div id="seg-tabs">
+  <div class="tabs">
+    <button class="tab-btn" data-tab="tab-seg-resumen">Resumen</button>
+    <button class="tab-btn" data-tab="tab-seg-partidas">Control por Partida</button>
+  </div>
+  <div id="tab-seg-resumen" class="tab-content">
+    <div id="seg-container">
+      ${activeProjectId ? renderSeguimientoContent(activeProjectId) : `<div class="empty-state"><i class="fas fa-chart-line"></i><p>Seleccioná un proyecto para ver el seguimiento</p></div>`}
+    </div>
+  </div>
+  <div id="tab-seg-partidas" class="tab-content">
+    <div id="seg-partidas-container">
+      ${activeProjectId ? renderControlPresupuestal(activeProjectId) : `<div class="empty-state"><i class="fas fa-table"></i><p>Seleccioná un proyecto para ver el control presupuestal por partida</p></div>`}
+    </div>
+  </div>
 </div>
   `;
   if (activeProjectId) document.getElementById('seg-project-sel').value = activeProjectId;
+  initTabs('seg-tabs');
 }
 
 function loadSeguimiento(projectId) {
   window.APP_STATE.activeProject = projectId;
-  document.getElementById('seg-container').innerHTML = projectId
-    ? renderSeguimientoContent(projectId)
-    : `<div class="empty-state"><i class="fas fa-chart-line"></i><p>Seleccioná un proyecto</p></div>`;
+
+  const segContainer = document.getElementById('seg-container');
+  if (segContainer) {
+    segContainer.innerHTML = projectId
+      ? renderSeguimientoContent(projectId)
+      : `<div class="empty-state"><i class="fas fa-chart-line"></i><p>Seleccioná un proyecto</p></div>`;
+  }
+
+  const partidasContainer = document.getElementById('seg-partidas-container');
+  if (partidasContainer) {
+    partidasContainer.innerHTML = projectId
+      ? renderControlPresupuestal(projectId)
+      : `<div class="empty-state"><i class="fas fa-table"></i><p>Seleccioná un proyecto</p></div>`;
+  }
 }
 
 function renderSeguimientoContent(projectId) {
@@ -44,7 +69,6 @@ function renderSeguimientoContent(projectId) {
   const deviation = actualTotal - boqTotal;
   const deviationPct = boqTotal ? (deviation / boqTotal * 100) : 0;
 
-  // By category
   const categories = [...new Set([...boqItems.map(b => b.category), ...actualCosts.map(a => a.category)])];
   const catData = categories.map(cat => {
     const budget = boqItems.filter(b => b.category === cat).reduce((s, b) => s + b.total, 0);
@@ -54,10 +78,9 @@ function renderSeguimientoContent(projectId) {
     return { cat, budget, actual, diff, pct };
   });
 
-  // Monthly spend
   const monthlyData = buildMonthlySpend(actualCosts);
 
-  return `
+  const result = `
 <!-- KPI ROW -->
 <div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-calculator"></i></div><div>
@@ -160,13 +183,266 @@ function renderSeguimientoContent(projectId) {
 </div>
   `;
 
-  // Charts
   setTimeout(() => {
     renderCatChart(catData);
     renderMonthlyChart(monthlyData);
   }, 100);
+
+  return result;
 }
 
+/* ===== CONTROL PRESUPUESTAL POR PARTIDA ===== */
+function renderControlPresupuestal(projectId) {
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
+  const indices = DB.getAll('priceIndices');
+  const partidas = DB.getAll('presupuestoPartidas').filter(p => p.project_id === projectId);
+  const contracts = DB.getAll('contracts').filter(c => c.project_id === projectId && c.status !== 'cancelled');
+
+  const partidaMap = {};
+  partidas.forEach(p => { partidaMap[p.rubro_id] = p; });
+
+  const contratoMap = {};
+  contracts.forEach(c => {
+    if (c.rubro_id) {
+      contratoMap[c.rubro_id] = (contratoMap[c.rubro_id] || 0) + (c.total_amount || 0);
+    }
+  });
+
+  let totBudget = 0, totAjustado = 0, totContratado = 0, totEjecutado = 0, totPrevision = 0, totCosto = 0, totSaldo = 0;
+
+  const rows = rubros.map(r => {
+    const p = partidaMap[r.id] || {};
+    const budgetAmt = p.budget_amount || 0;
+    const indexId = p.index_id || '';
+    const idx = indices.find(i => i.id === indexId);
+    const factor = (idx && idx.base_value) ? (idx.current_value / idx.base_value) : 1;
+    const presupuestoAjustado = budgetAmt * factor;
+    const contratado = contratoMap[r.id] || 0;
+    const ejecutado = p.executed_external || 0;
+    const previsionBruta = p.prevision || 0;
+    const previsionEfectiva = Math.max(0, previsionBruta - contratado);
+    const costoTotal = contratado + ejecutado + previsionEfectiva;
+    const saldo = presupuestoAjustado - costoTotal;
+    const hasData = budgetAmt || contratado || ejecutado || previsionBruta;
+
+    totBudget += budgetAmt;
+    totAjustado += presupuestoAjustado;
+    totContratado += contratado;
+    totEjecutado += ejecutado;
+    totPrevision += previsionEfectiva;
+    totCosto += costoTotal;
+    totSaldo += saldo;
+
+    const editStyle = 'cursor:pointer;border-bottom:1px dashed var(--primary);color:inherit';
+
+    return `<tr data-has-data="${hasData ? '1' : '0'}" style="${!hasData ? 'opacity:0.45' : ''}">
+      <td><strong style="color:var(--primary);font-family:monospace">${r.code}</strong></td>
+      <td style="min-width:180px">${r.name}</td>
+      <td class="number-cell text-right">
+        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','budget_amount',${budgetAmt})" title="Hacer clic para editar">
+          ${budgetAmt ? fmtMoney(budgetAmt) : '<span style="color:var(--border)">—</span>'}
+        </span>
+      </td>
+      <td style="min-width:110px">
+        <select class="form-control" style="font-size:11px;padding:2px 6px;height:26px" onchange="updatePartidaIndex('${projectId}','${r.id}',this.value)">
+          <option value="">—</option>
+          ${indices.map(i => `<option value="${i.id}" ${indexId===i.id?'selected':''}>${i.code}</option>`).join('')}
+        </select>
+      </td>
+      <td class="number-cell text-right">
+        ${idx && factor !== 1
+          ? `<strong title="Factor ${factor.toFixed(4)}">${fmtMoney(presupuestoAjustado)}</strong>`
+          : (budgetAmt ? fmtMoney(budgetAmt) : '<span style="color:var(--border)">—</span>')}
+      </td>
+      <td class="number-cell text-right ${contratado > 0 ? '' : ''}">
+        <strong style="color:${contratado > 0 ? 'var(--primary)' : 'var(--text-muted)'}">${fmtMoney(contratado)}</strong>
+      </td>
+      <td class="number-cell text-right">
+        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','executed_external',${ejecutado})" title="Hacer clic para editar">
+          ${fmtMoney(ejecutado)}
+        </span>
+      </td>
+      <td class="number-cell text-right">
+        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','prevision',${previsionBruta})" title="Hacer clic para editar">
+          ${previsionBruta !== 0
+            ? `<span style="color:${previsionBruta > 0 ? 'var(--warning)' : 'var(--success)'}">${previsionBruta > 0 ? '+' : ''}${fmtMoney(previsionBruta)}</span>`
+            : '<span style="color:var(--border)">—</span>'}
+        </span>
+      </td>
+      <td class="number-cell text-right ${costoTotal > presupuestoAjustado && presupuestoAjustado > 0 ? 'text-danger' : ''}">
+        ${fmtMoney(costoTotal)}
+      </td>
+      <td class="number-cell text-right">
+        <strong style="color:${saldo < 0 ? 'var(--danger)' : saldo > 0 ? 'var(--success)' : 'var(--text-muted)'}">${fmtMoney(saldo)}</strong>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const hasContracts = contracts.some(c => c.rubro_id);
+
+  return `
+<div class="card mt-2">
+  <div class="card-header">
+    <span class="card-title"><i class="fas fa-table-columns text-primary"></i> Control Presupuestal por Partida</span>
+    <div style="display:flex;align-items:center;gap:10px">
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-muted)">
+        <input type="checkbox" id="seg-show-empty" onchange="toggleEmptyPartidas(this.checked)">
+        Ver partidas sin datos
+      </label>
+      <button class="btn btn-sm btn-secondary" onclick="exportControlPresupuestal('${projectId}')"><i class="fas fa-download"></i> Exportar</button>
+    </div>
+  </div>
+  ${!hasContracts ? `<div style="padding:8px 16px;background:#fef9c3;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e">
+    <i class="fas fa-info-circle"></i> Los contratos aún no tienen rubro asignado. Para que la columna <strong>Contratado</strong> se complete automáticamente, asigná el rubro al crear o editar cada contrato.
+  </div>` : ''}
+  <div style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)">
+    <i class="fas fa-pencil-alt" style="color:var(--primary)"></i> Los valores subrayados son editables. <strong>Contratado</strong> = suma automática de contratos con rubro asignado. <strong>Previsión</strong> se reduce automáticamente al contratar.
+  </div>
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap" style="overflow-x:auto">
+      <table id="tabla-control-presupuestal" style="font-size:12px;min-width:900px">
+        <thead>
+          <tr style="background:var(--bg)">
+            <th style="white-space:nowrap">Codific.</th>
+            <th style="min-width:160px">Partida</th>
+            <th class="text-right" style="white-space:nowrap">Monto Ppto.</th>
+            <th class="text-right" style="white-space:nowrap">Índice</th>
+            <th class="text-right" style="white-space:nowrap">Ppto. Ajustado</th>
+            <th class="text-right" style="white-space:nowrap">Contratado</th>
+            <th class="text-right" style="white-space:nowrap">Ejec. ext.</th>
+            <th class="text-right" style="white-space:nowrap">Previsión</th>
+            <th class="text-right" style="white-space:nowrap">Costo Total</th>
+            <th class="text-right" style="white-space:nowrap">Saldo</th>
+          </tr>
+        </thead>
+        <tbody id="partidas-tbody">
+          ${rows}
+        </tbody>
+        <tfoot>
+          <tr class="total-row" style="background:var(--bg);font-size:13px">
+            <td colspan="2"><strong>TOTAL</strong></td>
+            <td class="number-cell text-right"><strong>${fmtMoney(totBudget)}</strong></td>
+            <td></td>
+            <td class="number-cell text-right"><strong>${fmtMoney(totAjustado)}</strong></td>
+            <td class="number-cell text-right" style="color:var(--primary)"><strong>${fmtMoney(totContratado)}</strong></td>
+            <td class="number-cell text-right"><strong>${fmtMoney(totEjecutado)}</strong></td>
+            <td class="number-cell text-right"><strong>${fmtMoney(totPrevision)}</strong></td>
+            <td class="number-cell text-right ${totCosto > totAjustado ? 'text-danger' : ''}"><strong>${fmtMoney(totCosto)}</strong></td>
+            <td class="number-cell text-right ${totSaldo < 0 ? 'text-danger' : 'text-success'}"><strong>${fmtMoney(totSaldo)}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+  `;
+}
+
+function toggleEmptyPartidas(show) {
+  document.querySelectorAll('#partidas-tbody tr[data-has-data="0"]').forEach(function(tr) {
+    tr.style.display = show ? '' : 'none';
+  });
+}
+
+function editPartidaValue(projectId, rubroId, field, current) {
+  const rubro = DB.getById('rubros', rubroId);
+  const labels = {
+    budget_amount: 'Monto Presupuesto',
+    executed_external: 'Ejecutado por fuera de contratos',
+    prevision: 'Previsión de economías / demasías'
+  };
+  const hints = {
+    budget_amount: 'Importe base presupuestado para esta partida (sin ajuste por índice).',
+    executed_external: 'Costos devengados que no forman parte de ningún contrato (ej. compras directas, facturas sueltas).',
+    prevision: 'Estimación de costos futuros sin contratar. Positivo = demasía esperada. Negativo = economía. Se reduce automáticamente al contratar.'
+  };
+
+  openModal(`${labels[field]}`, `
+<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+  <strong style="color:var(--text)">${rubro ? rubro.code + ' — ' + rubro.name : ''}</strong>
+</div>
+<div class="form-group">
+  <label class="form-label">${labels[field]}</label>
+  <input class="form-control" id="pv-value" type="number" value="${current}" step="1000" style="font-size:16px">
+  <div style="font-size:11px;color:var(--text-muted);margin-top:6px"><i class="fas fa-info-circle"></i> ${hints[field]}</div>
+</div>
+  `, '', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-primary" onclick="savePartidaValue('${projectId}','${rubroId}','${field}')"><i class="fas fa-save"></i> Guardar</button>
+  `);
+  setTimeout(function() { document.getElementById('pv-value') && document.getElementById('pv-value').focus(); }, 100);
+}
+
+function savePartidaValue(projectId, rubroId, field) {
+  const val = document.getElementById('pv-value');
+  if (!val) return;
+  const value = parseFloat(val.value) || 0;
+
+  const existing = DB.getAll('presupuestoPartidas').find(p => p.project_id === projectId && p.rubro_id === rubroId);
+  if (existing) {
+    const upd = {};
+    upd[field] = value;
+    DB.update('presupuestoPartidas', existing.id, upd);
+  } else {
+    const rec = { project_id: projectId, rubro_id: rubroId };
+    rec[field] = value;
+    DB.insert('presupuestoPartidas', rec);
+  }
+
+  toast('Guardado', 'success');
+  closeModal();
+  refreshSeguimientoPartidas(projectId);
+}
+
+function updatePartidaIndex(projectId, rubroId, indexId) {
+  const existing = DB.getAll('presupuestoPartidas').find(p => p.project_id === projectId && p.rubro_id === rubroId);
+  if (existing) {
+    DB.update('presupuestoPartidas', existing.id, { index_id: indexId });
+  } else if (indexId) {
+    DB.insert('presupuestoPartidas', { project_id: projectId, rubro_id: rubroId, index_id: indexId });
+  }
+  refreshSeguimientoPartidas(projectId);
+}
+
+function refreshSeguimientoPartidas(projectId) {
+  const container = document.getElementById('seg-partidas-container');
+  if (container) container.innerHTML = renderControlPresupuestal(projectId);
+}
+
+function exportControlPresupuestal(projectId) {
+  const proj = DB.getById('projects', projectId);
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
+  const indices = DB.getAll('priceIndices');
+  const partidas = DB.getAll('presupuestoPartidas').filter(p => p.project_id === projectId);
+  const contracts = DB.getAll('contracts').filter(c => c.project_id === projectId && c.status !== 'cancelled');
+
+  const partidaMap = {};
+  partidas.forEach(p => { partidaMap[p.rubro_id] = p; });
+  const contratoMap = {};
+  contracts.forEach(c => { if (c.rubro_id) contratoMap[c.rubro_id] = (contratoMap[c.rubro_id]||0) + (c.total_amount||0); });
+
+  const rows = rubros.map(r => {
+    const p = partidaMap[r.id] || {};
+    const budgetAmt = p.budget_amount || 0;
+    const idx = indices.find(i => i.id === (p.index_id||''));
+    const factor = (idx && idx.base_value) ? (idx.current_value / idx.base_value) : 1;
+    const ajustado = budgetAmt * factor;
+    const contratado = contratoMap[r.id] || 0;
+    const ejecutado = p.executed_external || 0;
+    const previsionBruta = p.prevision || 0;
+    const previsionEfec = Math.max(0, previsionBruta - contratado);
+    const costoTotal = contratado + ejecutado + previsionEfec;
+    return [r.code, r.name, budgetAmt, idx ? idx.code : '', ajustado, contratado, ejecutado, previsionBruta, costoTotal, ajustado - costoTotal];
+  });
+
+  exportXLSX(
+    `ControlPresupuestal_${proj?.name?.replace(/\s+/g,'_') || projectId}.xlsx`,
+    ['Codificación','Partida','Monto Presupuesto','Índice','Ppto. Ajustado','Contratado','Ejec. Ext.','Previsión','Costo Total','Saldo'],
+    rows
+  );
+}
+
+/* ===== HELPERS ORIGINALES ===== */
 function buildMonthlySpend(actualCosts) {
   const months = [];
   for (let i = 5; i >= 0; i--) {
@@ -231,8 +507,8 @@ function renderMonthlyChart(monthlyData) {
   });
 }
 
-function openActualCostForm(projectId = null) {
-  const pid = projectId || document.getElementById('seg-project-sel')?.value || window.APP_STATE.activeProject;
+function openActualCostForm(projectId) {
+  var pid = projectId || (document.getElementById('seg-project-sel') && document.getElementById('seg-project-sel').value) || window.APP_STATE.activeProject;
   const projects = DB.getAll('projects');
   openModal('Registrar Costo Real', `
 <div class="form-grid form-grid-2">
@@ -294,7 +570,7 @@ function saveActualCost() {
 }
 
 function deleteActualCost(id, projectId) {
-  confirmDialog('¿Eliminar este registro de costo?', () => {
+  confirmDialog('¿Eliminar este registro de costo?', function() {
     DB.remove('actualCosts', id);
     toast('Costo eliminado', 'warning');
     loadSeguimiento(projectId);
