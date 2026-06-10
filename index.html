@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>ERP Construcción</title>
-  <link rel="stylesheet" href="css/main.css?v=14">
+  <link rel="stylesheet" href="css/main.css?v=15">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -384,10 +384,12 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="user-avatar" id="sidebar-user-avatar">A</div>
-      <div class="user-info" style="flex:1;min-width:0">
-        <span class="user-name" id="sidebar-user-name">Administrador</span>
-        <span class="user-role" id="sidebar-user-role">Admin</span>
+      <div onclick="openProfileModal()" title="Mi perfil" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer">
+        <div class="user-avatar" id="sidebar-user-avatar">A</div>
+        <div class="user-info" style="flex:1;min-width:0">
+          <span class="user-name" id="sidebar-user-name">Administrador</span>
+          <span class="user-role" id="sidebar-user-role">Admin</span>
+        </div>
       </div>
       <button onclick="doLogout()" title="Cerrar sesión" style="background:none;border:none;cursor:pointer;color:var(--sidebar-text);padding:4px 6px;border-radius:6px;flex-shrink:0;font-size:14px;line-height:1;transition:color .15s" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--sidebar-text)'">
         <i class="fas fa-sign-out-alt"></i>
@@ -419,8 +421,14 @@
             <option value="">Todos los proyectos</option>
           </select>
         </div>
-        <button class="icon-btn" title="Notificaciones"><i class="fas fa-bell"></i><span class="badge">3</span></button>
-        <button class="icon-btn" title="Configuración"><i class="fas fa-cog"></i></button>
+        <div style="position:relative">
+          <button class="icon-btn" id="notif-bell-btn" title="Notificaciones" onclick="toggleNotifPanel()">
+            <i class="fas fa-bell"></i>
+            <span class="badge" id="notif-badge" style="display:none">0</span>
+          </button>
+          <div id="notif-panel" style="display:none;position:absolute;right:0;top:calc(100% + 8px);width:320px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:2000;overflow:hidden;max-height:420px;overflow-y:auto"></div>
+        </div>
+        <button class="icon-btn" title="Configuración" onclick="navigate('ajustes')"><i class="fas fa-cog"></i></button>
       </div>
     </header>
 
@@ -448,9 +456,9 @@
 <!-- SCRIPTS -->
 <script src="js/db.js?v=11"></script>
 <script src="js/utils.js?v=11"></script>
-<script src="js/modules/dashboard.js?v=6"></script>
+<script src="js/modules/dashboard.js?v=7"></script>
 <script src="js/modules/projects.js?v=6"></script>
-<script src="js/modules/compras.js?v=14"></script>
+<script src="js/modules/compras.js?v=15"></script>
 <script src="js/modules/presupuesto.js?v=6"></script>
 <script src="js/modules/seguimiento.js?v=6"></script>
 <script src="js/modules/gantt.js?v=6"></script>
@@ -460,7 +468,7 @@
 <script src="js/modules/contabilidad.js?v=8"></script>
 <script src="js/modules/rubros.js?v=7"></script>
 <script src="js/modules/certificaciones.js?v=6"></script>
-<script src="js/modules/ordenes_pago.js?v=6"></script>
+<script src="js/modules/ordenes_pago.js?v=7"></script>
 <script src="js/modules/retenciones.js?v=6"></script>
 <script src="js/modules/indices.js?v=7"></script>
 <script src="js/modules/empresas.js?v=2"></script>
@@ -468,7 +476,7 @@
 <script src="js/modules/aprobaciones.js?v=2"></script>
 <script src="js/modules/contratos.js?v=7"></script>
 <script src="js/modules/reportes.js?v=6"></script>
-<script src="js/modules/usuarios.js?v=12"></script>
+<script src="js/modules/usuarios.js?v=13"></script>
 <script src="js/modules/ajustes.js?v=6"></script>
 <script src="js/modules/nuevos.js?v=3"></script>
 <script src="js/modules/cuentas.js?v=4"></script>
@@ -479,7 +487,7 @@
 <script src="js/modules/libro_iva.js?v=1"></script>
 <script src="js/modules/apu.js?v=5"></script>
 <script src="js/modules/rrhh.js?v=1"></script>
-<script src="js/app.js?v=21"></script>
+<script src="js/app.js?v=22"></script>
 
 <!-- Mobile FAB nav button — shows only on mobile when sidebar is closed -->
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">

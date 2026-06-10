@@ -5,6 +5,8 @@ function renderDashboard() {
   const pos = DB.getAll('purchaseOrders');
   const collections = DB.getAll('collections');
   const tasks = DB.getAll('ganttTasks');
+  const supplierInvoices = DB.getAll('supplierInvoices');
+  const approvalInstances = DB.getAll('approvalInstances');
 
   const actualCosts = DB.getAll('actualCosts');
   const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
@@ -18,6 +20,15 @@ function renderDashboard() {
   const totalActual = actualCosts.reduce((s, a) => s + (a.amount || 0), 0);
   const grossMargin = totalBilled - totalActual;
   const marginPct = totalBilled > 0 ? (grossMargin / totalBilled * 100) : 0;
+
+  const currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+  const pendingApprovals = approvalInstances.filter(function(ai) {
+    if (ai.status !== 'pending') return false;
+    var step = ai.steps && ai.steps[ai.current_step_index];
+    if (!step || step.status !== 'pending') return false;
+    if (!currentUser) return true;
+    return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+  }).length;
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -91,6 +102,16 @@ function renderDashboard() {
       <div class="stat-label">Margen Bruto</div>
       <div class="stat-delta ${marginPct >= 0 ? 'up' : 'down'}">
         ${marginPct >= 0 ? '<i class="fas fa-arrow-up"></i>' : '<i class="fas fa-arrow-down"></i>'} ${fmtMoney(grossMargin)}
+      </div>
+    </div>
+  </div>
+  <div class="stat-card" onclick="navigate('aprobaciones')" style="cursor:pointer">
+    <div class="stat-icon ${pendingApprovals > 0 ? 'red' : 'green'}"><i class="fas fa-check-double"></i></div>
+    <div>
+      <div class="stat-value">${pendingApprovals}</div>
+      <div class="stat-label">Aprobaciones Pendientes</div>
+      <div class="stat-delta ${pendingApprovals > 0 ? 'down' : 'up'}">
+        ${pendingApprovals > 0 ? '<i class="fas fa-clock"></i> Requieren atención' : '<i class="fas fa-check-circle"></i> Al día'}
       </div>
     </div>
   </div>
@@ -204,10 +225,16 @@ function renderDashboard() {
 
 function buildAlerts(invoices, pos, tasks) {
   const alerts = [];
+  const today = (new Date()).toISOString().split('T')[0];
 
   invoices.filter(i => i.status === 'overdue').forEach(i => {
     const p = DB.getById('projects', i.project_id);
     alerts.push({ type: 'danger', icon: 'fa-exclamation-circle', msg: `Factura vencida ${i.number} — ${p ? p.name : ''} — ${fmtMoney(i.total)}` });
+  });
+
+  DB.getAll('supplierInvoices').filter(si => si.status === 'pending' && si.due_date && si.due_date < today).forEach(si => {
+    const sup = DB.getById('suppliers', si.supplier_id);
+    alerts.push({ type: 'danger', icon: 'fa-file-invoice-dollar', msg: `Factura prov. vencida: ${si.number} — ${sup ? sup.name : ''} — ${fmtMoney(si.total)}` });
   });
 
   pos.filter(p => p.status === 'sent').forEach(po => {

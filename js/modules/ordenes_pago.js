@@ -64,8 +64,9 @@ function buildPO2Table(orders, suppliers, projects) {
   const statusColor = { draft: 'badge-gray', pending: 'badge-yellow', paid: 'badge-green', cancelled: 'badge-red' };
   const statusLabel = { draft: 'Borrador', pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
 
+  const allSIs = DB.getAll('supplierInvoices');
   return `<table><thead><tr>
-    <th>N° Orden</th><th>Proveedor</th><th>Proyecto</th><th>Fecha</th><th>Concepto</th>
+    <th>N° Orden</th><th>Proveedor</th><th>Proyecto</th><th>Fecha</th><th>Factura Prov.</th><th>Concepto</th>
     <th class="text-right">Bruto</th><th class="text-right">Retenciones</th><th class="text-right">Neto</th>
     <th>Estado</th><th>Acciones</th>
   </tr></thead>
@@ -73,11 +74,13 @@ function buildPO2Table(orders, suppliers, projects) {
   ${orders.sort((a,b)=>b.date.localeCompare(a.date)).map(o => {
     const sup = suppliers.find(s => s.id === o.supplier_id);
     const proj = projects.find(p => p.id === o.project_id);
+    const si = o.supplier_invoice_id ? allSIs.find(s => s.id === o.supplier_invoice_id) : null;
     return `<tr>
       <td><strong>${o.number}</strong></td>
       <td>${sup?.name || '-'}</td>
       <td style="font-size:11px">${proj?.name || '-'}</td>
       <td>${fmtDate(o.date)}</td>
+      <td style="font-size:11px">${si ? `<span style="color:var(--primary);font-weight:600">${si.number}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="font-size:12px">${o.concept}</td>
       <td class="number-cell text-right">${fmtMoney(o.gross_amount)}</td>
       <td class="number-cell text-right text-warning">${fmtMoney(o.total_retentions||0)}</td>
@@ -111,6 +114,7 @@ function viewPaymentOrder(id) {
   const sup = DB.getById('suppliers', o.supplier_id);
   const proj = DB.getById('projects', o.project_id);
   const acc = DB.getById('bankAccounts', o.account_id);
+  const si = o.supplier_invoice_id ? DB.getById('supplierInvoices', o.supplier_invoice_id) : null;
 
   openModal(`Orden de Pago ${o.number}`, `
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
@@ -135,7 +139,7 @@ function viewPaymentOrder(id) {
     <div style="font-weight:600;margin-bottom:4px">DATOS DEL PAGO</div>
     <div>Proyecto: <strong>${proj?.name || '-'}</strong></div>
     <div>Cuenta: ${acc?.name || '-'}</div>
-    <div>Ref: ${o.reference_doc || '-'}</div>
+    ${si ? `<div>Factura prov.: <strong style="color:var(--primary)">${si.number}</strong> — ${fmtMoney(si.total)}</div>` : `<div>Ref: ${o.reference_doc || '-'}</div>`}
   </div>
 </div>
 
@@ -163,7 +167,7 @@ ${o.status === 'pending' ? `<button class="btn btn-success" onclick="markPOPaid(
 `);
 }
 
-function openPaymentOrderForm(id = null) {
+function openPaymentOrderForm(id = null, prefillSIId = null) {
   const o = id ? DB.getById('paymentOrders', id) : null;
   const suppliers = DB.getAll('suppliers');
   const projects = DB.getAll('projects');
@@ -171,12 +175,13 @@ function openPaymentOrderForm(id = null) {
   const retentions = DB.getAll('retentions').filter(r => r.active && r.applies_to === 'payment');
   const allSIs = DB.getAll('supplierInvoices');
   const nextNum = `OP-${new Date().getFullYear()}-${String(DB.getAll('paymentOrders').length + 1).padStart(3,'0')}`;
+  const effectiveSIId = prefillSIId || (o ? o.supplier_invoice_id : null);
 
   // Build supplier invoice options filtered by current supplier if editing
   function buildSIOpts(supplierId) {
     const filtered = allSIs.filter(si => si.status !== 'cancelled' && (!supplierId || si.supplier_id === supplierId));
     const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
-    return filtered.map(si => '<option value="' + si.id + '" ' + (o?.supplier_invoice_id===si.id?'selected':'') + '>' + si.number + ' — ' + fmtMoney(si.total) + ' [' + (statusLabel[si.status]||si.status) + ']</option>').join('');
+    return filtered.map(si => '<option value="' + si.id + '" ' + (effectiveSIId===si.id?'selected':'') + '>' + si.number + ' — ' + fmtMoney(si.total) + ' [' + (statusLabel[si.status]||si.status) + ']</option>').join('');
   }
 
   openModal(o ? 'Editar Orden de Pago' : 'Nueva Orden de Pago', `
@@ -254,6 +259,13 @@ function openPaymentOrderForm(id = null) {
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="savePaymentOrder('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
 `);
+  if (prefillSIId) {
+    setTimeout(function() {
+      var selEl = document.getElementById('op-invoice');
+      if (selEl && selEl.value !== prefillSIId) { selEl.value = prefillSIId; prefillPOFromInvoice(prefillSIId); }
+      else if (selEl && selEl.value === prefillSIId) prefillPOFromInvoice(prefillSIId);
+    }, 80);
+  }
 }
 
 function reloadPOInvoiceSelect(supplierId) {

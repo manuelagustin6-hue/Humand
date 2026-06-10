@@ -1007,7 +1007,7 @@ function buildSITable(sis, suppliers, projects, pos) {
     var cert = si.cert_id ? certs.find(function(c) { return c.id === si.cert_id; }) : null;
     var contract = cert && cert.contract_id ? contracts.find(function(ct) { return ct.id === cert.contract_id; }) : null;
     var origenHtml = '';
-    if (po)   origenHtml += '<div style="font-size:11px;color:var(--text-muted)"><i class="fas fa-shopping-cart" style="font-size:9px"></i> ' + po.number + '</div>';
+    if (po)   origenHtml += '<div style="font-size:11px"><a href="#" onclick="event.preventDefault();viewPO(\'' + po.id + '\')" style="color:var(--primary);text-decoration:none"><i class="fas fa-shopping-cart" style="font-size:9px"></i> ' + po.number + '</a></div>';
     if (cert) origenHtml += '<div style="font-size:11px;color:var(--primary)"><i class="fas fa-certificate" style="font-size:9px"></i> ' + cert.number + (contract ? ' (' + contract.number + ')' : '') + '</div>';
     if (!origenHtml) origenHtml = '<span style="font-size:11px;color:var(--text-muted)">—</span>';
     var isOverdueFlag = si.due_date && si.due_date < todayStr() && si.status === 'pending';
@@ -1024,6 +1024,7 @@ function buildSITable(sis, suppliers, projects, pos) {
       '<td><span class="badge ' + (statusColor[si.status] || 'badge-gray') + '">' + (statusLabel[si.status] || si.status) + '</span></td>' +
       '<td><div class="table-actions">' +
         '<button class="btn-ghost btn btn-sm" onclick="openSIForm(\'' + si.id + '\')"><i class="fas fa-edit"></i></button>' +
+        (si.status === 'pending' ? '<button class="btn btn-sm btn-primary" onclick="createOPFromSI(\'' + si.id + '\')" title="Crear Orden de Pago"><i class="fas fa-file-invoice"></i> OP</button>' : '') +
         (si.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="markSIPaid(\'' + si.id + '\')"><i class="fas fa-check"></i> Pagar</button>' : '') +
         '<button class="btn-ghost btn btn-sm danger" onclick="deleteSI(\'' + si.id + '\')"><i class="fas fa-trash"></i></button>' +
       '</div></td>' +
@@ -1049,6 +1050,13 @@ function filterSIs(q, status) {
 
 function generateSIFromPO(poId) {
   openSIForm(null, poId);
+}
+
+function createOPFromSI(siId) {
+  navigate('ordenes_pago');
+  setTimeout(function() {
+    if (typeof openPaymentOrderForm === 'function') openPaymentOrderForm(null, siId);
+  }, 250);
 }
 
 function openSIForm(id, prefillPoId, prefillCertId) {

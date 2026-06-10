@@ -658,10 +658,74 @@ function completeLogin(uid, remember) {
     ? savedModule : 'dashboard';
   navigate(targetModule);
   setTimeout(syncExchangeRates, 1500);
+  setTimeout(function() { if (typeof updateNotifBadge === 'function') updateNotifBadge(); }, 500);
   toast('Bienvenido, ' + escapeHtml(user.name || user.email) + '!', 'success');
 }
 
 function doLogout() {
   sessionClear();
   showLoginScreen();
+}
+
+// =====================================================
+// PROFILE MODAL
+// =====================================================
+function openProfileModal() {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!user) return;
+  openModal('Mi Perfil', '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:14px;background:var(--bg);border-radius:10px">' +
+    '<div style="width:54px;height:54px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;flex-shrink:0">' +
+      escapeHtml((user.name || '?').charAt(0).toUpperCase()) +
+    '</div>' +
+    '<div>' +
+      '<div style="font-weight:700;font-size:15px">' + escapeHtml(user.name || '') + '</div>' +
+      '<div style="font-size:12px;color:var(--text-muted)">' + escapeHtml(user.email || '') + '</div>' +
+      '<span class="badge ' + usrRoleColor(user.role) + '" style="margin-top:4px">' + escapeHtml(usrRoleLabel(user.role)) + '</span>' +
+    '</div>' +
+  '</div>' +
+  '<div class="form-grid form-grid-2">' +
+    '<div class="form-group"><label class="form-label">Nombre *</label>' +
+    '<input class="form-control" id="prof-name" value="' + escapeHtml(user.name || '') + '"></div>' +
+    '<div class="form-group"><label class="form-label">Email *</label>' +
+    '<input class="form-control" id="prof-email" type="email" value="' + escapeHtml(user.email || '') + '"></div>' +
+  '</div>' +
+  '<div class="divider" style="margin:16px 0"></div>' +
+  '<div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="fas fa-lock" style="color:var(--primary);margin-right:6px"></i>Cambiar contraseña</div>' +
+  '<div class="form-grid form-grid-2">' +
+    '<div class="form-group full"><label class="form-label">Contraseña actual</label>' +
+    '<input class="form-control" id="prof-pw-current" type="password" placeholder="Dejá vacío si no tenés contraseña"></div>' +
+    '<div class="form-group"><label class="form-label">Nueva contraseña</label>' +
+    '<input class="form-control" id="prof-pw-new" type="password" placeholder="Mínimo 6 caracteres"></div>' +
+    '<div class="form-group"><label class="form-label">Confirmar contraseña</label>' +
+    '<input class="form-control" id="prof-pw-confirm" type="password" placeholder="Repetir contraseña"></div>' +
+  '</div>', '', '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+  '<button class="btn btn-primary" onclick="saveProfile()"><i class="fas fa-save"></i> Guardar Cambios</button>');
+}
+
+function saveProfile() {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!user) return;
+  var name  = (document.getElementById('prof-name').value || '').trim();
+  var email = (document.getElementById('prof-email').value || '').trim().toLowerCase();
+  if (!name)  { toast('El nombre es obligatorio', 'error'); return; }
+  if (!email) { toast('El email es obligatorio', 'error'); return; }
+  var update = { name: name, email: email };
+  var pwNew     = document.getElementById('prof-pw-new').value;
+  var pwConfirm = document.getElementById('prof-pw-confirm').value;
+  var pwCurrent = document.getElementById('prof-pw-current').value;
+  if (pwNew) {
+    if (user.password) {
+      var enc; try { enc = btoa(pwCurrent); } catch(e) { enc = pwCurrent; }
+      if (user.password !== enc) { toast('La contraseña actual es incorrecta', 'error'); return; }
+    }
+    if (pwNew !== pwConfirm) { toast('Las contraseñas nuevas no coinciden', 'error'); return; }
+    if (pwNew.length < 6) { toast('La contraseña debe tener al menos 6 caracteres', 'error'); return; }
+    try { update.password = btoa(pwNew); } catch(e) { update.password = pwNew; }
+  }
+  DB.update('users', user.id, update);
+  var updated = DB.getById('users', user.id);
+  window.APP_STATE.currentUser = updated;
+  updateSidebarUserInfo();
+  toast('Perfil actualizado correctamente', 'success');
+  closeModal();
 }

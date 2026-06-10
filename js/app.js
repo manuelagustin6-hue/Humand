@@ -121,6 +121,7 @@ function navigate(module) {
       var contentEl = document.getElementById('content');
       if (contentEl) contentEl.insertBefore(banner, contentEl.firstChild);
     }
+    updateNotifBadge();
   }, 60);
 }
 
@@ -205,6 +206,85 @@ function updateSidebarUserInfo() {
   if (av) av.textContent = (user.name || '?').charAt(0).toUpperCase();
   if (nm) nm.textContent = user.name || user.email;
   if (rl && typeof usrRoleLabel === 'function') rl.textContent = usrRoleLabel(user.role);
+}
+
+// ---- NOTIFICATION BADGE & PANEL ----
+function updateNotifBadge() {
+  try {
+    var ais = DB.getAll('approvalInstances');
+    var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+    var count = ais.filter(function(ai) {
+      if (ai.status !== 'pending') return false;
+      var step = ai.steps && ai.steps[ai.current_step_index];
+      if (!step || step.status !== 'pending') return false;
+      if (!currentUser) return false;
+      return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+    }).length;
+    var badge = document.getElementById('notif-badge');
+    if (badge) { badge.textContent = count > 9 ? '9+' : String(count); badge.style.display = count > 0 ? '' : 'none'; }
+  } catch(e) {}
+}
+
+function toggleNotifPanel() {
+  var panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  if (panel.style.display === 'none' || !panel.style.display) {
+    panel.innerHTML = buildNotifPanel();
+    panel.style.display = '';
+    setTimeout(function() { document.addEventListener('click', _closeNotifOutside); }, 10);
+  } else {
+    panel.style.display = 'none';
+    document.removeEventListener('click', _closeNotifOutside);
+  }
+}
+
+function _closeNotifOutside(e) {
+  var panel = document.getElementById('notif-panel');
+  var btn = document.getElementById('notif-bell-btn');
+  if (panel && !panel.contains(e.target) && btn && !btn.contains(e.target)) {
+    panel.style.display = 'none';
+    document.removeEventListener('click', _closeNotifOutside);
+  }
+}
+
+function dismissNotifPanel() {
+  var panel = document.getElementById('notif-panel');
+  if (panel) panel.style.display = 'none';
+  document.removeEventListener('click', _closeNotifOutside);
+}
+
+function buildNotifPanel() {
+  var ais = DB.getAll('approvalInstances');
+  var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+  var docLabels = { purchase_order:'OC', supplier_invoice:'Factura Prov.', payment_order:'Orden de Pago', invoice:'Factura' };
+  var docCollections = { purchase_order:'purchaseOrders', supplier_invoice:'supplierInvoices', payment_order:'paymentOrders', invoice:'invoices' };
+  var items = ais.filter(function(ai) {
+    if (ai.status !== 'pending') return false;
+    var step = ai.steps && ai.steps[ai.current_step_index];
+    if (!step || step.status !== 'pending') return false;
+    if (!currentUser) return false;
+    return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+  });
+  var header = '<div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center">' +
+    '<span><i class="fas fa-bell text-warning" style="margin-right:6px"></i>Notificaciones</span>' +
+    (items.length ? '<span class="badge badge-red" style="font-size:10px">' + items.length + '</span>' : '') +
+    '</div>';
+  if (!items.length) {
+    return header + '<div style="padding:24px 16px;text-align:center;color:var(--text-muted);font-size:13px"><i class="fas fa-check-circle" style="color:var(--success);font-size:22px;display:block;margin-bottom:8px"></i>Sin aprobaciones pendientes</div>';
+  }
+  var rows = items.map(function(ai) {
+    var step = ai.steps[ai.current_step_index];
+    var stepName = (step && step.name) ? step.name : ('Paso ' + (ai.current_step_index + 1));
+    var typeLabel = docLabels[ai.doc_type] || ai.doc_type;
+    var coll = docCollections[ai.doc_type];
+    var doc = coll ? DB.getById(coll, ai.doc_id) : null;
+    var docNum = doc ? (doc.number || ai.doc_id) : ai.doc_id;
+    return '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--primary-muted)\'" onmouseout="this.style.background=\'\'">' +
+      '<div style="font-size:12px;font-weight:600"><i class="fas fa-clock text-warning" style="margin-right:6px"></i>' + typeLabel + ': ' + docNum + '</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Paso: ' + stepName + '</div>' +
+      '</div>';
+  }).join('');
+  return header + rows + '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:8px 16px;text-align:center;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600">Ver todas las aprobaciones →</div>';
 }
 
 // ---- COMPANY SELECTOR (kept for backward compat; topbar selector removed) ----
