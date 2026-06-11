@@ -538,10 +538,15 @@
 
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+  navigator.serviceWorker.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'SW_UPDATED') {
+      window.location.reload();
+    }
+  });
+  window.addEventListener('load', function() {
     navigator.serviceWorker.register('./sw.js')
-      .then(r => console.log('[SW] registered', r.scope))
-      .catch(e => console.warn('[SW] error', e));
+      .then(function(r) { console.log('[SW] registered', r.scope); })
+      .catch(function(e) { console.warn('[SW] error', e); });
   });
 }
 </script>
