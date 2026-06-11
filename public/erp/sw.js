@@ -1,5 +1,5 @@
-/* ERP Construcción — Service Worker v7 */
-const CACHE = 'erp-v7';
+/* ERP Construcción — Service Worker v8 */
+const CACHE = 'erp-v8';
 const SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const SHELL = [
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
   'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
 ];
 
 self.addEventListener('install', e => {

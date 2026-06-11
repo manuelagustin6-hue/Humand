@@ -326,7 +326,7 @@ function checkDataHealth() {
 }
 
 // ---- INIT ----
-document.addEventListener('DOMContentLoaded', function() {
+function _initApp() {
   // Trigger global init / migration
   DB.getGlobal();
 
@@ -350,7 +350,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Check for an existing session
   var user = (typeof sessionCurrentUser === 'function') ? sessionCurrentUser() : null;
   if (user) {
-    // Resume session
     window.APP_STATE.currentUser = user;
     document.getElementById('app').style.display = 'flex';
     document.getElementById('login-screen').style.display = 'none';
@@ -362,7 +361,26 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(syncExchangeRates, 1500);
     setTimeout(checkDataHealth, 3000);
   } else {
-    // Show login
     showLoginScreen();
   }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Show boot loader while we connect to Supabase
+  var loader = document.getElementById('boot-loader');
+  if (loader) loader.style.display = 'flex';
+
+  DB.load().then(function(online) {
+    if (loader) loader.style.display = 'none';
+    // Show sync status badge in sidebar
+    var badge = document.getElementById('sync-status');
+    if (badge) {
+      badge.textContent = online ? '● En línea' : '○ Sin conexión';
+      badge.style.color  = online ? '#22c55e'    : '#f59e0b';
+      badge.title = online
+        ? 'Sincronizado con Supabase — múltiples usuarios activos'
+        : 'Sin conexión a Supabase — datos guardados solo en este dispositivo';
+    }
+    _initApp();
+  });
 });

@@ -1,4 +1,90 @@
-/* ===== DATABASE LAYER (localStorage) ===== */
+/* ===== SUPABASE SYNC LAYER ===== */
+var _SUPA = {
+  URL: 'https://yljmcqqncljpwxwdmovw.supabase.co',
+  KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsam1jcXFuY2xqcHd4d2Rtb3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDI0MDksImV4cCI6MjA5NjQxODQwOX0.sjCH01CjOz6ncpFR7zYQhcv_ZooAsUfcMM-InpfRjLU',
+  online: false,
+  _realtimeTimer: null,
+
+  hdrs: function(extra) {
+    return Object.assign({
+      'apikey': this.KEY,
+      'Authorization': 'Bearer ' + this.KEY,
+      'Content-Type': 'application/json'
+    }, extra || {});
+  },
+
+  // Pull ALL records for a company → returns { collection: [records] }
+  pull: async function(companyId) {
+    var res = await fetch(
+      this.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
+      '&deleted=eq.false&select=collection,record_id,data&order=created_at.asc&limit=50000',
+      { headers: this.hdrs() }
+    );
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var rows = await res.json();
+    var out = {};
+    rows.forEach(function(r) {
+      if (!out[r.collection]) out[r.collection] = [];
+      out[r.collection].push(r.data);
+    });
+    return out;
+  },
+
+  // Upsert a single record (fire-and-forget)
+  upsert: function(companyId, collection, record) {
+    fetch(this.URL + '/rest/v1/erp_data', {
+      method: 'POST',
+      headers: this.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({
+        company_id: companyId, collection: collection,
+        record_id: record.id, data: record,
+        deleted: false, updated_at: new Date().toISOString()
+      })
+    }).catch(function(e) { console.warn('[Supa] upsert:', e.message); });
+  },
+
+  // Delete a single record (fire-and-forget)
+  del: function(companyId, collection, recordId) {
+    fetch(
+      this.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
+      '&collection=eq.' + encodeURIComponent(collection) +
+      '&record_id=eq.' + encodeURIComponent(recordId),
+      { method: 'DELETE', headers: this.hdrs() }
+    ).catch(function(e) { console.warn('[Supa] delete:', e.message); });
+  },
+
+  // Batch upsert an entire collection (for bulk imports)
+  pushCollection: async function(companyId, collection, records) {
+    if (!records || !records.length) return;
+    var rows = records.map(function(r) {
+      return { company_id: companyId, collection: collection, record_id: r.id,
+               data: r, deleted: false, updated_at: new Date().toISOString() };
+    });
+    for (var i = 0; i < rows.length; i += 500) {
+      await fetch(this.URL + '/rest/v1/erp_data', {
+        method: 'POST',
+        headers: this.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+        body: JSON.stringify(rows.slice(i, i + 500))
+      });
+    }
+  },
+
+  // Subscribe to real-time changes using Supabase JS client
+  subscribe: function(companyId, onEvent) {
+    if (!window.supabase) { console.warn('[Supa] SDK not loaded, realtime disabled'); return; }
+    try {
+      var client = window.supabase.createClient(this.URL, this.KEY);
+      client.channel('erp-' + companyId)
+        .on('postgres_changes', {
+          event: '*', schema: 'public', table: 'erp_data',
+          filter: 'company_id=eq.' + companyId
+        }, onEvent)
+        .subscribe(function(status) { console.log('[Supa] realtime:', status); });
+    } catch(e) { console.warn('[Supa] subscribe error:', e.message); }
+  }
+};
+
+/* ===== DATABASE LAYER (localStorage + Supabase) ===== */
 const DB = {
   _companyId: 'comp-001',
   GLOBAL_KEY: 'erp_global_v1',
@@ -56,6 +142,15 @@ const DB = {
         : 'Error al guardar datos: ' + e.message;
       if (typeof toast === 'function') toast(msg, 'error');
     }
+    // Supabase: push ALL collections (used by bulk imports / full-object saves)
+    if (_SUPA.online) {
+      var cid = this._companyId;
+      Object.keys(data).forEach(function(col) {
+        if (Array.isArray(data[col]) && data[col].length) {
+          _SUPA.pushCollection(cid, col, data[col]).catch(function() {});
+        }
+      });
+    }
   },
 
   checkSnapshot() {
@@ -111,6 +206,86 @@ const DB = {
     return data;
   },
 
+  // ── SUPABASE ASYNC INIT ──────────────────────────────────────────────
+  // Call on startup. Returns true if Supabase was reachable, false if offline.
+  load: async function() {
+    var cid = this._companyId;
+    try {
+      var remoteData = await _SUPA.pull(cid);
+      var isEmpty = Object.keys(remoteData).length === 0;
+
+      if (isEmpty) {
+        // First time: seed Supabase with current localStorage data (or default seed)
+        var localRaw = localStorage.getItem(this.KEY);
+        var localData = localRaw ? JSON.parse(localRaw) : this.seed();
+        for (var col in localData) {
+          if (Array.isArray(localData[col]) && localData[col].length) {
+            await _SUPA.pushCollection(cid, col, localData[col]);
+          }
+        }
+        remoteData = localData;
+      }
+
+      // Save Supabase data to localStorage (authoritative source)
+      localStorage.setItem(this.KEY, JSON.stringify(remoteData));
+      _SUPA.online = true;
+
+      // Show connection indicator
+      console.log('[DB] Supabase conectado ✓ (' + Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0) + ' registros)');
+
+      // Subscribe to real-time changes from other users
+      _SUPA.subscribe(cid, function(payload) { DB._onRealtimeChange(payload); });
+
+      return true;
+    } catch(e) {
+      console.warn('[DB] Supabase no disponible, usando localStorage:', e.message);
+      _SUPA.online = false;
+      if (!localStorage.getItem(this.KEY)) this.init();
+      return false;
+    }
+  },
+
+  // Handle real-time updates from other users
+  _onRealtimeChange: function(payload) {
+    try {
+      var ev  = payload.eventType;
+      var row = payload.new || payload.old;
+      if (!row) return;
+      var col = row.collection;
+      var rid = row.record_id;
+      var db  = this.get();
+
+      if (ev === 'DELETE' || (payload.new && payload.new.deleted)) {
+        db[col] = (db[col] || []).filter(function(r) { return r.id !== rid; });
+      } else if (ev === 'INSERT') {
+        if (!db[col]) db[col] = [];
+        if (!db[col].find(function(r) { return r.id === rid; })) {
+          db[col].push(payload.new.data);
+        }
+      } else if (ev === 'UPDATE') {
+        if (!db[col]) db[col] = [];
+        var idx = db[col].findIndex(function(r) { return r.id === rid; });
+        if (idx >= 0) db[col][idx] = payload.new.data;
+        else db[col].push(payload.new.data);
+      }
+
+      // Persist locally (don't push back to Supabase — this came FROM Supabase)
+      try { localStorage.setItem(this.KEY, JSON.stringify(db)); } catch(e) {}
+
+      // Re-render current view after a short debounce
+      clearTimeout(_SUPA._realtimeTimer);
+      _SUPA._realtimeTimer = setTimeout(function() {
+        var mod = window.MODULES && window.APP_STATE &&
+                  window.MODULES[window.APP_STATE.currentModule];
+        if (mod && typeof mod.render === 'function') {
+          try { mod.render(); } catch(e) {}
+        }
+        // Show a subtle toast so the user knows data was updated
+        if (typeof toast === 'function') toast('Datos actualizados por otro usuario', 'info');
+      }, 400);
+    } catch(e) { console.warn('[DB] realtime handler error:', e); }
+  },
+
   // ---- CRUD helpers ----
   getAll(collection) { return this.get()[collection] || []; },
 
@@ -121,9 +296,10 @@ const DB = {
   insert(collection, record) {
     var db = this.get();
     if (!db[collection]) db[collection] = [];
-    var item = Object.assign({}, record, { id: uuid(), created_at: now() });
+    var item = Object.assign({}, record, { id: record.id || uuid(), created_at: now() });
     db[collection].push(item);
     this.save(db);
+    if (_SUPA.online) _SUPA.upsert(this._companyId, collection, item);
     return item;
   },
 
@@ -133,6 +309,7 @@ const DB = {
     if (idx === -1) return null;
     db[collection][idx] = Object.assign({}, db[collection][idx], updates, { updated_at: now() });
     this.save(db);
+    if (_SUPA.online) _SUPA.upsert(this._companyId, collection, db[collection][idx]);
     return db[collection][idx];
   },
 
@@ -140,6 +317,7 @@ const DB = {
     var db = this.get();
     db[collection] = (db[collection] || []).filter(function(x) { return x.id !== id; });
     this.save(db);
+    if (_SUPA.online) _SUPA.del(this._companyId, collection, id);
   },
 
   // ---- BACKUP / RESTORE ----
