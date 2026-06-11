@@ -1,5 +1,7 @@
 /* ===== APP CORE / ROUTER ===== */
 
+var APP_VERSION = '2026-06-11-v1';
+
 window.APP_STATE = { currentModule: 'dashboard', activeProject: '', activeCompany: 'comp-001', currentUser: null };
 
 const MODULES = {
@@ -366,13 +368,40 @@ function _initApp() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  // Force hard-reload if the browser is running a stale cached version
+  var storedVer = '';
+  try { storedVer = localStorage.getItem('erp_app_version') || ''; } catch(e) {}
+  if (storedVer !== APP_VERSION) {
+    try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
+    // sessionStorage guard prevents infinite reload if localStorage is unavailable
+    var _bustDone = false;
+    try { _bustDone = !!sessionStorage.getItem('_erp_bust'); } catch(e) {}
+    if (!_bustDone) {
+      try { sessionStorage.setItem('_erp_bust', '1'); } catch(e) {}
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          return Promise.all(regs.map(function(r) { return r.unregister(); }));
+        }).then(function() {
+          return 'caches' in window ? caches.keys().then(function(keys) {
+            return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+          }) : Promise.resolve();
+        }).then(function() {
+          window.location.replace(window.location.pathname + '?bust=' + Date.now());
+        });
+      } else {
+        window.location.replace(window.location.pathname + '?bust=' + Date.now());
+      }
+      return; // don't init while reloading
+    }
+  }
+  try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
+
   // Show boot loader while we connect to Supabase
   var loader = document.getElementById('boot-loader');
   if (loader) loader.style.display = 'flex';
 
   DB.load().then(function(online) {
     if (loader) loader.style.display = 'none';
-    // Show sync status badge in sidebar
     var badge = document.getElementById('sync-status');
     if (badge) {
       badge.textContent = online ? '● En línea' : '○ Sin conexión';
