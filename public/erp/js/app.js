@@ -315,6 +315,16 @@ function setActiveCompany(id) {
   if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
 }
 
+// ---- DATA HEALTH CHECK ----
+function checkDataHealth() {
+  try {
+    var result = DB.checkSnapshot();
+    if (result && result.lost) {
+      toast('⚠ Se detectó posible pérdida de datos. Podés restaurar desde Ajustes → Respaldo.', 'warning');
+    }
+  } catch(e) {}
+}
+
 // ---- INIT ----
 document.addEventListener('DOMContentLoaded', function() {
   // Trigger global init / migration
@@ -350,6 +360,7 @@ document.addEventListener('DOMContentLoaded', function() {
     try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
     navigate(savedModule && MODULES[savedModule] ? savedModule : 'dashboard');
     setTimeout(syncExchangeRates, 1500);
+    setTimeout(checkDataHealth, 3000);
   } else {
     // Show login
     showLoginScreen();

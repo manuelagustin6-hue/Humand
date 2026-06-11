@@ -44,12 +44,64 @@ const DB = {
   save(data) {
     try {
       localStorage.setItem(this.KEY, JSON.stringify(data));
+      try {
+        var snap = { ts: new Date().toISOString(), counts: {} };
+        Object.keys(data).forEach(function(k) { if (Array.isArray(data[k])) snap.counts[k] = data[k].length; });
+        localStorage.setItem('erp_snapshot', JSON.stringify(snap));
+      } catch(e) {}
     } catch(e) {
       console.error('DB.save error:', e);
       var msg = e.name === 'QuotaExceededError'
         ? 'Almacenamiento lleno — exportá un respaldo y liberá espacio'
         : 'Error al guardar datos: ' + e.message;
       if (typeof toast === 'function') toast(msg, 'error');
+    }
+  },
+
+  checkSnapshot() {
+    try {
+      var rawSnap = localStorage.getItem('erp_snapshot');
+      if (!rawSnap) return null;
+      var snapshot = JSON.parse(rawSnap);
+      var rawData = localStorage.getItem(this.KEY);
+      if (!rawData) return null;
+      var data = JSON.parse(rawData);
+      var currentCounts = {};
+      Object.keys(data).forEach(function(k) { if (Array.isArray(data[k])) currentCounts[k] = data[k].length; });
+      var important = ['rubros', 'accounts', 'projects'];
+      var lost = false;
+      for (var i = 0; i < important.length; i++) {
+        var key = important[i];
+        var snapCount = (snapshot.counts && snapshot.counts[key]) || 0;
+        var curCount = currentCounts[key] || 0;
+        if (snapCount > 10 && curCount <= snapCount * 0.5) { lost = true; break; }
+      }
+      return { lost: lost, snapshot: snapshot, currentCounts: currentCounts };
+    } catch(e) {
+      return null;
+    }
+  },
+
+  autoBackupToLocal() {
+    try {
+      var data = this.get();
+      localStorage.setItem('erp_auto_backup', JSON.stringify(data));
+      localStorage.setItem('erp_auto_backup_ts', new Date().toISOString());
+      return true;
+    } catch(e) {
+      return false;
+    }
+  },
+
+  restoreAutoBackup() {
+    try {
+      var raw = localStorage.getItem('erp_auto_backup');
+      if (!raw) return false;
+      var parsed = JSON.parse(raw);
+      this.save(parsed);
+      return true;
+    } catch(e) {
+      return false;
     }
   },
 
