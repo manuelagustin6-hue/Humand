@@ -1,5 +1,5 @@
-/* ERP Construcción — Service Worker v4 */
-const CACHE = 'erp-v4';
+/* ERP Construcción — Service Worker v5 */
+const CACHE = 'erp-v5';
 const SHELL = [
   './',
   './index.html',

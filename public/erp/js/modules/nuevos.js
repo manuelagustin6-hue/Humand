@@ -100,19 +100,48 @@ function renderUnidades() {
   );
 }
 
-// ---- CONTABILIDAD: WRAPPERS DE TABS ----
-function _contaTab(tabId) {
-  renderContabilidad();
-  setTimeout(function() {
-    var btn = document.querySelector('#conta-tabs .tab-btn[data-tab="' + tabId + '"]');
-    if (btn) btn.click();
-  }, 120);
+// ---- CONTABILIDAD: WRAPPERS STANDALONE ----
+function _contaHeader(title, subtitle, actions) {
+  return '<div class="page-header"><div><div class="page-title">' + title + '</div>' +
+    '<div class="page-subtitle">' + subtitle + '</div></div>' +
+    (actions ? '<div class="page-actions">' + actions + '</div>' : '') + '</div>';
 }
-function renderContaDiario()     { _contaTab('tab-diario'); }
-function renderContaSumas()      { _contaTab('tab-sumas-conta'); }
-function renderContaBalance()    { _contaTab('tab-balance'); }
-function renderContaResultados() { _contaTab('tab-resultados'); }
-function renderContaPlan()       { _contaTab('tab-cuentas'); }
+
+function renderContaDiario() {
+  var entries = DB.getAll('journalEntries');
+  document.getElementById('content').innerHTML =
+    _contaHeader('Libro Diario', entries.length + ' asientos contables',
+      '<button class="btn btn-secondary" onclick="exportJournal()"><i class="fas fa-download"></i> Exportar</button>' +
+      '<button class="btn btn-primary" onclick="openJEForm()"><i class="fas fa-plus"></i> Nuevo Asiento</button>') +
+    renderJournal(entries);
+}
+
+function renderContaSumas() {
+  var accounts = DB.getAll('accounts');
+  var entries = DB.getAll('journalEntries');
+  document.getElementById('content').innerHTML =
+    _contaHeader('Sumas y Saldos', 'Balance de comprobación') +
+    renderSumasYSaldosContabilidad(accounts, entries);
+}
+
+function renderContaBalance() {
+  var accounts = DB.getAll('accounts');
+  var entries = DB.getAll('journalEntries');
+  document.getElementById('content').innerHTML =
+    _contaHeader('Balance General', 'Estado de situación patrimonial') +
+    renderBalance(accounts, entries);
+  setTimeout(function() { renderResultsChart(accounts, entries); }, 100);
+}
+
+function renderContaResultados() {
+  var accounts = DB.getAll('accounts');
+  var entries = DB.getAll('journalEntries');
+  document.getElementById('content').innerHTML =
+    _contaHeader('Estado de Resultados', 'Ingresos y egresos del ejercicio') +
+    renderResults(accounts, entries);
+  setTimeout(function() { renderResultsChart(accounts, entries); }, 100);
+}
+// renderContaPlan is defined in contabilidad.js (standalone with import/export)
 // renderContaMayores is defined in contabilidad.js (full implementation)
 
 // ---- TESORERÍA ----
