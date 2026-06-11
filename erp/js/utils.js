@@ -1,9 +1,31 @@
 /* ===== UTILITIES ===== */
 
 // ---- FORMATTERS ----
-function fmtMoney(n, currency = 'ARS') {
+function _activeCurrency() {
+  try {
+    var companies = DB.getAllCompanies();
+    var activeId = (window.APP_STATE && window.APP_STATE.activeCompany) || 'comp-001';
+    var company = companies.find(function(c) { return c.id === activeId; });
+    return (company && company.currency) ? company.currency : 'ARS';
+  } catch(e) {
+    return 'ARS';
+  }
+}
+
+function fmtMoney(n, currency) {
   if (n == null || isNaN(n)) return '$0';
-  return new Intl.NumberFormat('es-AR', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+  var cur = currency || _activeCurrency();
+  var decimals = 0;
+  try {
+    var currencies = DB.getAllCurrencies();
+    var currencyObj = currencies.find(function(c) { return c.id === cur; });
+    if (currencyObj) decimals = currencyObj.decimals || 0;
+  } catch(e) {}
+  try {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur, minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+  } catch(e) {
+    return new Intl.NumberFormat('es-AR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+  }
 }
 
 function fmtNum(n) {
@@ -88,6 +110,7 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   document.getElementById('modal-body').innerHTML = '';
   document.getElementById('modal-footer').innerHTML = '';
+  window._pendingConfirm = null;
 }
 
 document.getElementById('modal-overlay').addEventListener('click', e => {
@@ -95,31 +118,50 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 });
 
 // ---- TOAST ----
-function toast(msg, type = 'info') {
-  const icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-circle', info: 'fa-info-circle' };
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${msg}</span>`;
-  document.getElementById('toast-wrap').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+function toast(msg, type) {
+  type = type || 'info';
+  var icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML =
+    '<span class="toast-icon"><i class="fas ' + (icons[type] || icons.info) + '"></i></span>' +
+    '<span>' + msg + '</span>';
+  var wrap = document.getElementById('toast-wrap');
+  if (wrap) wrap.appendChild(el);
+  setTimeout(function() { if (el.parentNode) el.remove(); }, 3800);
 }
 
 // ---- CONFIRM ----
 function confirmDialog(msg, onConfirm) {
+  window._pendingConfirm = onConfirm;
   openModal('Confirmar acción',
     `<p style="font-size:14px;color:var(--text)">${msg}</p>`,
     'modal-sm',
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="(${onConfirm.toString()})(); closeModal();">Confirmar</button>`
+     <button class="btn btn-danger" onclick="if(window._pendingConfirm){window._pendingConfirm();} closeModal();">Confirmar</button>`
   );
 }
 
 // ---- PROJECT SELECTOR ----
 function populateProjectSelector() {
   const sel = document.getElementById('global-project');
-  const projects = DB.getAll('projects');
+  if (!sel) return;
+  var projects = DB.getAll('projects');
+  var accessibleIds = typeof getAccessibleProjectIds === 'function' ? getAccessibleProjectIds() : null;
+  if (accessibleIds) {
+    projects = projects.filter(function(p) { return accessibleIds.indexOf(p.id) !== -1; });
+  }
   sel.innerHTML = '<option value="">Todos los proyectos</option>' +
-    projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    projects.map(function(p) { return '<option value="' + p.id + '">' + p.name + '</option>'; }).join('');
+  // Restore previously active project if still accessible
+  var cur = window.APP_STATE && window.APP_STATE.activeProject;
+  if (cur && projects.find(function(p) { return p.id === cur; })) {
+    sel.value = cur;
+  } else if (cur && accessibleIds) {
+    // Previous project no longer accessible — reset
+    window.APP_STATE.activeProject = '';
+    sel.value = '';
+  }
 }
 
 function setActiveProject(pid) {
@@ -138,7 +180,11 @@ function filterNav(q) {
 
 // ---- TOGGLE SIDEBAR ----
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+  if (window.innerWidth < 768) {
+    document.body.classList.toggle('sidebar-open');
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+  }
 }
 
 // ---- PROGRESS BAR HTML ----
@@ -264,4 +310,11 @@ function validateForm(rules) {
 function debounce(fn, ms = 300) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ---- HTML ESCAPE ----
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
