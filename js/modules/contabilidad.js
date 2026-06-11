@@ -77,11 +77,91 @@ ${_contaCompanyBar()}
 }
 
 function renderContaPlan() {
-  renderContabilidad();
-  setTimeout(function() {
-    var btn = document.querySelector('#conta-tabs .tab-btn[data-tab="tab-cuentas"]');
-    if (btn) btn.click();
-  }, 50);
+  var accounts = DB.getAll('accounts');
+  document.getElementById('content').innerHTML = `
+<div class="page-header">
+  <div>
+    <div class="page-title">Plan de Cuentas</div>
+    <div class="page-subtitle">${accounts.length} cuentas registradas</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-ghost" onclick="downloadPlanCuentasTemplate()"><i class="fas fa-download"></i> Descargar Plantilla</button>
+    <label class="btn btn-secondary" style="cursor:pointer;margin:0;display:inline-flex;align-items:center;gap:6px">
+      <i class="fas fa-file-import"></i> Importar Excel
+      <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importCuentasDesdeExcel(this)">
+    </label>
+    <button class="btn btn-primary" onclick="openAccountForm()"><i class="fas fa-plus"></i> Nueva Cuenta</button>
+  </div>
+</div>
+${renderAccountPlan(accounts)}
+  `;
+}
+
+function downloadPlanCuentasTemplate() {
+  if (!window.XLSX) { toast('Librería Excel no disponible', 'error'); return; }
+  var accounts = DB.getAll('accounts').sort(function(a,b){ return (a.code||'').localeCompare(b.code||'',undefined,{numeric:true}); });
+  var header = ['Código','Nombre','Tipo','Código Padre','Activo'];
+  var rows = accounts.map(function(a) {
+    var parent = accounts.find(function(p){ return p.id === a.parent_id; });
+    return [a.code, a.name, a.type, parent ? parent.code : '', a.active !== false ? 'si' : 'no'];
+  });
+  var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
+  ws['!cols'] = [{wch:14},{wch:52},{wch:12},{wch:14},{wch:8}];
+  var ws2 = XLSX.utils.aoa_to_sheet([
+    ['Tipo','Descripción'],
+    ['asset','Activo'],['liability','Pasivo'],['equity','Patrimonio Neto'],['revenue','Ingresos'],['expense','Egresos / Gastos']
+  ]);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Plan de Cuentas');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Referencia Tipos');
+  XLSX.writeFile(wb, 'PlanDeCuentas.xlsx');
+  toast('Plantilla descargada', 'success');
+}
+
+function importCuentasDesdeExcel(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  if (!window.XLSX) { toast('Librería Excel no disponible', 'error'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (data.length < 2) { toast('El archivo no contiene datos', 'error'); return; }
+      var norm = function(s){ return (s||'').toString().toLowerCase().replace(/[áéíóúü]/g,function(c){return{á:'a',é:'e',í:'i',ó:'o',ú:'u',ü:'u'}[c]||c;}).trim(); };
+      var hdrs = data[0].map(norm);
+      var cC = hdrs.findIndex(function(h){ return h.includes('codigo')||h.includes('code')||h==='cod'; });
+      var nC = hdrs.findIndex(function(h){ return h.includes('nombre')||h.includes('name')||h.includes('descripcion'); });
+      var tC = hdrs.findIndex(function(h){ return h.includes('tipo')||h.includes('type'); });
+      var pC = hdrs.findIndex(function(h){ return h.includes('padre')||h.includes('parent'); });
+      var aC = hdrs.findIndex(function(h){ return h.includes('activo')||h.includes('active')||h.includes('estado'); });
+      if (cC < 0 || nC < 0) { toast('No se encontró columna "Código" o "Nombre"', 'error'); return; }
+      var tMap = {asset:'asset',activo:'asset','1':'asset',liability:'liability',pasivo:'liability','2':'liability',equity:'equity',patrimonio:'equity','3':'equity',revenue:'revenue',ingreso:'revenue',ingresos:'revenue','4':'revenue',expense:'expense',egreso:'expense',egresos:'expense',gasto:'expense','5':'expense'};
+      var rows = data.slice(1).filter(function(r){ return r[cC] && r[nC]; });
+      if (!rows.length) { toast('No se encontraron filas con cuentas', 'error'); return; }
+      var now = new Date().toISOString();
+      var accounts = rows.map(function(r) {
+        var code   = (r[cC]||'').toString().trim();
+        var name   = (r[nC]||'').toString().trim();
+        var tRaw   = tC >= 0 ? norm(r[tC]) : '';
+        var type   = tMap[tRaw] || (code[0]==='1'?'asset':code[0]==='2'?'liability':code[0]==='3'?'equity':code[0]==='4'?'revenue':'expense');
+        var pCode  = pC >= 0 ? (r[pC]||'').toString().trim() : '';
+        var active = aC < 0 || !['no','false','0','inactiva','inactive'].includes(norm(r[aC]));
+        return { id:'acc-'+code.replace(/\./g,'-'), code, name, type, parent_id: pCode ? 'acc-'+pCode.replace(/\./g,'-') : null, active, created_at: now };
+      });
+      confirmDialog('Se importarán ' + accounts.length + ' cuentas y reemplazarán el plan actual. ¿Continuar?', function() {
+        var db = DB.get(); db.accounts = accounts; DB.save(db);
+        toast('Plan importado: ' + accounts.length + ' cuentas', 'success');
+        renderContaPlan();
+      });
+    } catch(ex) {
+      toast('Error al procesar: ' + ex.message, 'error');
+      console.error(ex);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
 }
 
 // ---- JOURNAL ----
