@@ -88,7 +88,27 @@ function buildBackupTab() {
     '<div class="card mt-3">' +
     '<div class="card-header"><span class="card-title"><i class="fas fa-history text-primary"></i> Historial de Exportaciones</span></div>' +
     '<div class="card-body" id="ajustes-export-history">' + buildExportHistory() + '</div>' +
-    '</div>';
+    '</div>' +
+
+    '<div class="card mt-3">' +
+    '<div class="card-header"><span class="card-title"><i class="fas fa-hdd text-info"></i> Respaldo Automático</span></div>' +
+    '<div class="card-body">' +
+    '<p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">' +
+    'Respaldo local guardado en este navegador (localStorage). Útil para recuperación rápida ante errores.' +
+    '</p>' +
+    (function() {
+      var ts = localStorage.getItem('erp_auto_backup_ts');
+      return '<p style="font-size:12px;margin-bottom:16px"><strong>Último respaldo:</strong> ' +
+        (ts ? '<span style="color:var(--success)">' + ts + '</span>' : '<span style="color:var(--text-muted)">Ninguno todavía</span>') +
+        '</p>';
+    })() +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+    '<button class="btn btn-primary" onclick="doAutoBackup()">' +
+    '<i class="fas fa-hdd"></i> Crear Respaldo Local Ahora</button>' +
+    '<button class="btn btn-secondary" onclick="doRestoreAutoBackup()">' +
+    '<i class="fas fa-undo"></i> Restaurar desde Respaldo Local</button>' +
+    '</div>' +
+    '</div></div>';
 }
 
 function buildExportHistory() {
@@ -275,6 +295,23 @@ function doImportBackup(input) {
   };
   reader.readAsText(file);
   input.value = '';
+}
+
+function doAutoBackup() {
+  var ok = DB.autoBackupToLocal();
+  if (ok) toast('Respaldo local guardado', 'success');
+  else toast('No se pudo guardar el respaldo (almacenamiento lleno)', 'error');
+  renderAjustes();
+}
+
+function doRestoreAutoBackup() {
+  var ts = localStorage.getItem('erp_auto_backup_ts');
+  if (!ts) { toast('No hay respaldo local disponible', 'error'); return; }
+  confirmDialog('Restaurar respaldo del ' + ts + '? Se reemplazarán los datos actuales.', function() {
+    var ok = DB.restoreAutoBackup();
+    if (ok) { toast('Datos restaurados. Recargando...', 'success'); setTimeout(function() { location.reload(); }, 1500); }
+    else toast('Error al restaurar el respaldo', 'error');
+  });
 }
 
 function ajustesConfirmReset() {

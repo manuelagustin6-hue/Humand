@@ -12,6 +12,8 @@ function renderRubros() {
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="exportRubros()"><i class="fas fa-download"></i> Exportar</button>
     <button class="btn btn-secondary" onclick="importLebaneRubros()"><i class="fas fa-file-import"></i> Importar Rubros Lebane</button>
+    <button class="btn btn-ghost" onclick="downloadRubrosTemplate()"><i class="fas fa-download"></i> Descargar Plantilla</button>
+    <label class="btn btn-secondary" style="cursor:pointer;margin:0;display:inline-flex;align-items:center;gap:6px"><i class="fas fa-file-import"></i> Importar Excel<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importRubrosDesdeExcel(this)"></label>
     <button class="btn btn-primary" onclick="openRubroForm()"><i class="fas fa-plus"></i> Nuevo Rubro</button>
   </div>
 </div>
@@ -230,6 +232,184 @@ function exportRubros() {
     ['Código', 'Nombre', 'Categoría', 'Unidad', 'Descripción', 'Estado'],
     rubros.map(r => [r.code, r.name, r.category, r.unit, r.description || '', r.active !== false ? 'Activo' : 'Inactivo'])
   );
+}
+
+function downloadRubrosTemplate() {
+  if (!window.XLSX) { toast('SheetJS no disponible', 'error'); return; }
+  try {
+    var rubros = DB.getAll('rubros').sort(function(a, b) { return a.code.localeCompare(b.code); });
+
+    // Sheet 1: Rubros
+    var headers = ['Código', 'Nombre', 'Categoría', 'Unidad', 'Código Cuenta', 'Nombre Cuenta', 'Descripción', 'Activo'];
+    var rows = [headers].concat(rubros.map(function(r) {
+      return [
+        r.code || '',
+        r.name || '',
+        r.category || '',
+        r.unit || '',
+        r.account_code || '',
+        r.account_name || '',
+        r.description || '',
+        r.active !== false ? 'SI' : 'NO'
+      ];
+    }));
+    var ws1 = XLSX.utils.aoa_to_sheet(rows);
+    ws1['!cols'] = [
+      { wch: 16 }, { wch: 40 }, { wch: 30 }, { wch: 10 },
+      { wch: 18 }, { wch: 35 }, { wch: 40 }, { wch: 8 }
+    ];
+
+    // Sheet 2: Referencia
+    var ref = [
+      ['Categorías de ejemplo', '', 'Unidades de medida'],
+      ['Trabajos Preliminares', '', 'm²'],
+      ['Estructuras', '', 'm³'],
+      ['Albañilería', '', 'ml'],
+      ['Terminaciones', '', 'un'],
+      ['Instalaciones', '', 'gl'],
+      ['Cubiertas', '', 'tn'],
+      ['Carpintería', '', 'kg'],
+      ['Pintura', '', 'lt'],
+      ['Varios', '', 'Bolsa'],
+      ['', '', 'hs']
+    ];
+    var ws2 = XLSX.utils.aoa_to_sheet(ref);
+    ws2['!cols'] = [{ wch: 28 }, { wch: 4 }, { wch: 22 }];
+
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, 'Rubros');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Referencia');
+    XLSX.writeFile(wb, 'PlantillaRubros.xlsx');
+    toast('Plantilla descargada', 'success');
+  } catch (e) {
+    console.error('downloadRubrosTemplate:', e);
+    toast('Error al generar plantilla', 'error');
+  }
+}
+
+function importRubrosDesdeExcel(input) {
+  if (!window.XLSX) { toast('SheetJS no disponible', 'error'); return; }
+  var file = input.files && input.files[0];
+  if (!file) return;
+  // Reset input so same file can be re-selected
+  input.value = '';
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      if (!raw.length) { toast('El archivo está vacío o no tiene datos', 'error'); return; }
+
+      // Normalize header keys: lowercase, remove accents
+      function normalizeKey(k) {
+        return String(k).toLowerCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .trim();
+      }
+
+      var colMap = {
+        code: ['codigo', 'code', 'cod'],
+        name: ['nombre', 'name'],
+        category: ['categoria', 'category'],
+        unit: ['unidad', 'unit'],
+        account_code: ['codigo cuenta', 'account_code', 'cod cuenta', 'codigo_cuenta'],
+        account_name: ['nombre cuenta', 'account_name', 'nombre_cuenta'],
+        description: ['descripcion', 'description', 'desc'],
+        active: ['activo', 'active']
+      };
+
+      // Build key→field mapping from first row's keys
+      var firstRow = raw[0];
+      var rawKeys = Object.keys(firstRow);
+      var keyMapping = {};
+      rawKeys.forEach(function(rk) {
+        var nk = normalizeKey(rk);
+        Object.keys(colMap).forEach(function(field) {
+          if (colMap[field].indexOf(nk) !== -1) {
+            keyMapping[rk] = field;
+          }
+        });
+      });
+
+      var newRubros = raw.map(function(row) {
+        var obj = {};
+        Object.keys(row).forEach(function(rk) {
+          var field = keyMapping[rk];
+          if (field) obj[field] = String(row[rk]).trim();
+        });
+        return obj;
+      }).filter(function(r) {
+        return r.code && r.code !== '' && r.name && r.name !== '';
+      }).map(function(r) {
+        var activeVal = (r.active || 'SI').toUpperCase();
+        return {
+          id: 'rub-imp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+          code: r.code || '',
+          name: r.name || '',
+          category: r.category || '',
+          unit: r.unit || '',
+          account_code: r.account_code || '',
+          account_name: r.account_name || '',
+          description: r.description || '',
+          active: activeVal !== 'NO' && activeVal !== 'FALSE' && activeVal !== '0',
+          created_at: new Date().toISOString()
+        };
+      });
+
+      if (!newRubros.length) { toast('No se encontraron rubros válidos (se requiere Código y Nombre)', 'error'); return; }
+
+      // Show confirmation modal
+      openModal(
+        'Importar Rubros desde Excel',
+        '<p style="margin:0 0 12px">Se encontraron <strong>' + newRubros.length + '</strong> rubros válidos en el archivo.</p>' +
+        '<p style="margin:0;color:var(--text-muted);font-size:13px">¿Cómo desea importarlos?</p>',
+        '',
+        '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+        '<button class="btn btn-warning" onclick="_importRubrosReplace(' + JSON.stringify(newRubros).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026') + ')"><i class="fas fa-exclamation-triangle"></i> Reemplazar todo</button>' +
+        '<button class="btn btn-primary" onclick="_importRubrosMerge(' + JSON.stringify(newRubros).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026') + ')"><i class="fas fa-code-merge"></i> Agregar / Actualizar</button>'
+      );
+    } catch (err) {
+      console.error('importRubrosDesdeExcel:', err);
+      toast('Error al leer el archivo Excel', 'error');
+    }
+  };
+  reader.onerror = function() { toast('Error al leer el archivo', 'error'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function _importRubrosReplace(newRubros) {
+  closeModal();
+  var db = DB.get();
+  db.rubros = newRubros;
+  DB.save(db);
+  toast('Importación completada: ' + newRubros.length + ' rubros reemplazados', 'success');
+  renderRubros();
+}
+
+function _importRubrosMerge(newRubros) {
+  closeModal();
+  var db = DB.get();
+  var existing = db.rubros || [];
+  var byCode = {};
+  existing.forEach(function(r) { byCode[r.code] = r; });
+  var added = 0, updated = 0;
+  newRubros.forEach(function(r) {
+    if (byCode[r.code]) {
+      Object.assign(byCode[r.code], r, { id: byCode[r.code].id });
+      updated++;
+    } else {
+      byCode[r.code] = r;
+      added++;
+    }
+  });
+  db.rubros = Object.values(byCode);
+  DB.save(db);
+  toast('Importación: ' + added + ' agregados, ' + updated + ' actualizados', 'success');
+  renderRubros();
 }
 
 // ---- IMPORT RUBROS LEBANE ----
