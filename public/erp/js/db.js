@@ -15,11 +15,14 @@ var _SUPA = {
 
   // Pull ALL records for a company → returns { collection: [records] }
   pull: async function(companyId) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function() { ctrl.abort(); }, 5000);
     var res = await fetch(
       this.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
       '&deleted=eq.false&select=collection,record_id,data&order=created_at.asc&limit=50000',
-      { headers: this.hdrs() }
+      { headers: this.hdrs(), signal: ctrl.signal }
     );
+    clearTimeout(timer);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     var rows = await res.json();
     var out = {};
