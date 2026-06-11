@@ -170,199 +170,445 @@ function clienteDelete(id) {
 
 // =====================================================================
 // CUENTAS CORRIENTES PROVEEDORES
-// Collections: suppliers, purchaseOrders, paymentOrders
+// Collections: suppliers, supplierInvoices, paymentOrders
 // =====================================================================
 
-var _cprovState = { selectedSupplier: null };
+var _cprovState = { supplierId: null, tab: 'actividad' };
 
 function renderCuentasProv() {
   var suppliers = DB.getAll('suppliers');
-  var paymentOrders = DB.getAll('paymentOrders');
-  var purchaseOrders = DB.getAll('purchaseOrders');
+  var invoices  = DB.getAll('supplierInvoices');
+  var payments  = DB.getAll('paymentOrders');
 
-  // Build summary per supplier
+  var totalFacturado = 0, totalPagado = 0;
   var rows = '';
-  var totalCompras = 0;
-  var totalPagos = 0;
 
   suppliers.forEach(function(s) {
-    var compras = purchaseOrders
-      .filter(function(po) { return po.supplier_id === s.id && po.status !== 'draft'; })
-      .reduce(function(sum, po) { return sum + (po.total || 0); }, 0);
-
-    var pagos = paymentOrders
-      .filter(function(op) { return op.supplier_id === s.id; })
-      .reduce(function(sum, op) { return sum + (op.net_amount || 0); }, 0);
-
-    var saldo = compras - pagos;
-    totalCompras += compras;
-    totalPagos += pagos;
-
-    var saldoBadge = saldo > 0
-      ? '<span class="badge badge-red">' + fmtMoney(saldo) + '</span>'
-      : (saldo < 0
-        ? '<span class="badge badge-yellow">' + fmtMoney(saldo) + '</span>'
-        : '<span class="badge badge-green">Saldado</span>');
+    var invs = invoices.filter(function(i) { return i.supplier_id === s.id; });
+    var pays = payments.filter(function(p) { return p.supplier_id === s.id; });
+    var facturado = invs.reduce(function(sum, i) { return sum + (i.total || 0); }, 0);
+    var pagado    = pays.reduce(function(sum, p) { return sum + (p.net_amount || 0); }, 0);
+    var saldo     = facturado - pagado;
+    totalFacturado += facturado; totalPagado += pagado;
 
     var catArr = Array.isArray(s.category) ? s.category : (s.category ? [s.category] : []);
     var catHtml = catArr.map(function(c) {
       return '<span class="badge badge-gray" style="font-size:10px">' + c + '</span>';
     }).join(' ');
 
-    rows +=
-      '<tr>' +
-        '<td>' +
-          '<strong>' + s.name + '</strong>' +
-          '<div style="font-size:11px;color:var(--text-muted)">' + (s.cuit || '') + '</div>' +
-        '</td>' +
-        '<td>' + catHtml + '</td>' +
-        '<td class="number-cell">' + fmtMoney(compras) + '</td>' +
-        '<td class="number-cell">' + fmtMoney(pagos) + '</td>' +
-        '<td class="number-cell">' + saldoBadge + '</td>' +
-        '<td>' +
-          '<button class="btn btn-sm btn-secondary" onclick="cprovShowMovements(\'' + s.id + '\')">' +
-            '<i class="fas fa-list"></i> Movimientos' +
-          '</button>' +
-        '</td>' +
-      '</tr>';
+    var saldoBadge = saldo > 0
+      ? '<span class="badge badge-red">' + fmtMoney(saldo) + '</span>'
+      : (saldo < 0 ? '<span class="badge badge-yellow">' + fmtMoney(saldo) + '</span>'
+                   : '<span class="badge badge-green">Saldado</span>');
+
+    rows += '<tr style="cursor:pointer" onclick="cprovOpenDetail(\'' + s.id + '\')">' +
+      '<td>' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<div style="width:36px;height:36px;border-radius:10px;background:var(--primary-muted,#eff6ff);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--primary);flex-shrink:0">' +
+            _cprovInitials(s.name) +
+          '</div>' +
+          '<div><strong>' + s.name + '</strong>' +
+            '<div style="font-size:11px;color:var(--text-muted)">' + (s.cuit || '') + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</td>' +
+      '<td>' + catHtml + '</td>' +
+      '<td class="number-cell">' + fmtMoney(facturado) + '</td>' +
+      '<td class="number-cell">' + fmtMoney(pagado) + '</td>' +
+      '<td class="number-cell">' + saldoBadge + '</td>' +
+      '<td><button class="btn btn-sm btn-primary" onclick="event.stopPropagation();cprovOpenDetail(\'' + s.id + '\')">' +
+        '<i class="fas fa-arrow-right"></i> Ver cuenta' +
+      '</button></td>' +
+    '</tr>';
   });
 
-  if (!rows) {
-    rows = '<tr><td colspan="6"><div class="empty-state"><i class="fas fa-building"></i><p>No hay proveedores registrados</p></div></td></tr>';
-  }
+  if (!rows) rows = '<tr><td colspan="6"><div class="empty-state"><i class="fas fa-building"></i><p>No hay proveedores registrados</p></div></td></tr>';
 
-  var totalSaldo = totalCompras - totalPagos;
-
+  var totalSaldo = totalFacturado - totalPagado;
   document.getElementById('content').innerHTML =
-    '<div class="page-header">' +
-      '<div>' +
-        '<div class="page-title"><i class="fas fa-building-columns" style="margin-right:8px;color:var(--primary)"></i>Cuentas Corrientes Proveedores</div>' +
-        '<div class="page-subtitle">Saldos, movimientos y estados de cuenta por proveedor</div>' +
-      '</div>' +
-    '</div>' +
-
+    '<div class="page-header"><div>' +
+      '<div class="page-title"><i class="fas fa-building-columns" style="margin-right:8px;color:var(--primary)"></i>Cuentas Corrientes Proveedores</div>' +
+      '<div class="page-subtitle">Saldos, facturas y pagos por proveedor</div>' +
+    '</div></div>' +
     '<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">' +
-      '<div class="stat-card">' +
-        '<div class="stat-icon blue"><i class="fas fa-shopping-cart"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalCompras) + '</div><div class="stat-label">Total Compras</div></div>' +
-      '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalPagos) + '</div><div class="stat-label">Total Pagos</div></div>' +
-      '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-icon ' + (totalSaldo > 0 ? 'red' : 'green') + '"><i class="fas fa-scale-balanced"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalSaldo) + '</div><div class="stat-label">Saldo a Pagar</div></div>' +
-      '</div>' +
+      '<div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice"></i></div>' +
+        '<div><div class="stat-value">' + fmtMoney(totalFacturado) + '</div><div class="stat-label">Total Facturado</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>' +
+        '<div><div class="stat-value">' + fmtMoney(totalPagado) + '</div><div class="stat-label">Total Pagado</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon ' + (totalSaldo > 0 ? 'red' : 'green') + '"><i class="fas fa-scale-balanced"></i></div>' +
+        '<div><div class="stat-value">' + fmtMoney(totalSaldo) + '</div><div class="stat-label">Saldo a Pagar</div></div></div>' +
     '</div>' +
-
-    '<div class="card">' +
-      '<div class="card-body" style="padding:0">' +
-        '<div class="table-wrap">' +
-          '<table>' +
-            '<thead><tr>' +
-              '<th>Proveedor</th>' +
-              '<th>Categoria</th>' +
-              '<th class="text-right">Compras (OC)</th>' +
-              '<th class="text-right">Pagos (OP)</th>' +
-              '<th class="text-right">Saldo</th>' +
-              '<th>Acciones</th>' +
-            '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
-          '</table>' +
-        '</div>' +
-      '</div>' +
-    '</div>' +
-
-    '<div id="cprov-movements-panel" style="margin-top:20px"></div>';
+    '<div class="card" style="padding:0">' +
+      '<table class="table"><thead><tr>' +
+        '<th>Proveedor</th><th>Categoría</th>' +
+        '<th class="text-right">Facturado</th><th class="text-right">Pagado</th>' +
+        '<th class="text-right">Saldo</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '</div>';
 }
 
-function cprovShowMovements(supplierId) {
-  var suppliers = DB.getAll('suppliers');
-  var paymentOrders = DB.getAll('paymentOrders');
-  var purchaseOrders = DB.getAll('purchaseOrders');
-  var projects = DB.getAll('projects');
+function _cprovInitials(name) {
+  return (name || '?').split(/\s+/).slice(0, 2).map(function(w) { return w[0] || ''; }).join('').toUpperCase() || '?';
+}
 
-  var supplier = suppliers.find(function(s) { return s.id === supplierId; });
-  if (!supplier) return;
+// ---- SUPPLIER DETAIL PAGE ----
+function cprovOpenDetail(supplierId) {
+  _cprovState.supplierId = supplierId;
+  _cprovState.tab = 'actividad';
+  var s = DB.getById('suppliers', supplierId);
+  if (!s) return;
 
-  // Build movements list (purchases and payments)
-  var movements = [];
+  var catArr = Array.isArray(s.category) ? s.category : (s.category ? [s.category] : []);
+  var catHtml = catArr.map(function(c) {
+    return '<span class="badge badge-gray" style="margin-right:4px">' + c + '</span>';
+  }).join('');
 
-  purchaseOrders
-    .filter(function(po) { return po.supplier_id === supplierId && po.status !== 'draft'; })
-    .forEach(function(po) {
-      var proj = projects.find(function(p) { return p.id === po.project_id; });
-      movements.push({
-        date: po.date,
-        type: 'compra',
-        ref: po.number,
-        concept: 'Orden de Compra' + (proj ? ' - ' + proj.name : ''),
-        debit: po.total || 0,
-        credit: 0,
-      });
-    });
+  document.getElementById('content').innerHTML =
+    // Breadcrumb back button
+    '<div style="margin-bottom:16px">' +
+      '<button class="btn btn-secondary btn-sm" onclick="renderCuentasProv()">' +
+        '<i class="fas fa-arrow-left"></i> Volver a Proveedores' +
+      '</button>' +
+    '</div>' +
 
-  paymentOrders
-    .filter(function(op) { return op.supplier_id === supplierId; })
-    .forEach(function(op) {
-      var proj = projects.find(function(p) { return p.id === op.project_id; });
-      movements.push({
-        date: op.date,
-        type: 'pago',
-        ref: op.number,
-        concept: op.concept || ('Orden de Pago' + (proj ? ' - ' + proj.name : '')),
-        debit: 0,
-        credit: op.net_amount || 0,
-      });
-    });
-
-  movements.sort(function(a, b) { return a.date.localeCompare(b.date); });
-
-  var balance = 0;
-  var rows = '';
-  movements.forEach(function(m) {
-    balance += m.debit - m.credit;
-    var typeBadge = m.type === 'compra'
-      ? '<span class="badge badge-blue">Compra</span>'
-      : '<span class="badge badge-green">Pago</span>';
-    rows +=
-      '<tr>' +
-        '<td>' + fmtDate(m.date) + '</td>' +
-        '<td>' + typeBadge + '</td>' +
-        '<td>' + m.ref + '</td>' +
-        '<td>' + m.concept + '</td>' +
-        '<td class="number-cell">' + (m.debit ? fmtMoney(m.debit) : '-') + '</td>' +
-        '<td class="number-cell">' + (m.credit ? fmtMoney(m.credit) : '-') + '</td>' +
-        '<td class="number-cell"><strong>' + fmtMoney(balance) + '</strong></td>' +
-      '</tr>';
-  });
-
-  if (!rows) {
-    rows = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-list"></i><p>Sin movimientos</p></div></td></tr>';
-  }
-
-  var panel = document.getElementById('cprov-movements-panel');
-  if (!panel) return;
-
-  panel.innerHTML =
-    '<div class="card">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">' +
-        '<strong style="font-size:15px">Movimientos: ' + supplier.name + '</strong>' +
-        '<button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'cprov-movements-panel\').innerHTML=\'\'">Cerrar</button>' +
-      '</div>' +
-      '<div class="card-body" style="padding:0">' +
-        '<div class="table-wrap">' +
-          '<table>' +
-            '<thead><tr>' +
-              '<th>Fecha</th><th>Tipo</th><th>Ref.</th><th>Concepto</th>' +
-              '<th class="text-right">Debe</th><th class="text-right">Haber</th><th class="text-right">Saldo</th>' +
-            '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
-          '</table>' +
+    // Header card
+    '<div class="card" style="margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none">' +
+      '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">' +
+        '<div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#eff6ff,#dbeafe);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:var(--primary);flex-shrink:0">' +
+          _cprovInitials(s.name) +
+        '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:18px;font-weight:700;color:var(--text)">' + s.name + '</div>' +
+          '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' +
+            (s.cuit ? 'CUIT: ' + s.cuit + ' &nbsp;&bull;&nbsp; ' : '') +
+            (s.email || '') +
+          '</div>' +
+          '<div style="margin-top:6px">' + catHtml + '</div>' +
         '</div>' +
       '</div>' +
+    '</div>' +
+
+    // Tabs
+    '<div style="background:var(--surface);border:1px solid var(--border);border-top:none;border-bottom-left-radius:var(--radius);border-bottom-right-radius:var(--radius);margin-bottom:20px">' +
+      '<div style="display:flex;overflow-x:auto;border-bottom:1px solid var(--border)">' +
+        _cprovTabBtn('resumen',   'Resumen',   'fa-chart-pie') +
+        _cprovTabBtn('actividad', 'Actividad', 'fa-list') +
+        _cprovTabBtn('facturas',  'Facturas',  'fa-file-invoice') +
+        _cprovTabBtn('pagos',     'Pagos',     'fa-money-bill-wave') +
+      '</div>' +
+      '<div id="cprov-tab-content" style="padding:20px"></div>' +
     '</div>';
+
+  cprovRenderTab('actividad', supplierId);
+}
+
+function _cprovTabBtn(tab, label, icon) {
+  var active = _cprovState.tab === tab;
+  return '<button id="cprov-tab-btn-' + tab + '" onclick="cprovRenderTab(\'' + tab + '\',\'' + _cprovState.supplierId + '\')" ' +
+    'style="padding:12px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:' + (active ? '700' : '500') + ';' +
+    'color:' + (active ? 'var(--primary)' : 'var(--text-muted)') + ';' +
+    'border-bottom:2px solid ' + (active ? 'var(--primary)' : 'transparent') + ';white-space:nowrap;transition:all .15s">' +
+    '<i class="fas ' + icon + '" style="margin-right:6px"></i>' + label +
+    '</button>';
+}
+
+function cprovRenderTab(tab, supplierId) {
+  _cprovState.tab = tab;
+  // Update tab button styles
+  ['resumen','actividad','facturas','pagos'].forEach(function(t) {
+    var btn = document.getElementById('cprov-tab-btn-' + t);
+    if (!btn) return;
+    var active = t === tab;
+    btn.style.fontWeight = active ? '700' : '500';
+    btn.style.color = active ? 'var(--primary)' : 'var(--text-muted)';
+    btn.style.borderBottom = active ? '2px solid var(--primary)' : '2px solid transparent';
+  });
+  var panel = document.getElementById('cprov-tab-content');
+  if (!panel) return;
+  if (tab === 'resumen')   panel.innerHTML = cprovTabResumen(supplierId);
+  if (tab === 'actividad') panel.innerHTML = cprovTabActividad(supplierId);
+  if (tab === 'facturas')  panel.innerHTML = cprovTabFacturas(supplierId);
+  if (tab === 'pagos')     panel.innerHTML = cprovTabPagos(supplierId);
+}
+
+function cprovTabResumen(supplierId) {
+  var invoices = DB.getAll('supplierInvoices').filter(function(i) { return i.supplier_id === supplierId; });
+  var payments = DB.getAll('paymentOrders').filter(function(p) { return p.supplier_id === supplierId; });
+  var facturado = invoices.reduce(function(s, i) { return s + (i.total || 0); }, 0);
+  var pagado    = payments.reduce(function(s, p) { return s + (p.net_amount || 0); }, 0);
+  var saldo     = facturado - pagado;
+  var pendientes = invoices.filter(function(i) { return i.status !== 'paid'; });
+  var vencidas   = pendientes.filter(function(i) { return i.due_date && i.due_date < todayStr(); });
+
+  var pendRows = pendientes.map(function(i) {
+    var overdue = i.due_date && i.due_date < todayStr();
+    return '<tr style="cursor:pointer" onclick="cprovInvoiceDetail(\'' + i.id + '\')">' +
+      '<td><strong>' + (i.number || '—') + '</strong></td>' +
+      '<td>' + fmtDate(i.date) + '</td>' +
+      '<td style="color:' + (overdue ? 'var(--danger)' : '') + '">' + (i.due_date ? fmtDate(i.due_date) : '—') + '</td>' +
+      '<td class="number-cell"><strong>' + fmtMoney(i.total || 0) + '</strong></td>' +
+      '<td>' + (overdue ? '<span class="badge badge-red">Vencida</span>' : '<span class="badge badge-yellow">Pendiente</span>') + '</td>' +
+    '</tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Sin facturas pendientes</td></tr>';
+
+  return '<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">' +
+    '<div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice"></i></div>' +
+      '<div><div class="stat-value">' + fmtMoney(facturado) + '</div><div class="stat-label">Facturado Total</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div>' +
+      '<div><div class="stat-value">' + fmtMoney(pagado) + '</div><div class="stat-label">Pagado Total</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon ' + (saldo > 0 ? 'red' : 'green') + '"><i class="fas fa-scale-balanced"></i></div>' +
+      '<div><div class="stat-value">' + fmtMoney(saldo) + '</div><div class="stat-label">Saldo</div></div></div>' +
+    '<div class="stat-card"><div class="stat-icon red"><i class="fas fa-exclamation-triangle"></i></div>' +
+      '<div><div class="stat-value">' + vencidas.length + '</div><div class="stat-label">Facturas Vencidas</div></div></div>' +
+  '</div>' +
+  '<h4 style="font-size:13px;font-weight:600;margin-bottom:10px">Facturas Pendientes</h4>' +
+  '<div class="card" style="padding:0"><table class="table">' +
+    '<thead><tr><th>N° Factura</th><th>Fecha</th><th>Vencimiento</th><th class="text-right">Total</th><th>Estado</th></tr></thead>' +
+    '<tbody>' + pendRows + '</tbody>' +
+  '</table></div>';
+}
+
+function cprovTabActividad(supplierId) {
+  var invoices = DB.getAll('supplierInvoices').filter(function(i) { return i.supplier_id === supplierId; });
+  var payments = DB.getAll('paymentOrders').filter(function(p) { return p.supplier_id === supplierId; });
+  var projects = DB.getAll('projects');
+
+  var movements = [];
+  invoices.forEach(function(i) {
+    var proj = projects.find(function(p) { return p.id === i.project_id; });
+    movements.push({ date: i.date || '', type: 'factura', ref: i.number || '—',
+      concept: (i.tipo_comprobante || 'Factura') + (proj ? ' — ' + proj.name : ''),
+      debit: i.total || 0, credit: 0, id: i.id });
+  });
+  payments.forEach(function(p) {
+    var proj = projects.find(function(pr) { return pr.id === p.project_id; });
+    movements.push({ date: p.date || '', type: 'pago', ref: p.number || '—',
+      concept: (p.concept || 'Orden de Pago') + (proj ? ' — ' + proj.name : ''),
+      debit: 0, credit: p.net_amount || 0, id: p.id });
+  });
+  movements.sort(function(a, b) { return a.date.localeCompare(b.date); });
+
+  if (!movements.length) return '<div class="empty-state"><i class="fas fa-list"></i><p>Sin movimientos</p></div>';
+
+  var balance = 0;
+  var rows = movements.map(function(m) {
+    balance += m.debit - m.credit;
+    var isFactura = m.type === 'factura';
+    var badge = isFactura
+      ? '<span class="badge badge-blue">Factura</span>'
+      : '<span class="badge badge-green">Pago</span>';
+    var clickFn = isFactura
+      ? 'cprovInvoiceDetail(\'' + m.id + '\')'
+      : 'cprovPaymentDetail(\'' + m.id + '\')';
+    return '<tr style="cursor:pointer" onclick="' + clickFn + '" title="Ver detalle">' +
+      '<td>' + fmtDate(m.date) + '</td>' +
+      '<td>' + badge + '</td>' +
+      '<td><strong>' + m.ref + '</strong></td>' +
+      '<td style="font-size:12px;color:var(--text-muted)">' + m.concept + '</td>' +
+      '<td class="number-cell" style="color:var(--danger)">' + (m.debit ? fmtMoney(m.debit) : '—') + '</td>' +
+      '<td class="number-cell" style="color:var(--success)">' + (m.credit ? fmtMoney(m.credit) : '—') + '</td>' +
+      '<td class="number-cell"><strong style="color:' + (balance > 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmtMoney(balance) + '</strong></td>' +
+      '<td><i class="fas fa-chevron-right" style="color:var(--text-muted);font-size:11px"></i></td>' +
+    '</tr>';
+  }).join('');
+
+  return '<div class="card" style="padding:0">' +
+    '<table class="table">' +
+    '<thead><tr><th>Fecha</th><th>Tipo</th><th>N°</th><th>Concepto</th>' +
+    '<th class="text-right" style="color:var(--danger)">Debe</th>' +
+    '<th class="text-right" style="color:var(--success)">Haber</th>' +
+    '<th class="text-right">Saldo</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+    '<tfoot><tr style="background:var(--bg)">' +
+      '<td colspan="4" style="font-weight:600;padding:10px 12px">Totales</td>' +
+      '<td class="number-cell" style="font-weight:700;color:var(--danger)">' + fmtMoney(movements.reduce(function(s,m){return s+m.debit;},0)) + '</td>' +
+      '<td class="number-cell" style="font-weight:700;color:var(--success)">' + fmtMoney(movements.reduce(function(s,m){return s+m.credit;},0)) + '</td>' +
+      '<td class="number-cell" style="font-weight:700;color:' + (balance > 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmtMoney(balance) + '</td>' +
+      '<td></td>' +
+    '</tr></tfoot>' +
+    '</table></div>';
+}
+
+function cprovTabFacturas(supplierId) {
+  var invoices = DB.getAll('supplierInvoices').filter(function(i) { return i.supplier_id === supplierId; });
+  var projects = DB.getAll('projects');
+
+  if (!invoices.length) return '<div class="empty-state"><i class="fas fa-file-invoice"></i><p>Sin facturas registradas</p></div>';
+
+  var stColors = { pending: 'badge-yellow', paid: 'badge-green', overdue: 'badge-red' };
+  var stLabels = { pending: 'Pendiente', paid: 'Pagada', overdue: 'Vencida' };
+
+  var rows = invoices.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');}).map(function(i) {
+    var proj = projects.find(function(p) { return p.id === i.project_id; });
+    var effectiveStatus = (i.status !== 'paid' && i.due_date && i.due_date < todayStr()) ? 'overdue' : (i.status || 'pending');
+    return '<tr style="cursor:pointer" onclick="cprovInvoiceDetail(\'' + i.id + '\')" title="Ver detalle">' +
+      '<td><strong>' + (i.number || '—') + '</strong>' +
+        '<div style="font-size:10px;color:var(--text-muted)">' + (i.tipo_comprobante || '') + '</div>' +
+      '</td>' +
+      '<td>' + fmtDate(i.date) + '</td>' +
+      '<td style="color:' + (effectiveStatus === 'overdue' ? 'var(--danger)' : '') + '">' + (i.due_date ? fmtDate(i.due_date) : '—') + '</td>' +
+      '<td style="font-size:12px">' + (proj ? proj.name : '—') + '</td>' +
+      '<td class="number-cell">' + fmtMoney(i.subtotal || 0) + '</td>' +
+      '<td class="number-cell">' + fmtMoney((i.tax || 0) + (i.perc_iva || 0) + (i.perc_iibb || 0)) + '</td>' +
+      '<td class="number-cell"><strong>' + fmtMoney(i.total || 0) + '</strong></td>' +
+      '<td><span class="badge ' + (stColors[effectiveStatus] || 'badge-gray') + '">' + (stLabels[effectiveStatus] || effectiveStatus) + '</span></td>' +
+      '<td><i class="fas fa-chevron-right" style="color:var(--text-muted);font-size:11px"></i></td>' +
+    '</tr>';
+  }).join('');
+
+  return '<div class="card" style="padding:0"><table class="table">' +
+    '<thead><tr><th>N° Factura</th><th>Fecha</th><th>Vencimiento</th><th>Proyecto</th>' +
+    '<th class="text-right">Neto</th><th class="text-right">Impuestos</th><th class="text-right">Total</th>' +
+    '<th>Estado</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>';
+}
+
+function cprovTabPagos(supplierId) {
+  var payments = DB.getAll('paymentOrders').filter(function(p) { return p.supplier_id === supplierId; });
+  var invoices = DB.getAll('supplierInvoices');
+  var accounts = DB.getAll('bankAccounts');
+  var projects = DB.getAll('projects');
+
+  if (!payments.length) return '<div class="empty-state"><i class="fas fa-money-bill-wave"></i><p>Sin pagos registrados</p></div>';
+
+  var stColors = { draft:'badge-gray', pending:'badge-yellow', paid:'badge-green', cancelled:'badge-red' };
+  var stLabels = { draft:'Borrador', pending:'Pendiente', paid:'Pagado', cancelled:'Cancelado' };
+
+  var rows = payments.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');}).map(function(p) {
+    var inv = p.supplier_invoice_id ? invoices.find(function(i){return i.id===p.supplier_invoice_id;}) : null;
+    var acc = p.account_id ? accounts.find(function(a){return a.id===p.account_id;}) : null;
+    var proj = projects.find(function(pr){return pr.id===p.project_id;});
+    return '<tr style="cursor:pointer" onclick="cprovPaymentDetail(\'' + p.id + '\')" title="Ver detalle">' +
+      '<td><strong>' + (p.number || '—') + '</strong></td>' +
+      '<td>' + fmtDate(p.date) + '</td>' +
+      '<td>' +
+        (inv
+          ? '<span style="font-size:12px;color:var(--primary);cursor:pointer" onclick="event.stopPropagation();cprovInvoiceDetail(\'' + inv.id + '\')">' +
+              '<i class="fas fa-file-invoice" style="margin-right:4px"></i>' + (inv.number || inv.id.slice(0,8)) +
+            '</span>'
+          : '<span style="color:var(--text-muted);font-size:12px">—</span>') +
+      '</td>' +
+      '<td style="font-size:12px">' + (acc ? acc.name + ' <span style="color:var(--text-muted)">(' + (acc.currency || 'ARS') + ')</span>' : '—') + '</td>' +
+      '<td style="font-size:12px;color:var(--text-muted)">' + (proj ? proj.name : '—') + '</td>' +
+      '<td class="number-cell">' + fmtMoney(p.gross_amount || 0) + '</td>' +
+      '<td class="number-cell" style="color:var(--warning)">' + fmtMoney(p.total_retentions || 0) + '</td>' +
+      '<td class="number-cell"><strong>' + fmtMoney(p.net_amount || 0) + '</strong></td>' +
+      '<td><span class="badge ' + (stColors[p.status] || 'badge-gray') + '">' + (stLabels[p.status] || p.status) + '</span></td>' +
+      '<td><i class="fas fa-chevron-right" style="color:var(--text-muted);font-size:11px"></i></td>' +
+    '</tr>';
+  }).join('');
+
+  return '<div class="card" style="padding:0"><table class="table">' +
+    '<thead><tr><th>N° Orden</th><th>Fecha</th><th>Factura Aplicada</th><th>Cuenta/Caja</th><th>Proyecto</th>' +
+    '<th class="text-right">Bruto</th><th class="text-right">Retenciones</th><th class="text-right">Neto</th>' +
+    '<th>Estado</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>';
+}
+
+// ---- DETAIL MODALS ----
+function cprovInvoiceDetail(invoiceId) {
+  var inv = DB.getById('supplierInvoices', invoiceId);
+  if (!inv) return;
+  var supplier = DB.getById('suppliers', inv.supplier_id);
+  var project  = DB.getById('projects', inv.project_id);
+
+  var rets = Array.isArray(inv.taxes) ? inv.taxes : [];
+  var retsHtml = rets.length
+    ? rets.map(function(t) {
+        return '<tr><td>' + (t.name||t.type||'—') + '</td><td class="number-cell">' + fmtMoney(t.amount||0) + '</td></tr>';
+      }).join('')
+    : '<tr><td colspan="2" style="color:var(--text-muted);font-size:12px">Sin impuestos adicionales</td></tr>';
+
+  var effectiveStatus = (inv.status !== 'paid' && inv.due_date && inv.due_date < todayStr()) ? 'Vencida' : (inv.status === 'paid' ? 'Pagada' : 'Pendiente');
+  var statusColor = effectiveStatus === 'Vencida' ? 'badge-red' : (effectiveStatus === 'Pagada' ? 'badge-green' : 'badge-yellow');
+
+  var body =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:8px">' +
+      '<div>' +
+        '<div style="font-size:20px;font-weight:700">' + (inv.number || 'Sin número') + '</div>' +
+        '<div style="font-size:13px;color:var(--text-muted)">' + (inv.tipo_comprobante || 'Factura') + '</div>' +
+      '</div>' +
+      '<span class="badge ' + statusColor + '" style="font-size:13px;padding:6px 12px">' + effectiveStatus + '</span>' +
+    '</div>' +
+    '<div class="form-grid" style="margin-bottom:16px">' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">PROVEEDOR</span><div style="font-weight:600">' + (supplier ? supplier.name : '—') + '</div></div>' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">PROYECTO</span><div>' + (project ? project.name : '—') + '</div></div>' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">FECHA</span><div>' + fmtDate(inv.date) + '</div></div>' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">VENCIMIENTO</span><div style="color:' + (effectiveStatus==='Vencida'?'var(--danger)':'') + '">' + (inv.due_date ? fmtDate(inv.due_date) : '—') + '</div></div>' +
+    '</div>' +
+    '<table class="table" style="margin-bottom:0">' +
+      '<thead><tr><th>Concepto</th><th class="text-right">Importe</th></tr></thead>' +
+      '<tbody>' +
+        '<tr><td>Subtotal (neto)</td><td class="number-cell">' + fmtMoney(inv.subtotal || 0) + '</td></tr>' +
+        '<tr><td>IVA ' + (inv.iva_rate ? inv.iva_rate + '%' : '') + '</td><td class="number-cell">' + fmtMoney(inv.tax || 0) + '</td></tr>' +
+        (inv.perc_iva ? '<tr><td>Perc. IVA</td><td class="number-cell">' + fmtMoney(inv.perc_iva) + '</td></tr>' : '') +
+        (inv.perc_iibb ? '<tr><td>Perc. IIBB</td><td class="number-cell">' + fmtMoney(inv.perc_iibb) + '</td></tr>' : '') +
+        retsHtml +
+        '<tr style="background:var(--bg)"><td><strong>TOTAL</strong></td><td class="number-cell"><strong style="font-size:16px">' + fmtMoney(inv.total || 0) + '</strong></td></tr>' +
+      '</tbody>' +
+    '</table>' +
+    (inv.notes ? '<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px;color:var(--text-muted)"><i class="fas fa-sticky-note" style="margin-right:6px"></i>' + inv.notes + '</div>' : '');
+
+  openModal('Detalle de Factura', body, 'modal-lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
+}
+
+function cprovPaymentDetail(paymentId) {
+  var p = DB.getById('paymentOrders', paymentId);
+  if (!p) return;
+  var supplier = DB.getById('suppliers', p.supplier_id);
+  var inv      = p.supplier_invoice_id ? DB.getById('supplierInvoices', p.supplier_invoice_id) : null;
+  var acc      = p.account_id ? DB.getById('bankAccounts', p.account_id) : null;
+  var project  = DB.getById('projects', p.project_id);
+
+  var stColors = { draft:'badge-gray', pending:'badge-yellow', paid:'badge-green', cancelled:'badge-red' };
+  var stLabels = { draft:'Borrador', pending:'Pendiente', paid:'Pagado', cancelled:'Cancelado' };
+
+  var rets = Array.isArray(p.retentions) ? p.retentions : [];
+  var retsHtml = rets.length
+    ? rets.map(function(r) {
+        return '<tr><td>' + (r.name||r.type||'—') + '</td><td class="number-cell" style="color:var(--warning)">' + fmtMoney(r.amount||0) + '</td></tr>';
+      }).join('')
+    : '<tr><td colspan="2" style="color:var(--text-muted);font-size:12px">Sin retenciones</td></tr>';
+
+  var body =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:8px">' +
+      '<div>' +
+        '<div style="font-size:20px;font-weight:700">' + (p.number || 'Sin número') + '</div>' +
+        '<div style="font-size:13px;color:var(--text-muted)">Orden de Pago</div>' +
+      '</div>' +
+      '<span class="badge ' + (stColors[p.status] || 'badge-gray') + '" style="font-size:13px;padding:6px 12px">' + (stLabels[p.status] || p.status) + '</span>' +
+    '</div>' +
+    '<div class="form-grid" style="margin-bottom:16px">' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">PROVEEDOR</span><div style="font-weight:600">' + (supplier ? supplier.name : '—') + '</div></div>' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">FECHA DE PAGO</span><div>' + fmtDate(p.date) + '</div></div>' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">CUENTA / CAJA</span><div>' + (acc ? acc.name + ' (' + (acc.currency||'ARS') + ')' : '—') + '</div></div>' +
+      '<div><span style="font-size:11px;color:var(--text-muted)">PROYECTO</span><div>' + (project ? project.name : '—') + '</div></div>' +
+    '</div>' +
+    // Invoice applied
+    (inv
+      ? '<div style="padding:12px 16px;background:var(--primary-muted,#eff6ff);border-radius:var(--radius-sm);border:1px solid var(--primary-light,#bfdbfe);margin-bottom:16px;cursor:pointer" onclick="closeModal();setTimeout(function(){cprovInvoiceDetail(\'' + inv.id + '\')},100)">' +
+          '<div style="font-size:11px;color:var(--primary);font-weight:600;margin-bottom:4px">FACTURA APLICADA</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<div><i class="fas fa-file-invoice" style="margin-right:6px;color:var(--primary)"></i><strong>' + (inv.number || '—') + '</strong>' +
+              '<span style="font-size:12px;color:var(--text-muted);margin-left:8px">' + fmtDate(inv.date) + '</span></div>' +
+            '<div style="font-weight:700;color:var(--primary)">' + fmtMoney(inv.total || 0) + ' <i class="fas fa-arrow-right" style="font-size:10px"></i></div>' +
+          '</div>' +
+        '</div>'
+      : '<div style="padding:10px;background:var(--bg);border-radius:var(--radius-sm);margin-bottom:16px;font-size:12px;color:var(--text-muted)"><i class="fas fa-info-circle" style="margin-right:6px"></i>Sin factura específica aplicada</div>') +
+    // Amounts breakdown
+    '<table class="table" style="margin-bottom:0">' +
+      '<thead><tr><th>Concepto</th><th class="text-right">Importe</th></tr></thead>' +
+      '<tbody>' +
+        '<tr><td>Importe Bruto</td><td class="number-cell">' + fmtMoney(p.gross_amount || 0) + '</td></tr>' +
+        retsHtml +
+        '<tr style="background:var(--bg)"><td><strong>NETO A PAGAR</strong></td><td class="number-cell"><strong style="font-size:16px;color:var(--success)">' + fmtMoney(p.net_amount || 0) + '</strong></td></tr>' +
+      '</tbody>' +
+    '</table>' +
+    (p.notes ? '<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px;color:var(--text-muted)"><i class="fas fa-sticky-note" style="margin-right:6px"></i>' + p.notes + '</div>' : '');
+
+  openModal('Detalle de Pago', body, 'modal-lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
 }
 
 // =====================================================================
