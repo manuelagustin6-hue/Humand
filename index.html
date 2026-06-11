@@ -2,12 +2,23 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>ERP Construcción</title>
-  <link rel="stylesheet" href="css/main.css?v=15">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ERP Obra">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="ERP Obra">
+
+  <link rel="stylesheet" href="css/main.css?v=17">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -500,5 +511,39 @@
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">
   <i class="fas fa-bars"></i>
 </button>
+
+<!-- Mobile bottom navigation bar -->
+<nav id="mobile-bottom-nav">
+  <button class="mnav-item active" data-nav="dashboard" onclick="navigate('dashboard')">
+    <i class="fas fa-chart-pie"></i>
+    <span>Inicio</span>
+  </button>
+  <button class="mnav-item" data-nav="seguimiento" onclick="navigate('seguimiento')">
+    <i class="fas fa-chart-line"></i>
+    <span>Control</span>
+  </button>
+  <button class="mnav-item" data-nav="contratos" onclick="navigate('contratos')">
+    <i class="fas fa-file-contract"></i>
+    <span>Contratos</span>
+  </button>
+  <button class="mnav-item" data-nav="pedidos" onclick="navigate('pedidos')">
+    <i class="fas fa-clipboard-list"></i>
+    <span>ODP</span>
+  </button>
+  <button class="mnav-item" data-nav="ordenes_compra" onclick="navigate('ordenes_compra')">
+    <i class="fas fa-file-alt"></i>
+    <span>OC</span>
+  </button>
+</nav>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js')
+      .then(function(r) { console.log('[SW] registered', r.scope); })
+      .catch(function(e) { console.warn('[SW] error', e); });
+  });
+}
+</script>
 </body>
 </html>

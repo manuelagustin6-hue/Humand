@@ -88,6 +88,9 @@ function navigate(module) {
   // Close mobile sidebar drawer
   document.body.classList.remove('sidebar-open');
 
+  // Update bottom nav active state
+  updateMobileNav(module);
+
   // Update active nav
   document.querySelectorAll('#sidebar-nav .nav-item').forEach(function(li) {
     li.classList.toggle('active', li.dataset.module === module);
@@ -124,6 +127,13 @@ function navigate(module) {
     }
     updateNotifBadge();
   }, 60);
+}
+
+// ---- MOBILE BOTTOM NAV ----
+function updateMobileNav(module) {
+  document.querySelectorAll('#mobile-bottom-nav .mnav-item').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.nav === module);
+  });
 }
 
 // ---- EXCHANGE RATE SYNC ----
