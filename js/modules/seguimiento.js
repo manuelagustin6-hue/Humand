@@ -201,18 +201,29 @@ function renderControlPresupuestal(projectId) {
   const partidaMap = {};
   partidas.forEach(p => { partidaMap[p.rubro_id] = p; });
 
-  // Sum contracted amount per rubro from contract line items
   const contratoMap = {};
   contracts.forEach(c => {
     (c.items || []).forEach(item => {
-      if (item.rubro_id) {
-        contratoMap[item.rubro_id] = (contratoMap[item.rubro_id] || 0) + (item.total || 0);
-      }
+      if (item.rubro_id) contratoMap[item.rubro_id] = (contratoMap[item.rubro_id] || 0) + (item.total || 0);
     });
   });
 
   let totBudget = 0, totAjustado = 0, totContratado = 0, totEjecutado = 0, totPrevision = 0, totCosto = 0, totSaldo = 0;
 
+  // ARS number helper: colorType = 'blue'|'green'|'red'|'muted'|''
+  function arsNum(v, colorType) {
+    const n = Math.abs(v);
+    const sign = v < 0 ? '−' : '';
+    const str = n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const clr = { blue: '#2563eb', green: '#059669', red: '#dc2626', muted: '#94a3b8' }[colorType] || '#1e293b';
+    return '<span style="font-size:10px;color:#94a3b8;font-weight:400">ARS </span><strong style="color:' + clr + ';font-size:13px">' + sign + str + '</strong>';
+  }
+
+  function editIcon(pid, rid, field, val) {
+    return 'onclick="editPartidaValue(\'' + pid + '\',\'' + rid + '\',\'' + field + '\',' + val + ')" style="cursor:pointer"';
+  }
+
+  let rowIdx = 0;
   const rows = rubros.map(r => {
     const p = partidaMap[r.id] || {};
     const budgetAmt = p.budget_amount || 0;
@@ -236,108 +247,151 @@ function renderControlPresupuestal(projectId) {
     totCosto += costoTotal;
     totSaldo += saldo;
 
-    const editStyle = 'cursor:pointer;border-bottom:1px dashed var(--primary);color:inherit';
+    rowIdx++;
+    const rowBg = rowIdx % 2 === 0 ? '#ffffff' : '#f8f9fb';
 
-    return `<tr data-has-data="${hasData ? '1' : '0'}" style="${!hasData ? 'display:none' : ''}">
-      <td><strong style="color:var(--primary);font-family:monospace">${r.code}</strong></td>
-      <td style="min-width:180px">${r.name}</td>
-      <td class="number-cell text-right">
-        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','budget_amount',${budgetAmt})" title="Hacer clic para editar">
-          ${budgetAmt ? fmtMoney(budgetAmt) : '<span style="color:var(--border)">—</span>'}
-        </span>
-      </td>
-      <td style="min-width:110px">
-        <select class="form-control" style="font-size:11px;padding:2px 6px;height:26px" onchange="updatePartidaIndex('${projectId}','${r.id}',this.value)">
-          <option value="">—</option>
-          ${indices.map(i => `<option value="${i.id}" ${indexId===i.id?'selected':''}>${i.code}</option>`).join('')}
-        </select>
-      </td>
-      <td class="number-cell text-right">
-        ${idx && factor !== 1
-          ? `<strong title="Factor ${factor.toFixed(4)}">${fmtMoney(presupuestoAjustado)}</strong>`
-          : (budgetAmt ? fmtMoney(budgetAmt) : '<span style="color:var(--border)">—</span>')}
-      </td>
-      <td class="number-cell text-right">
-        ${contratado > 0
-          ? `<strong style="cursor:pointer;border-bottom:1px dashed var(--primary);color:var(--primary)" onclick="openContratadoDetail('${projectId}','${r.id}')" title="Ver detalle de contratos">${fmtMoney(contratado)}</strong>`
-          : `<strong style="color:var(--text-muted)">${fmtMoney(contratado)}</strong>`}
-      </td>
-      <td class="number-cell text-right">
-        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','executed_external',${ejecutado})" title="Hacer clic para editar">
-          ${fmtMoney(ejecutado)}
-        </span>
-      </td>
-      <td class="number-cell text-right">
-        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','prevision',${previsionBruta})" title="${previsionBruta !== previsionEfectiva ? 'Bruta: ' + fmtMoney(previsionBruta) + ' − Contratado: ' + fmtMoney(contratado) + ' = Efectiva: ' + fmtMoney(previsionEfectiva) : 'Hacer clic para editar'}">
-          ${previsionEfectiva !== 0 || previsionBruta !== 0
-            ? `<span style="color:${previsionEfectiva > 0 ? 'var(--warning)' : previsionEfectiva < 0 ? 'var(--success)' : 'var(--text-muted)'}">${previsionEfectiva > 0 ? '+' : ''}${fmtMoney(previsionEfectiva)}</span>${previsionBruta !== previsionEfectiva ? `<br><span style="font-size:10px;color:var(--text-muted)">(orig. ${fmtMoney(previsionBruta)})</span>` : ''}`
-            : '<span style="color:var(--border)">—</span>'}
-        </span>
-      </td>
-      <td class="number-cell text-right ${costoTotal > presupuestoAjustado && presupuestoAjustado > 0 ? 'text-danger' : ''}">
-        ${fmtMoney(costoTotal)}
-      </td>
-      <td class="number-cell text-right">
-        <strong style="color:${saldo < 0 ? 'var(--danger)' : saldo > 0 ? 'var(--success)' : 'var(--text-muted)'}">${fmtMoney(saldo)}</strong>
-      </td>
-    </tr>`;
+    const emptyEdit = '<span style="color:#cbd5e1;font-size:12px"><i class="fas fa-plus-circle"></i></span>';
+    const idxSel = '<select style="font-size:11px;padding:2px 6px;height:26px;border:1px solid #e2e8f0;border-radius:5px;background:#fff;min-width:76px;color:' + (indexId ? '#1e293b' : '#94a3b8') + '" onchange="updatePartidaIndex(\'' + projectId + '\',\'' + r.id + '\',this.value)">' +
+      '<option value="" style="color:#94a3b8">Sin valor</option>' +
+      indices.map(i => '<option value="' + i.id + '"' + (indexId === i.id ? ' selected' : '') + '>' + i.code + '</option>').join('') +
+      '</select>';
+
+    const prevTip = previsionBruta !== previsionEfectiva
+      ? 'Bruta: ' + fmtMoney(previsionBruta) + ' − Contratado: ' + fmtMoney(contratado) + ' = Efectiva: ' + fmtMoney(previsionEfectiva)
+      : 'Editar previsión';
+    const prevCell = (previsionEfectiva !== 0 || previsionBruta !== 0)
+      ? '<span ' + editIcon(projectId, r.id, 'prevision', previsionBruta) + ' title="' + prevTip + '">' +
+          arsNum(previsionEfectiva, previsionEfectiva > 0 ? 'blue' : 'muted') +
+          (previsionBruta !== previsionEfectiva ? '<br><span style="font-size:10px;color:#94a3b8">(orig. ' + fmtMoney(previsionBruta) + ')</span>' : '') +
+        '</span>'
+      : '<span ' + editIcon(projectId, r.id, 'prevision', 0) + ' title="Editar previsión">' + emptyEdit + '</span>';
+
+    const P = 'padding:9px 12px';
+    return '<tr data-has-data="' + (hasData ? '1' : '0') + '" style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;' + (!hasData ? 'display:none' : '') + '">' +
+      '<td style="' + P + ';text-align:center;color:#94a3b8;font-size:12px;width:36px">' + rowIdx + '</td>' +
+      '<td style="' + P + ';width:56px"><strong style="font-family:monospace;font-size:11px;color:#2563eb">' + r.code + '</strong></td>' +
+      '<td style="' + P + ';min-width:170px;font-size:13px;color:#1e293b">' + r.name + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
+        '<span ' + editIcon(projectId, r.id, 'budget_amount', budgetAmt) + ' title="Editar monto">' +
+          (budgetAmt ? arsNum(budgetAmt, 'blue') : emptyEdit) +
+        '</span>' +
+      '</td>' +
+      '<td style="' + P + ';text-align:center">' + idxSel + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
+        (budgetAmt
+          ? (idx && factor !== 1
+              ? '<span title="Factor ' + factor.toFixed(4) + '">' + arsNum(presupuestoAjustado) + '</span>'
+              : arsNum(presupuestoAjustado))
+          : '<span style="color:#e2e8f0">—</span>') +
+      '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
+        (contratado > 0
+          ? '<span style="cursor:pointer" onclick="openContratadoDetail(\'' + projectId + '\',\'' + r.id + '\')" title="Ver detalle">' + arsNum(contratado, 'blue') + '</span>'
+          : '<span style="color:#cbd5e1;font-size:12px">' + arsNum(0, 'muted') + '</span>') +
+      '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
+        '<span ' + editIcon(projectId, r.id, 'executed_external', ejecutado) + ' title="Editar ejecutado">' +
+          (ejecutado ? arsNum(ejecutado, 'blue') : emptyEdit) +
+        '</span>' +
+      '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + prevCell + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
+        (costoTotal > 0
+          ? arsNum(costoTotal, costoTotal > presupuestoAjustado && presupuestoAjustado > 0 ? 'red' : '')
+          : '<span style="color:#94a3b8;font-size:12px">' + arsNum(0, 'muted') + '</span>') +
+      '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
+        arsNum(saldo, saldo > 0 ? 'green' : saldo < 0 ? 'red' : 'muted') +
+      '</td>' +
+    '</tr>';
   }).join('');
 
   const hasContracts = contracts.some(c => (c.items || []).some(it => it.rubro_id));
 
+  const summaryCards = [
+    { label: 'Presupuesto ajustado', val: totAjustado,   color: '#2563eb' },
+    { label: 'Contratado',           val: totContratado, color: '#7c3aed' },
+    { label: 'Ejecutado ext.',        val: totEjecutado,  color: '#0891b2' },
+    { label: 'Previsión efectiva',    val: totPrevision,  color: '#d97706' },
+    { label: 'Saldo',                 val: totSaldo,      color: totSaldo >= 0 ? '#059669' : '#dc2626' },
+  ].map(c =>
+    '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.04)">' +
+      '<div style="font-size:11px;color:#94a3b8;margin-bottom:5px;white-space:nowrap">' + c.label + '</div>' +
+      '<div style="line-height:1.1">' +
+        '<span style="font-size:10px;color:#94a3b8">ARS </span>' +
+        '<span style="font-size:17px;font-weight:700;color:' + c.color + '">' +
+          (c.val < 0 ? '−' : '') + Math.abs(c.val).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) +
+        '</span>' +
+      '</div>' +
+    '</div>'
+  ).join('');
+
+  const thStyle = 'padding:10px 12px;text-align:right;color:#64748b;font-weight:600;font-size:11px;white-space:nowrap;border-bottom:2px solid #e2e8f0;background:#f1f5f9';
+  const thLeft = thStyle.replace('text-align:right', 'text-align:left');
+  const thCtr = thStyle.replace('text-align:right', 'text-align:center');
+  const tfStyle = 'padding:11px 12px;text-align:right;white-space:nowrap;background:#f1f5f9;border-top:2px solid #e2e8f0';
+
   return `
-<div class="card mt-2">
-  <div class="card-header">
-    <span class="card-title"><i class="fas fa-table-columns text-primary"></i> Control Presupuestal por Partida</span>
-    <div style="display:flex;align-items:center;gap:10px">
-      <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-muted)">
-        <input type="checkbox" id="seg-show-empty" onchange="toggleEmptyPartidas(this.checked)">
-        Mostrar partidas sin datos
-      </label>
+<style>
+#tabla-cp tbody tr:hover { background:#eef4ff !important; }
+#tabla-cp select:focus { outline:none; border-color:#2563eb; }
+</style>
+<div style="padding:2px 0 16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px">
+      <input type="checkbox" id="seg-show-empty" onchange="toggleEmptyPartidas(this.checked)">
+      Mostrar partidas sin datos
+    </label>
+    <div style="display:flex;gap:8px">
       <button class="btn btn-sm btn-ghost" onclick="openPresupuestoLog('${projectId}')"><i class="fas fa-history"></i> Historial</button>
       <button class="btn btn-sm btn-secondary" onclick="exportControlPresupuestal('${projectId}')"><i class="fas fa-download"></i> Exportar</button>
     </div>
   </div>
-  ${!hasContracts ? `<div style="padding:8px 16px;background:#fef9c3;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e">
-    <i class="fas fa-info-circle"></i> Las partidas de los contratos aún no tienen rubro asignado. Para que la columna <strong>Contratado</strong> se complete automáticamente, asigná el rubro a cada tarea al crear o editar contratos.
-  </div>` : ''}
-  <div style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)">
-    <i class="fas fa-pencil-alt" style="color:var(--primary)"></i> Los valores subrayados son editables. <strong>Contratado</strong> = suma automática de contratos con rubro asignado. <strong>Previsión</strong> se reduce automáticamente al contratar.
+
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
+    ${summaryCards}
   </div>
-  <div class="card-body" style="padding:0">
-    <div class="table-wrap" style="overflow-x:auto">
-      <table id="tabla-control-presupuestal" style="font-size:12px;min-width:900px">
+
+  ${!hasContracts ? `<div style="padding:8px 12px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;margin-bottom:12px">
+    <i class="fas fa-info-circle"></i> Los ítems de contratos sin rubro asignado no alimentan la columna <strong>Contratado</strong>. Editá el contrato y asigná el rubro a cada tarea.
+  </div>` : ''}
+
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+    <div style="overflow-x:auto">
+      <table id="tabla-cp" style="width:100%;border-collapse:collapse;min-width:980px">
         <thead>
-          <tr style="background:var(--bg)">
-            <th style="white-space:nowrap">Codific.</th>
-            <th style="min-width:160px">Partida</th>
-            <th class="text-right" style="white-space:nowrap">Monto Ppto.</th>
-            <th class="text-right" style="white-space:nowrap">Índice</th>
-            <th class="text-right" style="white-space:nowrap">Ppto. Ajustado</th>
-            <th class="text-right" style="white-space:nowrap">Contratado</th>
-            <th class="text-right" style="white-space:nowrap">Ejec. ext.</th>
-            <th class="text-right" style="white-space:nowrap">Previsión</th>
-            <th class="text-right" style="white-space:nowrap">Costo Total</th>
-            <th class="text-right" style="white-space:nowrap">Saldo</th>
+          <tr>
+            <th style="${thCtr};width:36px">#</th>
+            <th style="${thLeft};width:58px">Cód.</th>
+            <th style="${thLeft};min-width:170px">Partida</th>
+            <th style="${thStyle}">Monto Ppto.</th>
+            <th style="${thCtr}">Índice act.</th>
+            <th style="${thStyle}">Ppto. Ajustado</th>
+            <th style="${thStyle}">Contratado</th>
+            <th style="${thStyle}">Ejec. ext.</th>
+            <th style="${thStyle}">Previsión ef.</th>
+            <th style="${thStyle}">Costo Total</th>
+            <th style="${thStyle}">Saldo</th>
           </tr>
         </thead>
-        <tbody id="partidas-tbody">
-          ${rows}
-        </tbody>
+        <tbody id="partidas-tbody">${rows}</tbody>
         <tfoot>
-          <tr class="total-row" style="background:var(--bg);font-size:13px">
-            <td colspan="2"><strong>TOTAL</strong></td>
-            <td class="number-cell text-right"><strong>${fmtMoney(totBudget)}</strong></td>
-            <td></td>
-            <td class="number-cell text-right"><strong>${fmtMoney(totAjustado)}</strong></td>
-            <td class="number-cell text-right" style="color:var(--primary)"><strong>${fmtMoney(totContratado)}</strong></td>
-            <td class="number-cell text-right"><strong>${fmtMoney(totEjecutado)}</strong></td>
-            <td class="number-cell text-right"><strong>${fmtMoney(totPrevision)}</strong></td>
-            <td class="number-cell text-right ${totCosto > totAjustado ? 'text-danger' : ''}"><strong>${fmtMoney(totCosto)}</strong></td>
-            <td class="number-cell text-right ${totSaldo < 0 ? 'text-danger' : 'text-success'}"><strong>${fmtMoney(totSaldo)}</strong></td>
+          <tr>
+            <td colspan="3" style="${tfStyle.replace('text-align:right','text-align:left')};font-weight:700;font-size:13px;color:#1e293b">Totales</td>
+            <td style="${tfStyle}">${arsNum(totBudget)}</td>
+            <td style="${tfStyle}"></td>
+            <td style="${tfStyle}">${arsNum(totAjustado)}</td>
+            <td style="${tfStyle}">${arsNum(totContratado, totContratado > 0 ? 'blue' : 'muted')}</td>
+            <td style="${tfStyle}">${arsNum(totEjecutado, totEjecutado > 0 ? 'blue' : 'muted')}</td>
+            <td style="${tfStyle}">${arsNum(totPrevision, totPrevision > 0 ? 'blue' : 'muted')}</td>
+            <td style="${tfStyle}">${arsNum(totCosto, totCosto > totAjustado && totAjustado > 0 ? 'red' : '')}</td>
+            <td style="${tfStyle}">${arsNum(totSaldo, totSaldo > 0 ? 'green' : totSaldo < 0 ? 'red' : 'muted')}</td>
           </tr>
         </tfoot>
       </table>
+    </div>
+    <div style="padding:7px 14px;background:#f8fafc;border-top:1px solid #f1f5f9;font-size:10px;color:#94a3b8">
+      <i class="fas fa-pencil-alt" style="color:#2563eb"></i> Clic en <i class="fas fa-plus-circle"></i> o en un valor para editar. <strong>Contratado</strong> se suma automáticamente desde los contratos. <strong>Previsión</strong> se reduce al contratar.
     </div>
   </div>
 </div>
@@ -346,7 +400,7 @@ function renderControlPresupuestal(projectId) {
 
 function toggleEmptyPartidas(show) {
   document.querySelectorAll('#partidas-tbody tr[data-has-data="0"]').forEach(function(tr) {
-    tr.style.display = show ? '' : 'none';
+    tr.style.display = show ? 'table-row' : 'none';
   });
 }
 
