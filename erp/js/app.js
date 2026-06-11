@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2025-06-11-v24';
+var APP_VERSION = '2026-06-11-v1';
 
 window.APP_STATE = { currentModule: 'dashboard', activeProject: '', activeCompany: 'comp-001', currentUser: null };
 
@@ -371,23 +371,28 @@ document.addEventListener('DOMContentLoaded', function() {
   // Force hard-reload if the browser is running a stale cached version
   var storedVer = '';
   try { storedVer = localStorage.getItem('erp_app_version') || ''; } catch(e) {}
-  if (storedVer && storedVer !== APP_VERSION) {
+  if (storedVer !== APP_VERSION) {
     try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
-    // Unregister SW and clear caches, then reload
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        return Promise.all(regs.map(function(r) { return r.unregister(); }));
-      }).then(function() {
-        return 'caches' in window ? caches.keys().then(function(keys) {
-          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
-        }) : Promise.resolve();
-      }).then(function() {
+    // sessionStorage guard prevents infinite reload if localStorage is unavailable
+    var _bustDone = false;
+    try { _bustDone = !!sessionStorage.getItem('_erp_bust'); } catch(e) {}
+    if (!_bustDone) {
+      try { sessionStorage.setItem('_erp_bust', '1'); } catch(e) {}
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          return Promise.all(regs.map(function(r) { return r.unregister(); }));
+        }).then(function() {
+          return 'caches' in window ? caches.keys().then(function(keys) {
+            return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+          }) : Promise.resolve();
+        }).then(function() {
+          window.location.replace(window.location.pathname + '?bust=' + Date.now());
+        });
+      } else {
         window.location.replace(window.location.pathname + '?bust=' + Date.now());
-      });
-    } else {
-      window.location.replace(window.location.pathname + '?bust=' + Date.now());
+      }
+      return; // don't init while reloading
     }
-    return; // don't init while reloading
   }
   try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
 
