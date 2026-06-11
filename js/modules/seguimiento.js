@@ -238,7 +238,7 @@ function renderControlPresupuestal(projectId) {
 
     const editStyle = 'cursor:pointer;border-bottom:1px dashed var(--primary);color:inherit';
 
-    return `<tr data-has-data="${hasData ? '1' : '0'}" style="${!hasData ? 'opacity:0.45' : ''}">
+    return `<tr data-has-data="${hasData ? '1' : '0'}" style="${!hasData ? 'display:none' : ''}">
       <td><strong style="color:var(--primary);font-family:monospace">${r.code}</strong></td>
       <td style="min-width:180px">${r.name}</td>
       <td class="number-cell text-right">
@@ -290,7 +290,7 @@ function renderControlPresupuestal(projectId) {
     <div style="display:flex;align-items:center;gap:10px">
       <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-muted)">
         <input type="checkbox" id="seg-show-empty" onchange="toggleEmptyPartidas(this.checked)">
-        Ver partidas sin datos
+        Mostrar partidas sin datos
       </label>
       <button class="btn btn-sm btn-secondary" onclick="exportControlPresupuestal('${projectId}')"><i class="fas fa-download"></i> Exportar</button>
     </div>
