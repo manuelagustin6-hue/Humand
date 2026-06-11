@@ -975,11 +975,6 @@ function openContractForm(id = null) {
           '<option value="">Seleccionar...</option>' +
           suppliers.map(s => '<option value="' + s.id + '" ' + ((contract && contract.contractor_id === s.id) ? 'selected' : '') + '>' + s.name + '</option>').join('') +
         '</select></div>' +
-      '<div class="form-group"><label class="form-label">Partida / Rubro</label>' +
-        '<select class="form-control" id="cont-rubro">' +
-          '<option value="">Sin asignar</option>' +
-          rubros.map(r => '<option value="' + r.id + '" ' + ((contract && contract.rubro_id === r.id) ? 'selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('') +
-        '</select></div>' +
       '<div class="form-group"><label class="form-label">Tipo de Contrato</label>' +
         '<select class="form-control" id="cont-type">' +
           '<option value="lump_sum" ' + ((!contract || contract.type === 'lump_sum') ? 'selected' : '') + '>Suma Alzada</option>' +
@@ -1018,8 +1013,8 @@ function openContractForm(id = null) {
       '<strong style="font-size:13px">Partidas de Obra (vinculadas al presupuesto)</strong>' +
       '<button class="btn btn-sm btn-secondary" onclick="addContractItem()"><i class="fas fa-plus"></i> Agregar partida</button>' +
     '</div>' +
-    '<div style="display:grid;grid-template-columns:2.5fr 70px 90px 110px 110px 1.5fr 34px;gap:4px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted)">' +
-      '<span>Descripción</span><span>Unidad</span><span>Cantidad</span><span>P.Unit.</span><span>Total</span><span>Partida BOQ</span><span></span>' +
+    '<div style="display:grid;grid-template-columns:2fr 1.5fr 60px 85px 105px 105px 34px;gap:4px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted)">' +
+      '<span>Descripción</span><span>Rubro / Partida</span><span>Unidad</span><span>Cantidad</span><span>P.Unit.</span><span>Total</span><span></span>' +
     '</div>' +
     '<div id="cont-items">' +
       items.map(function(it, i) { return contractItemRow(it, i, boqOpts); }).join('') +
@@ -1088,26 +1083,25 @@ function openContractForm(id = null) {
 }
 
 function contractItemRow(it, i, boqOpts) {
-  const opts = boqOpts || DB.getAll('boqItems').map(b => '<option value="' + b.id + '">' + b.description + '</option>').join('');
-  // mark selected boq option
-  const optsWithSel = '<option value="">Sin partida BOQ</option>' +
-    DB.getAll('boqItems').map(b => '<option value="' + b.id + '" ' + (it.boq_item_id === b.id ? 'selected' : '') + '>' + b.description + ' (' + b.unit + ')</option>').join('');
-  return '<div id="coni-row-' + i + '" style="display:grid;grid-template-columns:2.5fr 70px 90px 110px 110px 1.5fr 34px;gap:4px;margin-bottom:6px;align-items:center">' +
-    '<input class="form-control" style="font-size:12px" placeholder="Descripción de la partida" value="' + (it.description || '') + '" oninput="updateContractItem(' + i + ',\'description\',this.value)">' +
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
+  const rubroOpts = '<option value="">— Sin rubro —</option>' +
+    rubros.map(r => '<option value="' + r.id + '" ' + (it.rubro_id === r.id ? 'selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('');
+  return '<div id="coni-row-' + i + '" style="display:grid;grid-template-columns:2fr 1.5fr 60px 85px 105px 105px 34px;gap:4px;margin-bottom:6px;align-items:center">' +
+    '<input class="form-control" style="font-size:12px" placeholder="Descripción de la tarea" value="' + (it.description || '') + '" oninput="updateContractItem(' + i + ',\'description\',this.value)">' +
+    '<select class="form-control" style="font-size:11px" onchange="updateContractItem(' + i + ',\'rubro_id\',this.value)">' +
+      rubroOpts +
+    '</select>' +
     '<input class="form-control" style="font-size:12px" value="' + (it.unit || 'm²') + '" oninput="updateContractItem(' + i + ',\'unit\',this.value)">' +
     '<input class="form-control" style="font-size:12px" type="number" min="0" value="' + (it.quantity || 0) + '" oninput="updateContractItem(' + i + ',\'quantity\',+this.value)">' +
     '<input class="form-control" style="font-size:12px" type="number" min="0" value="' + (it.unit_price || 0) + '" oninput="updateContractItem(' + i + ',\'unit_price\',+this.value)">' +
     '<input class="form-control" style="font-size:12px;background:#f8fafc" readonly id="coni-total-' + i + '" value="' + (it.total || 0) + '">' +
-    '<select class="form-control" style="font-size:11px" onchange="updateContractItem(' + i + ',\'boq_item_id\',this.value)">' +
-      optsWithSel +
-    '</select>' +
     '<button class="btn-ghost btn danger" onclick="removeContractItem(' + i + ')"><i class="fas fa-times"></i></button>' +
     '</div>';
 }
 
 window._contractItems = [];
 function addContractItem() {
-  const it = { description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, boq_item_id: '' };
+  const it = { description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '' };
   window._contractItems.push(it);
   const i = window._contractItems.length - 1;
   const cont = document.getElementById('cont-items');
@@ -1133,7 +1127,7 @@ function cronoFormRow(it, i, defStart, defEnd) {
 }
 
 function updateContractItem(i, field, val) {
-  if (!window._contractItems[i]) window._contractItems[i] = { description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, boq_item_id: '' };
+  if (!window._contractItems[i]) window._contractItems[i] = { description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '' };
   window._contractItems[i][field] = val;
   window._contractItems[i].total = (window._contractItems[i].quantity || 0) * (window._contractItems[i].unit_price || 0);
   const totEl = document.getElementById('coni-total-' + i);
@@ -1284,7 +1278,6 @@ function saveContract(id) {
     anticipo_pct:          parseFloat(document.getElementById('cont-anticipo').value) || 0,
     fondo_reparo_pct:      parseFloat(document.getElementById('cont-fondo').value) || 0,
     deposito_garantia_pct: parseFloat(document.getElementById('cont-deposito').value) || 0,
-    rubro_id:              document.getElementById('cont-rubro')?.value || '',
     indice_id:             document.getElementById('cont-indice').value || '',
     forma_pago:            document.getElementById('cont-forma-pago').value,
     items,

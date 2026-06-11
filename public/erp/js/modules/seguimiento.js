@@ -201,11 +201,14 @@ function renderControlPresupuestal(projectId) {
   const partidaMap = {};
   partidas.forEach(p => { partidaMap[p.rubro_id] = p; });
 
+  // Sum contracted amount per rubro from contract line items
   const contratoMap = {};
   contracts.forEach(c => {
-    if (c.rubro_id) {
-      contratoMap[c.rubro_id] = (contratoMap[c.rubro_id] || 0) + (c.total_amount || 0);
-    }
+    (c.items || []).forEach(item => {
+      if (item.rubro_id) {
+        contratoMap[item.rubro_id] = (contratoMap[item.rubro_id] || 0) + (item.total || 0);
+      }
+    });
   });
 
   let totBudget = 0, totAjustado = 0, totContratado = 0, totEjecutado = 0, totPrevision = 0, totCosto = 0, totSaldo = 0;
@@ -278,7 +281,7 @@ function renderControlPresupuestal(projectId) {
     </tr>`;
   }).join('');
 
-  const hasContracts = contracts.some(c => c.rubro_id);
+  const hasContracts = contracts.some(c => (c.items || []).some(it => it.rubro_id));
 
   return `
 <div class="card mt-2">
@@ -293,7 +296,7 @@ function renderControlPresupuestal(projectId) {
     </div>
   </div>
   ${!hasContracts ? `<div style="padding:8px 16px;background:#fef9c3;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e">
-    <i class="fas fa-info-circle"></i> Los contratos aún no tienen rubro asignado. Para que la columna <strong>Contratado</strong> se complete automáticamente, asigná el rubro al crear o editar cada contrato.
+    <i class="fas fa-info-circle"></i> Las partidas de los contratos aún no tienen rubro asignado. Para que la columna <strong>Contratado</strong> se complete automáticamente, asigná el rubro a cada tarea al crear o editar contratos.
   </div>` : ''}
   <div style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted)">
     <i class="fas fa-pencil-alt" style="color:var(--primary)"></i> Los valores subrayados son editables. <strong>Contratado</strong> = suma automática de contratos con rubro asignado. <strong>Previsión</strong> se reduce automáticamente al contratar.
@@ -419,7 +422,11 @@ function exportControlPresupuestal(projectId) {
   const partidaMap = {};
   partidas.forEach(p => { partidaMap[p.rubro_id] = p; });
   const contratoMap = {};
-  contracts.forEach(c => { if (c.rubro_id) contratoMap[c.rubro_id] = (contratoMap[c.rubro_id]||0) + (c.total_amount||0); });
+  contracts.forEach(c => {
+    (c.items || []).forEach(item => {
+      if (item.rubro_id) contratoMap[item.rubro_id] = (contratoMap[item.rubro_id]||0) + (item.total||0);
+    });
+  });
 
   const rows = rubros.map(r => {
     const p = partidaMap[r.id] || {};
