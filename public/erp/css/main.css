@@ -1203,3 +1203,74 @@ body.sidebar-open #mobile-nav-fab { display: none !important; }
   font-size: 15px;
   flex-shrink: 0;
 }
+
+
+/* ===== PWA / MOBILE ADDITIONS ===== */
+
+/* Safe area insets for notched phones (iPhone X+) */
+@supports (padding: env(safe-area-inset-top)) {
+  #app { padding-top: env(safe-area-inset-top); }
+}
+
+/* Mobile bottom nav — hidden by default, shown in mobile media query */
+#mobile-bottom-nav { display: none; }
+
+@media (max-width: 767px) {
+  /* 16px inputs prevent iOS keyboard auto-zoom */
+  .form-control, select.form-control, textarea.form-control {
+    font-size: 16px !important;
+  }
+
+  /* Better tap targets */
+  .btn { min-height: 40px; }
+
+  /* Bottom navigation bar */
+  #mobile-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #fff;
+    border-top: 1px solid #e2e8f0;
+    padding: 4px 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    z-index: 250;
+    box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+  }
+  #mobile-bottom-nav .mnav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 4px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 500;
+    min-height: 52px;
+    -webkit-tap-highlight-color: transparent;
+    border-radius: 8px;
+    margin: 0 2px;
+    transition: color .15s;
+  }
+  #mobile-bottom-nav .mnav-item i { font-size: 20px; }
+  #mobile-bottom-nav .mnav-item.active { color: #2563eb; }
+  #mobile-bottom-nav .mnav-item:active { background: #f0f7ff; }
+
+  /* Push content above bottom nav */
+  #content { padding-bottom: 86px !important; }
+
+  /* Responsive grids */
+  .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr !important; }
+  .form-grid-2, .form-grid-3 { grid-template-columns: 1fr !important; }
+}
+
+/* Desktop: hide mobile-only elements */
+@media (min-width: 768px) {
+  #mobile-bottom-nav { display: none !important; }
+  #mobile-nav-fab { display: none !important; }
+}
