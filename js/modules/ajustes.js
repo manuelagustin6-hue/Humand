@@ -201,13 +201,22 @@ function buildSystemTab() {
     '<i class="fas fa-undo"></i> Reiniciar Demo</button>' +
     '</div>' +
 
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--border)">' +
     '<div>' +
     '<div style="font-size:13px;font-weight:600">Borrar todos los datos</div>' +
     '<div style="font-size:12px;color:var(--text-muted)">Elimina permanentemente todos los datos. No se puede deshacer.</div>' +
     '</div>' +
     '<button class="btn btn-danger" onclick="ajustesConfirmWipe()">' +
     '<i class="fas fa-trash"></i> Borrar Todo</button>' +
+    '</div>' +
+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px">' +
+    '<div>' +
+    '<div style="font-size:13px;font-weight:600">Limpiar caché del navegador y actualizar</div>' +
+    '<div style="font-size:12px;color:var(--text-muted)">Elimina el Service Worker y todos los archivos en caché. Usá esto si la app muestra contenido desactualizado.</div>' +
+    '</div>' +
+    '<button class="btn btn-warning" onclick="clearCacheAndReload()" style="background:#f59e0b;color:#fff;border-color:#f59e0b">' +
+    '<i class="fas fa-rotate"></i> Limpiar Caché</button>' +
     '</div>' +
 
     '</div></div>';
@@ -225,6 +234,25 @@ function doExportBackup() {
   toast('Respaldo descargado correctamente', 'success');
   var el = document.getElementById('ajustes-export-history');
   if (el) el.innerHTML = buildExportHistory();
+}
+
+function clearCacheAndReload() {
+  confirmDialog('Se eliminarán el Service Worker y el caché del navegador. La página se recargará desde el servidor. ¿Continuar?', function() {
+    var done = function() { window.location.href = window.location.href.split('?')[0] + '?nocache=' + Date.now(); };
+    var cleared = false;
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        return Promise.all(names.map(function(n) { return caches.delete(n); }));
+      }).then(function() { cleared = true; }).catch(function() {});
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        return Promise.all(regs.map(function(r) { return r.unregister(); }));
+      }).then(done).catch(done);
+    } else {
+      done();
+    }
+  });
 }
 
 function doImportBackup(input) {
