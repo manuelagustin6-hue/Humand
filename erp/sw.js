@@ -27,6 +27,12 @@ self.addEventListener('activate', e => {
   );
 });
 
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   const isSameOrigin = url.origin === self.location.origin;

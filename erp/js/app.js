@@ -1,6 +1,24 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-11-v1';
+var APP_VERSION = '2026-06-11-v2';
+
+function forceClearCache() {
+  var btn = event && event.target ? event.target.closest('button') : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Actualizando…'; }
+  var done = function() { window.location.replace(window.location.pathname + '?bust=' + Date.now()); };
+  try { localStorage.removeItem('erp_app_version'); } catch(e) {}
+  try { sessionStorage.removeItem('_erp_bust'); } catch(e) {}
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then(function(regs) { return Promise.all(regs.map(function(r) { return r.unregister(); })); })
+      .then(function() {
+        return 'caches' in window ? caches.keys().then(function(keys) {
+          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+        }) : Promise.resolve();
+      })
+      .then(done).catch(done);
+  } else { done(); }
+}
 
 window.APP_STATE = { currentModule: 'dashboard', activeProject: '', activeCompany: 'comp-001', currentUser: null };
 
