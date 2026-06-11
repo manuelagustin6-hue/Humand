@@ -41,19 +41,8 @@ function renderCompras() {
 // ==== STANDALONE PAGE RENDERS (for sidebar navigation) ====
 
 function renderPedidos() {
-  document.getElementById('content').innerHTML = `
-<div class="page-header">
-  <div>
-    <div class="page-title">Pedidos de Materiales</div>
-    <div class="page-subtitle">Solicitudes de compra de materiales y equipos para obra</div>
-  </div>
-  <div class="page-actions">
-    <button class="btn btn-primary" onclick="openRequisitionForm()"><i class="fas fa-plus"></i> Nuevo Pedido</button>
-  </div>
-</div>
-<div id="pedidos-page-content">
-  ${renderRequisitionsTab()}
-</div>`;
+  if (typeof renderOrdenesPedido === 'function') { renderOrdenesPedido(); return; }
+  document.getElementById('content').innerHTML = '<div class="empty-state"><i class="fas fa-list-check"></i><p>Módulo cargando...</p></div>';
 }
 
 function renderOrdenesCompra() {
@@ -75,7 +64,8 @@ function renderOrdenesCompra() {
 
 function _refreshCurrentComprasView() {
   var mod = window.APP_STATE && window.APP_STATE.currentModule;
-  if (mod === 'pedidos') renderPedidos();
+  if (mod === 'pedidos' && typeof renderOrdenesPedido === 'function') renderOrdenesPedido();
+  else if (mod === 'pedidos') renderPedidos();
   else if (mod === 'ordenes_compra') renderOrdenesCompra();
   else renderCompras();
 }
@@ -692,60 +682,76 @@ function openPOForm(id) {
   const nextNum = 'OC-' + new Date().getFullYear() + '-' + String(DB.getAll('purchaseOrders').length + 1).padStart(3, '0');
   window._poItems = items.map(function(it) { return Object.assign({}, it); });
 
+  const LBL = 'font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.6px;text-transform:uppercase;display:block;margin-bottom:5px';
+  const FIELD = 'font-size:13px;border:1px solid #e2e8f0;border-radius:8px';
   openModal(po ? 'Editar OC' : 'Nueva Orden de Compra', `
-<div class="form-grid form-grid-2">
-  <div class="form-group">
-    <label class="form-label">Número OC</label>
-    <input class="form-control" id="po-num" value="${po?.number || nextNum}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Estado</label>
-    <select class="form-control" id="po-status">
-      ${['draft','sent','received','cancelled'].map(s => `<option value="${s}" ${po?.status===s?'selected':''}>${statusBadge(s).replace(/<[^>]+>/g,'')}</option>`).join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Proyecto *</label>
-    <select class="form-control" id="po-project">
-      <option value="">Seleccionar...</option>
-      ${projects.map(p => `<option value="${p.id}" ${po?.project_id===p.id?'selected':''}>${p.name}</option>`).join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Proveedor *</label>
-    <select class="form-control" id="po-supplier">
-      <option value="">Seleccionar...</option>
-      ${suppliers.map(s => `<option value="${s.id}" ${po?.supplier_id===s.id?'selected':''}>${s.name}</option>`).join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Fecha OC</label>
-    <input class="form-control" id="po-date" type="date" value="${po?.date || todayStr()}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Entrega Estimada</label>
-    <input class="form-control" id="po-expected" type="date" value="${po?.expected_date || addDays(todayStr(), 15)}">
-  </div>
-  <div class="form-group full">
-    <label class="form-label">Notas</label>
-    <textarea class="form-control" id="po-notes" rows="2">${po?.notes || ''}</textarea>
+<!-- Header fields -->
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:14px">
+  <div class="form-grid form-grid-2" style="gap:14px 20px">
+    <div class="form-group">
+      <label style="${LBL}">Número OC</label>
+      <input class="form-control" id="po-num" value="${po?.number || nextNum}" style="${FIELD}">
+    </div>
+    <div class="form-group">
+      <label style="${LBL}">Estado</label>
+      <select class="form-control" id="po-status" style="${FIELD}">
+        ${['draft','sent','received','cancelled'].map(s => `<option value="${s}" ${po?.status===s?'selected':''}>${statusBadge(s).replace(/<[^>]+>/g,'')}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label style="${LBL}">Proyecto *</label>
+      <select class="form-control" id="po-project" style="${FIELD}">
+        <option value="">Seleccionar...</option>
+        ${projects.map(p => `<option value="${p.id}" ${po?.project_id===p.id?'selected':''}>${p.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label style="${LBL}">Proveedor *</label>
+      <select class="form-control" id="po-supplier" style="${FIELD}">
+        <option value="">Seleccionar...</option>
+        ${suppliers.map(s => `<option value="${s.id}" ${po?.supplier_id===s.id?'selected':''}>${s.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label style="${LBL}">Fecha OC</label>
+      <input class="form-control" id="po-date" type="date" value="${po?.date || todayStr()}" style="${FIELD}">
+    </div>
+    <div class="form-group">
+      <label style="${LBL}">Entrega Estimada</label>
+      <input class="form-control" id="po-expected" type="date" value="${po?.expected_date || addDays(todayStr(), 15)}" style="${FIELD}">
+    </div>
+    <div class="form-group full">
+      <label style="${LBL}">Notas</label>
+      <textarea class="form-control" id="po-notes" rows="2" style="${FIELD}">${po?.notes || ''}</textarea>
+    </div>
   </div>
 </div>
 
-<div class="divider"></div>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-  <strong style="font-size:13px">Ítems</strong>
-  <button class="btn btn-sm btn-secondary" onclick="addPOItem()"><i class="fas fa-plus"></i> Agregar ítem</button>
-</div>
-<div id="po-items">
-  <div style="display:grid;grid-template-columns:2fr 2fr 70px 80px 110px 110px 36px;gap:6px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted)">
-    <span>Descripción</span><span>Rubro / Imputación</span><span>Unidad</span><span>Cantidad</span><span>P.Unitario</span><span>Total</span><span></span>
+<!-- Items table -->
+<div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+  <div style="padding:10px 14px;background:#f8f9fb;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:12px;font-weight:600;color:#1e293b">Ítems de la Orden</span>
+    <button class="btn btn-sm btn-secondary" onclick="addPOItem()"><i class="fas fa-plus"></i> Agregar ítem</button>
   </div>
-  ${items.map((it, i) => poItemRow(it, i)).join('')}
-</div>
-<div class="divider"></div>
-<div id="po-totals" style="text-align:right;font-size:13px">
-  ${_calcPOItemsTotals(items)}
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;min-width:700px">
+      <thead><tr style="background:#f8f9fb">
+        <th style="width:32px;padding:8px;border-bottom:1px solid #e2e8f0"></th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;text-transform:uppercase">Descripción</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;min-width:120px">Rubro</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;width:60px">Unidad</th>
+        <th style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;width:75px">Cantidad</th>
+        <th style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;width:100px">P. Unitario</th>
+        <th style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;width:100px">Total</th>
+      </tr></thead>
+      <tbody id="po-items">
+        ${items.map((it, i) => poItemRow(it, i)).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div id="po-totals" style="padding:10px 16px;text-align:right;font-size:13px;border-top:2px solid #e2e8f0;background:#f8f9fb">
+    ${_calcPOItemsTotals(items)}
+  </div>
 </div>
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -756,36 +762,51 @@ function openPOForm(id) {
 
 function poItemRow(it, i) {
   const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
-  const rubroOpts = '<option value="">— Sin rubro —</option>' +
+  const rubroOpts = '<option value="" style="color:#94a3b8">+ Seleccionar</option>' +
     rubros.map(r => '<option value="' + r.id + '"' + (it.rubro_id === r.id ? ' selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('');
-  return `<div id="poi-row-${i}" style="display:grid;grid-template-columns:2fr 2fr 70px 80px 110px 110px 36px;gap:6px;margin-bottom:6px;align-items:center">
-    <input class="form-control" style="font-size:12px" placeholder="Descripción" value="${it.description||''}" oninput="updatePOItem(${i},'description',this.value)">
-    <select class="form-control" style="font-size:12px" onchange="updatePOItem(${i},'rubro_id',this.value)">${rubroOpts}</select>
-    <input class="form-control" style="font-size:12px" value="${it.unit||'un'}" oninput="updatePOItem(${i},'unit',this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.quantity||1}" oninput="updatePOItem(${i},'quantity',+this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price||0}" oninput="updatePOItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly value="${fmtMoney(it.total||0)}" id="poi-total-${i}">
-    <button class="btn-ghost btn danger" onclick="removePOItem(${i})"><i class="fas fa-times"></i></button>
-  </div>`;
+  const rowBg = i % 2 === 0 ? '#fff' : '#f8f9fb';
+  const C = 'padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle';
+  const INP = 'border:none;background:transparent;font-size:12px;width:100%;outline:none;color:#1e293b';
+  return '<tr id="poi-row-' + i + '" style="background:' + rowBg + '" onmouseenter="this.style.background=\'#eef4ff\'" onmouseleave="this.style.background=\'' + rowBg + '\'">' +
+    '<td style="' + C + ';text-align:center;width:32px">' +
+      '<button onclick="removePOItem(' + i + ')" style="background:none;border:none;color:#cbd5e1;cursor:pointer;padding:2px 4px;font-size:13px;line-height:1"><i class="fas fa-times"></i></button>' +
+    '</td>' +
+    '<td style="' + C + '">' +
+      '<input style="' + INP + '" placeholder="Descripción del ítem..." value="' + (it.description||'') + '" oninput="updatePOItem(' + i + ',\'description\',this.value)">' +
+    '</td>' +
+    '<td style="' + C + '">' +
+      '<select style="border:none;background:transparent;font-size:11px;width:100%;outline:none;cursor:pointer;color:' + (it.rubro_id?'#1e293b':'#94a3b8') + '" onchange="updatePOItem(' + i + ',\'rubro_id\',this.value)">' + rubroOpts + '</select>' +
+    '</td>' +
+    '<td style="' + C + '">' +
+      '<input style="' + INP + ';width:55px" value="' + (it.unit||'un') + '" oninput="updatePOItem(' + i + ',\'unit\',this.value)">' +
+    '</td>' +
+    '<td style="' + C + ';text-align:right">' +
+      '<input type="number" min="0" style="' + INP + ';width:65px;text-align:right" value="' + (it.quantity||1) + '" oninput="updatePOItem(' + i + ',\'quantity\',+this.value)">' +
+    '</td>' +
+    '<td style="' + C + ';text-align:right">' +
+      '<input type="number" min="0" style="' + INP + ';width:90px;text-align:right" value="' + (it.unit_price||0) + '" oninput="updatePOItem(' + i + ',\'unit_price\',+this.value)">' +
+    '</td>' +
+    '<td style="' + C + ';text-align:right">' +
+      '<span style="font-size:10px;color:#94a3b8">ARS </span><strong id="poi-total-' + i + '" style="font-size:12px;color:#1e293b">' + Math.round(it.total||0).toLocaleString('es-AR') + '</strong>' +
+    '</td>' +
+  '</tr>';
 }
 
 window._poItems = [];
 function addPOItem() {
   const blank = { description: '', rubro_id: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 };
   window._poItems.push(blank);
-  const cont = document.getElementById('po-items');
   const i = window._poItems.length - 1;
-  const div = document.createElement('div');
-  div.innerHTML = poItemRow(blank, i);
-  cont.appendChild(div.firstElementChild);
+  const tbody = document.getElementById('po-items');
+  if (tbody) tbody.insertAdjacentHTML('beforeend', poItemRow(blank, i));
 }
 
 function updatePOItem(i, field, val) {
   if (!window._poItems[i]) window._poItems[i] = { description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 };
   window._poItems[i][field] = val;
   window._poItems[i].total = (window._poItems[i].quantity || 0) * (window._poItems[i].unit_price || 0);
-  const totEl = document.getElementById(`poi-total-${i}`);
-  if (totEl) totEl.value = fmtMoney(window._poItems[i].total);
+  const totEl = document.getElementById('poi-total-' + i);
+  if (totEl) totEl.textContent = Math.round(window._poItems[i].total).toLocaleString('es-AR');
   document.getElementById('po-totals').innerHTML = _calcPOItemsTotals(window._poItems);
 }
 
