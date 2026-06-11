@@ -1011,7 +1011,10 @@ function openContractForm(id = null) {
     '<div id="cf-partidas" class="tab-content">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
       '<strong style="font-size:13px">Partidas de Obra (vinculadas al presupuesto)</strong>' +
-      '<button class="btn btn-sm btn-secondary" onclick="addContractItem()"><i class="fas fa-plus"></i> Agregar partida</button>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="btn btn-sm btn-ghost" onclick="reloadContractRubros()" title="Si acabás de crear un rubro, refrescá la lista"><i class="fas fa-sync-alt"></i> Actualizar rubros</button>' +
+        '<button class="btn btn-sm btn-secondary" onclick="addContractItem()"><i class="fas fa-plus"></i> Agregar partida</button>' +
+      '</div>' +
     '</div>' +
     '<div style="display:grid;grid-template-columns:2fr 1.5fr 60px 85px 105px 105px 34px;gap:4px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted)">' +
       '<span>Descripción</span><span>Rubro / Partida</span><span>Unidad</span><span>Cantidad</span><span>P.Unit.</span><span>Total</span><span></span>' +
@@ -1116,6 +1119,20 @@ function addContractItem() {
     d2.innerHTML = cronoFormRow(Object.assign({}, it), i, def.start, def.end);
     cr.appendChild(d2.firstElementChild);
   }
+}
+
+function reloadContractRubros() {
+  const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
+  (window._contractItems || []).forEach(function(it, i) {
+    const row = document.getElementById('coni-row-' + i);
+    if (!row) return;
+    const sel = row.querySelector('select');
+    if (!sel) return;
+    const current = it.rubro_id || '';
+    sel.innerHTML = '<option value="">— Sin rubro —</option>' +
+      rubros.map(r => '<option value="' + r.id + '"' + (current === r.id ? ' selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('');
+  });
+  toast('Lista de rubros actualizada', 'success');
 }
 
 function cronoFormRow(it, i, defStart, defEnd) {
