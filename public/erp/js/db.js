@@ -8,14 +8,21 @@ const DB = {
   get() {
     try {
       var raw = localStorage.getItem(this.KEY);
-      var data = raw ? JSON.parse(raw) : this.init();
+      if (!raw) return this.init();
+      var data = JSON.parse(raw);
       // Migration: seed default users if the collection is missing or empty
       if (!data.users || !data.users.length) {
         data.users = this._defaultUsers();
         this.save(data);
       }
       return data;
-    } catch(e) { return this.init(); }
+    } catch(e) {
+      // JSON parse error: return seed in-memory WITHOUT overwriting localStorage
+      // (avoids wiping user data on a transient parse error)
+      console.error('DB.get parse error:', e);
+      if (typeof toast === 'function') toast('Error al leer datos guardados — mostrando datos de respaldo', 'error');
+      return this.seed();
+    }
   },
 
   _defaultUsers() {
@@ -35,7 +42,15 @@ const DB = {
   },
 
   save(data) {
-    localStorage.setItem(this.KEY, JSON.stringify(data));
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify(data));
+    } catch(e) {
+      console.error('DB.save error:', e);
+      var msg = e.name === 'QuotaExceededError'
+        ? 'Almacenamiento lleno — exportá un respaldo y liberá espacio'
+        : 'Error al guardar datos: ' + e.message;
+      if (typeof toast === 'function') toast(msg, 'error');
+    }
   },
 
   init() {
@@ -1410,6 +1425,23 @@ const DB = {
     };
   },
 };
+
+// Check if localStorage is actually persistent (fails in private/incognito mode)
+function checkStoragePersistence() {
+  try {
+    var test = '__erp_test__';
+    localStorage.setItem(test, '1');
+    localStorage.removeItem(test);
+  } catch(e) {
+    // Run after DOM is ready so toast is available
+    setTimeout(function() {
+      if (typeof toast === 'function') {
+        toast('⚠ El almacenamiento no está disponible — los datos no se guardarán (¿modo privado?)', 'error');
+      }
+    }, 2000);
+  }
+}
+checkStoragePersistence();
 
 function uuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
