@@ -76,6 +76,14 @@ ${_contaCompanyBar()}
   setTimeout(() => renderResultsChart(accounts, entries), 100);
 }
 
+function renderContaPlan() {
+  renderContabilidad();
+  setTimeout(function() {
+    var btn = document.querySelector('#conta-tabs .tab-btn[data-tab="tab-cuentas"]');
+    if (btn) btn.click();
+  }, 50);
+}
+
 // ---- JOURNAL ----
 function renderJournal(entries) {
   return `
