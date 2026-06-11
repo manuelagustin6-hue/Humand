@@ -110,6 +110,7 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   document.getElementById('modal-body').innerHTML = '';
   document.getElementById('modal-footer').innerHTML = '';
+  window._pendingConfirm = null;
 }
 
 document.getElementById('modal-overlay').addEventListener('click', e => {
@@ -132,11 +133,12 @@ function toast(msg, type) {
 
 // ---- CONFIRM ----
 function confirmDialog(msg, onConfirm) {
+  window._pendingConfirm = onConfirm;
   openModal('Confirmar acción',
     `<p style="font-size:14px;color:var(--text)">${msg}</p>`,
     'modal-sm',
     `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-danger" onclick="(${onConfirm.toString()})(); closeModal();">Confirmar</button>`
+     <button class="btn btn-danger" onclick="if(window._pendingConfirm){window._pendingConfirm();} closeModal();">Confirmar</button>`
   );
 }
 

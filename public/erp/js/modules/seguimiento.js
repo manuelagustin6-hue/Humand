@@ -257,8 +257,10 @@ function renderControlPresupuestal(projectId) {
           ? `<strong title="Factor ${factor.toFixed(4)}">${fmtMoney(presupuestoAjustado)}</strong>`
           : (budgetAmt ? fmtMoney(budgetAmt) : '<span style="color:var(--border)">—</span>')}
       </td>
-      <td class="number-cell text-right ${contratado > 0 ? '' : ''}">
-        <strong style="color:${contratado > 0 ? 'var(--primary)' : 'var(--text-muted)'}">${fmtMoney(contratado)}</strong>
+      <td class="number-cell text-right">
+        ${contratado > 0
+          ? `<strong style="cursor:pointer;border-bottom:1px dashed var(--primary);color:var(--primary)" onclick="openContratadoDetail('${projectId}','${r.id}')" title="Ver detalle de contratos">${fmtMoney(contratado)}</strong>`
+          : `<strong style="color:var(--text-muted)">${fmtMoney(contratado)}</strong>`}
       </td>
       <td class="number-cell text-right">
         <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','executed_external',${ejecutado})" title="Hacer clic para editar">
@@ -512,6 +514,59 @@ function openPresupuestoLog(projectId) {
   </table>
 </div>
   `, '', '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
+}
+
+function openContratadoDetail(projectId, rubroId) {
+  const rubro = DB.getById('rubros', rubroId);
+  const contracts = DB.getAll('contracts').filter(c => c.project_id === projectId && c.status !== 'cancelled');
+  const suppliers = DB.getAll('suppliers');
+
+  const itemRows = [];
+  let total = 0;
+  contracts.forEach(function(c) {
+    const sup = suppliers.find(s => s.id === c.contractor_id);
+    (c.items || []).forEach(function(item) {
+      if (item.rubro_id === rubroId) {
+        itemRows.push({ c, sup, item });
+        total += (item.total || 0);
+      }
+    });
+  });
+
+  const rows = itemRows.map(function(r) {
+    return '<tr>' +
+      '<td style="font-size:11px"><a href="#" onclick="renderContractDetail(\'' + r.c.id + '\');closeModal();return false" style="color:var(--primary);font-weight:600">' + r.c.number + '</a></td>' +
+      '<td style="font-size:11px">' + (r.sup ? r.sup.name : '—') + '</td>' +
+      '<td style="font-size:12px">' + (r.item.description || '—') + '</td>' +
+      '<td class="number-cell text-right" style="font-size:11px">' + (r.item.quantity || 0) + ' ' + (r.item.unit || '') + '</td>' +
+      '<td class="number-cell text-right" style="font-size:11px">' + fmtMoney(r.item.unit_price || 0) + '</td>' +
+      '<td class="number-cell text-right"><strong>' + fmtMoney(r.item.total || 0) + '</strong></td>' +
+    '</tr>';
+  }).join('');
+
+  openModal(
+    'Contratado: ' + (rubro ? rubro.code + ' — ' + rubro.name : ''),
+    '<div class="table-wrap" style="max-height:420px;overflow-y:auto">' +
+    '<table style="font-size:12px">' +
+      '<thead><tr>' +
+        '<th style="white-space:nowrap">Contrato</th>' +
+        '<th style="min-width:130px">Contratista</th>' +
+        '<th style="min-width:160px">Descripción ítem</th>' +
+        '<th class="text-right" style="white-space:nowrap">Cantidad</th>' +
+        '<th class="text-right" style="white-space:nowrap">P. Unit.</th>' +
+        '<th class="text-right" style="white-space:nowrap">Total</th>' +
+      '</tr></thead>' +
+      '<tbody>' +
+        (rows || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">Sin ítems contratados para esta partida</td></tr>') +
+      '</tbody>' +
+      '<tfoot><tr class="total-row">' +
+        '<td colspan="5"><strong>TOTAL CONTRATADO</strong></td>' +
+        '<td class="number-cell text-right"><strong style="color:var(--primary)">' + fmtMoney(total) + '</strong></td>' +
+      '</tr></tfoot>' +
+    '</table></div>',
+    '',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>'
+  );
 }
 
 function exportControlPresupuestal(projectId) {
