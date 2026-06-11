@@ -266,9 +266,9 @@ function renderControlPresupuestal(projectId) {
         </span>
       </td>
       <td class="number-cell text-right">
-        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','prevision',${previsionBruta})" title="Hacer clic para editar">
-          ${previsionBruta !== 0
-            ? `<span style="color:${previsionBruta > 0 ? 'var(--warning)' : 'var(--success)'}">${previsionBruta > 0 ? '+' : ''}${fmtMoney(previsionBruta)}</span>`
+        <span style="${editStyle}" onclick="editPartidaValue('${projectId}','${r.id}','prevision',${previsionBruta})" title="${previsionBruta !== previsionEfectiva ? 'Bruta: ' + fmtMoney(previsionBruta) + ' − Contratado: ' + fmtMoney(contratado) + ' = Efectiva: ' + fmtMoney(previsionEfectiva) : 'Hacer clic para editar'}">
+          ${previsionEfectiva !== 0 || previsionBruta !== 0
+            ? `<span style="color:${previsionEfectiva > 0 ? 'var(--warning)' : previsionEfectiva < 0 ? 'var(--success)' : 'var(--text-muted)'}">${previsionEfectiva > 0 ? '+' : ''}${fmtMoney(previsionEfectiva)}</span>${previsionBruta !== previsionEfectiva ? `<br><span style="font-size:10px;color:var(--text-muted)">(orig. ${fmtMoney(previsionBruta)})</span>` : ''}`
             : '<span style="color:var(--border)">—</span>'}
         </span>
       </td>
@@ -292,6 +292,7 @@ function renderControlPresupuestal(projectId) {
         <input type="checkbox" id="seg-show-empty" onchange="toggleEmptyPartidas(this.checked)">
         Mostrar partidas sin datos
       </label>
+      <button class="btn btn-sm btn-ghost" onclick="openPresupuestoLog('${projectId}')"><i class="fas fa-history"></i> Historial</button>
       <button class="btn btn-sm btn-secondary" onclick="exportControlPresupuestal('${projectId}')"><i class="fas fa-download"></i> Exportar</button>
     </div>
   </div>
@@ -357,8 +358,37 @@ function editPartidaValue(projectId, rubroId, field, current) {
   const hints = {
     budget_amount: 'Importe base presupuestado para esta partida (sin ajuste por índice).',
     executed_external: 'Costos devengados que no forman parte de ningún contrato (ej. compras directas, facturas sueltas).',
-    prevision: 'Estimación de costos futuros sin contratar. Positivo = demasía esperada. Negativo = economía. Se reduce automáticamente al contratar.'
+    prevision: 'Ingresá la previsión bruta total. La previsión efectiva se calcula restando el monto ya contratado.'
   };
+
+  // For prevision: compute contratado to show the effective breakdown
+  let previsionExtra = '';
+  if (field === 'prevision') {
+    const contracts = DB.getAll('contracts').filter(c => c.project_id === projectId && c.status !== 'cancelled');
+    let contratadoRubro = 0;
+    contracts.forEach(c => {
+      (c.items || []).forEach(item => {
+        if (item.rubro_id === rubroId) contratadoRubro += (item.total || 0);
+      });
+    });
+    const efectiva = Math.max(0, current - contratadoRubro);
+    previsionExtra = contratadoRubro > 0
+      ? `<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:6px;font-size:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="color:var(--text-muted)">Previsión bruta (ingresada):</span>
+            <strong id="pv-bruta-display">${fmtMoney(current)}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="color:var(--text-muted)">Contratado para esta partida:</span>
+            <span style="color:var(--primary)">− ${fmtMoney(contratadoRubro)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
+            <strong>Previsión efectiva resultante:</strong>
+            <strong id="pv-efectiva-display" style="color:var(--warning)">${fmtMoney(efectiva)}</strong>
+          </div>
+        </div>`
+      : '';
+  }
 
   openModal(`${labels[field]}`, `
 <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
@@ -366,14 +396,30 @@ function editPartidaValue(projectId, rubroId, field, current) {
 </div>
 <div class="form-group">
   <label class="form-label">${labels[field]}</label>
-  <input class="form-control" id="pv-value" type="number" value="${current}" step="1000" style="font-size:16px">
+  <input class="form-control" id="pv-value" type="number" value="${current}" step="1000" style="font-size:16px" oninput="_updatePrevisionPreview(this.value,'${rubroId}','${projectId}')">
   <div style="font-size:11px;color:var(--text-muted);margin-top:6px"><i class="fas fa-info-circle"></i> ${hints[field]}</div>
 </div>
+${previsionExtra}
   `, '', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="savePartidaValue('${projectId}','${rubroId}','${field}')"><i class="fas fa-save"></i> Guardar</button>
   `);
   setTimeout(function() { document.getElementById('pv-value') && document.getElementById('pv-value').focus(); }, 100);
+}
+
+function _updatePrevisionPreview(val, rubroId, projectId) {
+  const bruta = parseFloat(val) || 0;
+  const contracts = DB.getAll('contracts').filter(c => c.project_id === projectId && c.status !== 'cancelled');
+  let contratado = 0;
+  contracts.forEach(c => {
+    (c.items || []).forEach(item => {
+      if (item.rubro_id === rubroId) contratado += (item.total || 0);
+    });
+  });
+  const ef = document.getElementById('pv-efectiva-display');
+  const br = document.getElementById('pv-bruta-display');
+  if (ef) ef.textContent = fmtMoney(Math.max(0, bruta - contratado));
+  if (br) br.textContent = fmtMoney(bruta);
 }
 
 function savePartidaValue(projectId, rubroId, field) {
@@ -382,6 +428,8 @@ function savePartidaValue(projectId, rubroId, field) {
   const value = parseFloat(val.value) || 0;
 
   const existing = DB.getAll('presupuestoPartidas').find(p => p.project_id === projectId && p.rubro_id === rubroId);
+  const oldValue = existing ? (existing[field] || 0) : 0;
+
   if (existing) {
     const upd = {};
     upd[field] = value;
@@ -391,6 +439,17 @@ function savePartidaValue(projectId, rubroId, field) {
     rec[field] = value;
     DB.insert('presupuestoPartidas', rec);
   }
+
+  // Log the change
+  DB.insert('presupuestoLog', {
+    project_id: projectId,
+    rubro_id: rubroId,
+    field,
+    old_value: oldValue,
+    new_value: value,
+    timestamp: new Date().toISOString(),
+    user: (window.APP_STATE && window.APP_STATE.currentUser && window.APP_STATE.currentUser.name) || '—',
+  });
 
   toast('Guardado', 'success');
   closeModal();
@@ -410,6 +469,49 @@ function updatePartidaIndex(projectId, rubroId, indexId) {
 function refreshSeguimientoPartidas(projectId) {
   const container = document.getElementById('seg-partidas-container');
   if (container) container.innerHTML = renderControlPresupuestal(projectId);
+}
+
+function openPresupuestoLog(projectId) {
+  const logs = DB.getAll('presupuestoLog')
+    .filter(l => l.project_id === projectId)
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const rubros = DB.getAll('rubros');
+  const rubroMap = {};
+  rubros.forEach(r => { rubroMap[r.id] = r; });
+  const fieldLabels = { budget_amount: 'Monto Ppto.', executed_external: 'Ejec. ext.', prevision: 'Previsión' };
+
+  const rows = logs.length ? logs.map(function(l) {
+    const r = rubroMap[l.rubro_id];
+    const diff = (l.new_value || 0) - (l.old_value || 0);
+    return '<tr>' +
+      '<td style="white-space:nowrap;font-size:11px">' + new Date(l.timestamp).toLocaleString('es-AR') + '</td>' +
+      '<td style="font-size:11px">' + (r ? '<strong>' + r.code + '</strong> ' + r.name : l.rubro_id) + '</td>' +
+      '<td><span class="badge badge-blue" style="font-size:10px">' + (fieldLabels[l.field] || l.field) + '</span></td>' +
+      '<td class="number-cell text-right" style="color:var(--text-muted)">' + fmtMoney(l.old_value || 0) + '</td>' +
+      '<td class="number-cell text-right"><strong>' + fmtMoney(l.new_value || 0) + '</strong></td>' +
+      '<td class="number-cell text-right" style="color:' + (diff > 0 ? 'var(--danger)' : diff < 0 ? 'var(--success)' : 'var(--text-muted)') + ';font-size:11px">' +
+        (diff > 0 ? '+' : '') + fmtMoney(diff) +
+      '</td>' +
+      '<td style="font-size:11px">' + (l.user || '—') + '</td>' +
+    '</tr>';
+  }).join('') : '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">Sin cambios registrados aún. Los cambios se registran automáticamente al guardar.</td></tr>';
+
+  openModal('Historial de Cambios Presupuestales', `
+<div class="table-wrap" style="max-height:420px;overflow-y:auto">
+  <table style="font-size:12px">
+    <thead><tr>
+      <th style="white-space:nowrap">Fecha / Hora</th>
+      <th style="min-width:160px">Partida</th>
+      <th>Campo</th>
+      <th class="text-right">Valor Anterior</th>
+      <th class="text-right">Valor Nuevo</th>
+      <th class="text-right">Variación</th>
+      <th>Usuario</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</div>
+  `, '', '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
 }
 
 function exportControlPresupuestal(projectId) {
