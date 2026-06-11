@@ -86,6 +86,14 @@
       <input type="checkbox" id="login-remember"> Mantener sesión iniciada
     </label>
 
+    <!-- Force update button -->
+    <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <button type="button" onclick="forceClearCache()"
+              style="background:none;border:none;font-size:11px;color:#94a3b8;cursor:pointer;padding:4px 8px;text-decoration:underline">
+        <i class="fas fa-rotate" style="margin-right:4px"></i>Limpiar caché y actualizar app
+      </button>
+    </div>
+
   </div>
 </div>
 
@@ -523,7 +531,7 @@
 <script src="js/modules/libro_iva.js?v=1"></script>
 <script src="js/modules/apu.js?v=5"></script>
 <script src="js/modules/rrhh.js?v=1"></script>
-<script src="js/app.js?v=26"></script>
+<script src="js/app.js?v=27"></script>
 
 <!-- Mobile FAB nav button — shows only on mobile when sidebar is closed -->
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">
@@ -556,14 +564,41 @@
 
 <script>
 if ('serviceWorker' in navigator) {
+  // Reload immediately when new SW activates and notifies us
   navigator.serviceWorker.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'SW_UPDATED') {
       window.location.reload();
     }
   });
+
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js')
-      .then(function(r) { console.log('[SW] registered', r.scope); })
+    // updateViaCache:'none' forces browser to bypass HTTP cache when checking sw.js
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(function(reg) {
+        console.log('[SW] registered', reg.scope);
+
+        // Mobile PWA: when app comes back to foreground, force SW update check
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible') {
+            reg.update();
+            // If a new SW is already waiting, tell it to activate now
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+          }
+        });
+
+        // Also handle if a new SW arrives after page load
+        reg.addEventListener('updatefound', function() {
+          var newSW = reg.installing;
+          if (!newSW) return;
+          newSW.addEventListener('statechange', function() {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              newSW.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      })
       .catch(function(e) { console.warn('[SW] error', e); });
   });
 }
