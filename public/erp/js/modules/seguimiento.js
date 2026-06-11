@@ -210,7 +210,6 @@ function renderControlPresupuestal(projectId) {
 
   let totBudget = 0, totAjustado = 0, totContratado = 0, totEjecutado = 0, totPrevision = 0, totCosto = 0, totSaldo = 0;
 
-  // ARS number helper: colorType = 'blue'|'green'|'red'|'muted'|''
   function arsNum(v, colorType) {
     const n = Math.abs(v);
     const sign = v < 0 ? '−' : '';
@@ -223,12 +222,12 @@ function renderControlPresupuestal(projectId) {
     return 'onclick="editPartidaValue(\'' + pid + '\',\'' + rid + '\',\'' + field + '\',' + val + ')" style="cursor:pointer"';
   }
 
-  let rowIdx = 0;
-  const rows = rubros.map(r => {
+  // Compute per-rubro values
+  const rubroData = rubros.map(function(r) {
     const p = partidaMap[r.id] || {};
     const budgetAmt = p.budget_amount || 0;
     const indexId = p.index_id || '';
-    const idx = indices.find(i => i.id === indexId);
+    const idx = indices.find(function(i) { return i.id === indexId; });
     const factor = (idx && idx.base_value) ? (idx.current_value / idx.base_value) : 1;
     const presupuestoAjustado = budgetAmt * factor;
     const contratado = contratoMap[r.id] || 0;
@@ -247,64 +246,106 @@ function renderControlPresupuestal(projectId) {
     totCosto += costoTotal;
     totSaldo += saldo;
 
-    rowIdx++;
-    const rowBg = rowIdx % 2 === 0 ? '#ffffff' : '#f8f9fb';
+    return { r, p, budgetAmt, indexId, idx, factor, presupuestoAjustado, contratado, ejecutado, previsionBruta, previsionEfectiva, costoTotal, saldo, hasData };
+  });
 
-    const emptyEdit = '<span style="color:#cbd5e1;font-size:12px"><i class="fas fa-plus-circle"></i></span>';
-    const idxSel = '<select style="font-size:11px;padding:2px 6px;height:26px;border:1px solid #e2e8f0;border-radius:5px;background:#fff;min-width:76px;color:' + (indexId ? '#1e293b' : '#94a3b8') + '" onchange="updatePartidaIndex(\'' + projectId + '\',\'' + r.id + '\',this.value)">' +
-      '<option value="" style="color:#94a3b8">Sin valor</option>' +
-      indices.map(i => '<option value="' + i.id + '"' + (indexId === i.id ? ' selected' : '') + '>' + i.code + '</option>').join('') +
-      '</select>';
+  // Group rubros by category
+  const groups = [];
+  const seenCats = {};
+  rubroData.forEach(function(rd) {
+    const cat = rd.r.category || 'Sin Categoría';
+    if (!seenCats[cat]) {
+      seenCats[cat] = { cat: cat, items: [], tB: 0, tA: 0, tC: 0, tE: 0, tP: 0, tCost: 0, tS: 0 };
+      groups.push(seenCats[cat]);
+    }
+    const g = seenCats[cat];
+    g.items.push(rd);
+    g.tB    += rd.budgetAmt;
+    g.tA    += rd.presupuestoAjustado;
+    g.tC    += rd.contratado;
+    g.tE    += rd.ejecutado;
+    g.tP    += rd.previsionEfectiva;
+    g.tCost += rd.costoTotal;
+    g.tS    += rd.saldo;
+  });
 
-    const prevTip = previsionBruta !== previsionEfectiva
-      ? 'Bruta: ' + fmtMoney(previsionBruta) + ' − Contratado: ' + fmtMoney(contratado) + ' = Efectiva: ' + fmtMoney(previsionEfectiva)
-      : 'Editar previsión';
-    const prevCell = (previsionEfectiva !== 0 || previsionBruta !== 0)
-      ? '<span ' + editIcon(projectId, r.id, 'prevision', previsionBruta) + ' title="' + prevTip + '">' +
-          arsNum(previsionEfectiva, previsionEfectiva > 0 ? 'blue' : 'muted') +
-          (previsionBruta !== previsionEfectiva ? '<br><span style="font-size:10px;color:#94a3b8">(orig. ' + fmtMoney(previsionBruta) + ')</span>' : '') +
-        '</span>'
-      : '<span ' + editIcon(projectId, r.id, 'prevision', 0) + ' title="Editar previsión">' + emptyEdit + '</span>';
+  const P = 'padding:9px 12px';
+  const emptyEdit = '<span style="color:#cbd5e1;font-size:12px"><i class="fas fa-plus-circle"></i></span>';
+  let rows = '';
 
-    const P = 'padding:9px 12px';
-    return '<tr data-has-data="' + (hasData ? '1' : '0') + '" style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;' + (!hasData ? 'display:none' : '') + '">' +
-      '<td style="' + P + ';text-align:center;color:#94a3b8;font-size:12px;width:36px">' + rowIdx + '</td>' +
-      '<td style="' + P + ';width:56px"><strong style="font-family:monospace;font-size:11px;color:#2563eb">' + r.code + '</strong></td>' +
-      '<td style="' + P + ';min-width:170px;font-size:13px;color:#1e293b">' + r.name + '</td>' +
-      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
-        '<span ' + editIcon(projectId, r.id, 'budget_amount', budgetAmt) + ' title="Editar monto">' +
-          (budgetAmt ? arsNum(budgetAmt, 'blue') : emptyEdit) +
-        '</span>' +
+  groups.forEach(function(g, gi) {
+    const gId = 'cpg' + gi;
+
+    // Category header row
+    rows += '<tr class="cp-cat-row" data-gid="' + gId + '" onclick="toggleCatRows(\'' + gId + '\')" style="cursor:pointer;background:#edf2fc;border-bottom:2px solid #d1ddf7">' +
+      '<td style="' + P + ';width:38px;text-align:center">' +
+        '<i id="chev-' + gId + '" class="fas fa-chevron-right" style="color:#2563eb;font-size:10px;transition:transform .2s;pointer-events:none"></i>' +
       '</td>' +
-      '<td style="' + P + ';text-align:center">' + idxSel + '</td>' +
-      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
-        (budgetAmt
-          ? (idx && factor !== 1
-              ? '<span title="Factor ' + factor.toFixed(4) + '">' + arsNum(presupuestoAjustado) + '</span>'
-              : arsNum(presupuestoAjustado))
-          : '<span style="color:#e2e8f0">—</span>') +
-      '</td>' +
-      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
-        (contratado > 0
-          ? '<span style="cursor:pointer" onclick="openContratadoDetail(\'' + projectId + '\',\'' + r.id + '\')" title="Ver detalle">' + arsNum(contratado, 'blue') + '</span>'
-          : '<span style="color:#cbd5e1;font-size:12px">' + arsNum(0, 'muted') + '</span>') +
-      '</td>' +
-      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
-        '<span ' + editIcon(projectId, r.id, 'executed_external', ejecutado) + ' title="Editar ejecutado">' +
-          (ejecutado ? arsNum(ejecutado, 'blue') : emptyEdit) +
-        '</span>' +
-      '</td>' +
-      '<td style="' + P + ';text-align:right;white-space:nowrap">' + prevCell + '</td>' +
-      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
-        (costoTotal > 0
-          ? arsNum(costoTotal, costoTotal > presupuestoAjustado && presupuestoAjustado > 0 ? 'red' : '')
-          : '<span style="color:#94a3b8;font-size:12px">' + arsNum(0, 'muted') + '</span>') +
-      '</td>' +
-      '<td style="' + P + ';text-align:right;white-space:nowrap">' +
-        arsNum(saldo, saldo > 0 ? 'green' : saldo < 0 ? 'red' : 'muted') +
-      '</td>' +
+      '<td style="' + P + '"><strong style="font-family:monospace;font-size:13px;color:#2563eb">' + (gi + 1) + '</strong></td>' +
+      '<td style="' + P + ';font-size:13px;font-weight:700;color:#1e293b">' + g.cat + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tB ? arsNum(g.tB, 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + P + ';text-align:center;color:#94a3b8;font-size:11px">—</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tA ? arsNum(g.tA) : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tC > 0 ? arsNum(g.tC, 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tE > 0 ? arsNum(g.tE, 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tP > 0 ? arsNum(g.tP, 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tCost > 0 ? arsNum(g.tCost, g.tCost > g.tA && g.tA > 0 ? 'red' : '') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + arsNum(g.tS, g.tS > 0 ? 'green' : g.tS < 0 ? 'red' : 'muted') + '</td>' +
     '</tr>';
-  }).join('');
+
+    // Child rows (hidden by default)
+    g.items.forEach(function(rd) {
+      const r = rd.r;
+      const idxSel = '<select style="font-size:11px;padding:2px 6px;height:26px;border:1px solid #e2e8f0;border-radius:5px;background:#fff;min-width:76px;color:' + (rd.indexId ? '#1e293b' : '#94a3b8') + '" onchange="updatePartidaIndex(\'' + projectId + '\',\'' + r.id + '\',this.value)">' +
+        '<option value="" style="color:#94a3b8">Sin valor</option>' +
+        indices.map(function(i) { return '<option value="' + i.id + '"' + (rd.indexId === i.id ? ' selected' : '') + '>' + i.code + '</option>'; }).join('') +
+        '</select>';
+
+      const prevTip = rd.previsionBruta !== rd.previsionEfectiva
+        ? 'Bruta: ' + fmtMoney(rd.previsionBruta) + ' − Contratado: ' + fmtMoney(rd.contratado) + ' = Efectiva: ' + fmtMoney(rd.previsionEfectiva)
+        : 'Editar previsión';
+      const prevCell = (rd.previsionEfectiva !== 0 || rd.previsionBruta !== 0)
+        ? '<span ' + editIcon(projectId, r.id, 'prevision', rd.previsionBruta) + ' title="' + prevTip + '">' +
+            arsNum(rd.previsionEfectiva, rd.previsionEfectiva > 0 ? 'blue' : 'muted') +
+            (rd.previsionBruta !== rd.previsionEfectiva ? '<br><span style="font-size:10px;color:#94a3b8">(orig. ' + fmtMoney(rd.previsionBruta) + ')</span>' : '') +
+          '</span>'
+        : '<span ' + editIcon(projectId, r.id, 'prevision', 0) + ' title="Editar previsión">' + emptyEdit + '</span>';
+
+      rows += '<tr class="cp-child cp-child-' + gId + '" data-has-data="' + (rd.hasData ? '1' : '0') + '" style="display:none;background:#fff;border-bottom:1px solid #f1f5f9">' +
+        '<td style="padding:8px 12px;text-align:center;color:#d1ddf7;font-size:13px;font-weight:300">└</td>' +
+        '<td style="padding:8px 12px"><strong style="font-family:monospace;font-size:11px;color:#64748b">' + r.code + '</strong></td>' +
+        '<td style="padding:8px 12px 8px 24px;font-size:12px;color:#374151">' + r.name + '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' +
+          '<span ' + editIcon(projectId, r.id, 'budget_amount', rd.budgetAmt) + ' title="Editar monto">' +
+            (rd.budgetAmt ? arsNum(rd.budgetAmt, 'blue') : emptyEdit) +
+          '</span>' +
+        '</td>' +
+        '<td style="padding:8px 12px;text-align:center">' + idxSel + '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' +
+          (rd.budgetAmt
+            ? (rd.idx && rd.factor !== 1 ? '<span title="Factor ' + rd.factor.toFixed(4) + '">' + arsNum(rd.presupuestoAjustado) + '</span>' : arsNum(rd.presupuestoAjustado))
+            : '<span style="color:#e2e8f0">—</span>') +
+        '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' +
+          (rd.contratado > 0
+            ? '<span style="cursor:pointer" onclick="openContratadoDetail(\'' + projectId + '\',\'' + r.id + '\')" title="Ver detalle">' + arsNum(rd.contratado, 'blue') + '</span>'
+            : '<span style="color:#cbd5e1">' + arsNum(0, 'muted') + '</span>') +
+        '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' +
+          '<span ' + editIcon(projectId, r.id, 'executed_external', rd.ejecutado) + ' title="Editar ejecutado">' +
+            (rd.ejecutado ? arsNum(rd.ejecutado, 'blue') : emptyEdit) +
+          '</span>' +
+        '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' + prevCell + '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' +
+          (rd.costoTotal > 0
+            ? arsNum(rd.costoTotal, rd.costoTotal > rd.presupuestoAjustado && rd.presupuestoAjustado > 0 ? 'red' : '')
+            : '<span style="color:#94a3b8">' + arsNum(0, 'muted') + '</span>') +
+        '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' + arsNum(rd.saldo, rd.saldo > 0 ? 'green' : rd.saldo < 0 ? 'red' : 'muted') + '</td>' +
+      '</tr>';
+    });
+  });
 
   const hasContracts = contracts.some(c => (c.items || []).some(it => it.rubro_id));
 
@@ -327,21 +368,26 @@ function renderControlPresupuestal(projectId) {
   ).join('');
 
   const thStyle = 'padding:10px 12px;text-align:right;color:#64748b;font-weight:600;font-size:11px;white-space:nowrap;border-bottom:2px solid #e2e8f0;background:#f1f5f9';
-  const thLeft = thStyle.replace('text-align:right', 'text-align:left');
-  const thCtr = thStyle.replace('text-align:right', 'text-align:center');
+  const thLeft  = thStyle.replace('text-align:right', 'text-align:left');
+  const thCtr   = thStyle.replace('text-align:right', 'text-align:center');
   const tfStyle = 'padding:11px 12px;text-align:right;white-space:nowrap;background:#f1f5f9;border-top:2px solid #e2e8f0';
 
   return `
 <style>
-#tabla-cp tbody tr:hover { background:#eef4ff !important; }
-#tabla-cp select:focus { outline:none; border-color:#2563eb; }
+#tabla-cp .cp-cat-row:hover { background:#dce7f7 !important; }
+#tabla-cp .cp-child:hover   { background:#f0f5ff !important; }
+#tabla-cp select:focus      { outline:none; border-color:#2563eb; }
 </style>
 <div style="padding:2px 0 16px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-    <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px">
-      <input type="checkbox" id="seg-show-empty" onchange="toggleEmptyPartidas(this.checked)">
-      Mostrar partidas sin datos
-    </label>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px">
+        <input type="checkbox" id="seg-show-empty" onchange="toggleEmptyPartidas(this.checked)">
+        Mostrar partidas sin datos
+      </label>
+      <button class="btn btn-sm btn-ghost" onclick="expandAllCats()" style="font-size:12px"><i class="fas fa-expand-alt"></i> Expandir todo</button>
+      <button class="btn btn-sm btn-ghost" onclick="collapseAllCats()" style="font-size:12px"><i class="fas fa-compress-alt"></i> Colapsar todo</button>
+    </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-sm btn-ghost" onclick="openPresupuestoLog('${projectId}')"><i class="fas fa-history"></i> Historial</button>
       <button class="btn btn-sm btn-secondary" onclick="exportControlPresupuestal('${projectId}')"><i class="fas fa-download"></i> Exportar</button>
@@ -361,9 +407,9 @@ function renderControlPresupuestal(projectId) {
       <table id="tabla-cp" style="width:100%;border-collapse:collapse;min-width:980px">
         <thead>
           <tr>
-            <th style="${thCtr};width:36px">#</th>
+            <th style="${thCtr};width:38px"></th>
             <th style="${thLeft};width:58px">Cód.</th>
-            <th style="${thLeft};min-width:170px">Partida</th>
+            <th style="${thLeft};min-width:180px">Categoría / Partida</th>
             <th style="${thStyle}">Monto Ppto.</th>
             <th style="${thCtr}">Índice act.</th>
             <th style="${thStyle}">Ppto. Ajustado</th>
@@ -391,16 +437,65 @@ function renderControlPresupuestal(projectId) {
       </table>
     </div>
     <div style="padding:7px 14px;background:#f8fafc;border-top:1px solid #f1f5f9;font-size:10px;color:#94a3b8">
-      <i class="fas fa-pencil-alt" style="color:#2563eb"></i> Clic en <i class="fas fa-plus-circle"></i> o en un valor para editar. <strong>Contratado</strong> se suma automáticamente desde los contratos. <strong>Previsión</strong> se reduce al contratar.
+      <i class="fas fa-chevron-right" style="color:#2563eb;font-size:9px"></i> Clic en categoría para expandir/colapsar partidas.
+      <i class="fas fa-pencil-alt" style="color:#2563eb;margin-left:6px"></i> Clic en <i class="fas fa-plus-circle"></i> o en un valor para editar.
+      <strong>Contratado</strong> se suma automáticamente desde los contratos.
     </div>
   </div>
 </div>
   `;
 }
 
+function toggleCatRows(gId) {
+  var chev = document.getElementById('chev-' + gId);
+  var catRow = document.querySelector('.cp-cat-row[data-gid="' + gId + '"]');
+  var isOpen = catRow && catRow.classList.contains('cat-open');
+  var children = document.querySelectorAll('.cp-child-' + gId);
+  var showEmpty = document.getElementById('seg-show-empty');
+  if (isOpen) {
+    children.forEach(function(tr) { tr.style.display = 'none'; });
+    if (catRow) catRow.classList.remove('cat-open');
+    if (chev) chev.style.transform = '';
+  } else {
+    children.forEach(function(tr) {
+      if (tr.dataset.hasData === '1' || (showEmpty && showEmpty.checked)) tr.style.display = '';
+    });
+    if (catRow) catRow.classList.add('cat-open');
+    if (chev) chev.style.transform = 'rotate(90deg)';
+  }
+}
+
 function toggleEmptyPartidas(show) {
-  document.querySelectorAll('#partidas-tbody tr[data-has-data="0"]').forEach(function(tr) {
-    tr.style.display = show ? 'table-row' : 'none';
+  document.querySelectorAll('#partidas-tbody .cp-child[data-has-data="0"]').forEach(function(tr) {
+    var cls = Array.from(tr.classList).find(function(c) { return c.startsWith('cp-child-cpg'); });
+    if (!cls) return;
+    var gId = cls.replace('cp-child-', '');
+    var catRow = document.querySelector('.cp-cat-row[data-gid="' + gId + '"]');
+    var catOpen = catRow && catRow.classList.contains('cat-open');
+    tr.style.display = (show && catOpen) ? '' : 'none';
+  });
+}
+
+function expandAllCats() {
+  var showEmpty = document.getElementById('seg-show-empty');
+  document.querySelectorAll('#partidas-tbody .cp-cat-row').forEach(function(catRow) {
+    var gId = catRow.dataset.gid;
+    catRow.classList.add('cat-open');
+    var chev = document.getElementById('chev-' + gId);
+    if (chev) chev.style.transform = 'rotate(90deg)';
+    document.querySelectorAll('.cp-child-' + gId).forEach(function(tr) {
+      if (tr.dataset.hasData === '1' || (showEmpty && showEmpty.checked)) tr.style.display = '';
+    });
+  });
+}
+
+function collapseAllCats() {
+  document.querySelectorAll('#partidas-tbody .cp-cat-row').forEach(function(catRow) {
+    var gId = catRow.dataset.gid;
+    catRow.classList.remove('cat-open');
+    var chev = document.getElementById('chev-' + gId);
+    if (chev) chev.style.transform = '';
+    document.querySelectorAll('.cp-child-' + gId).forEach(function(tr) { tr.style.display = 'none'; });
   });
 }
 
