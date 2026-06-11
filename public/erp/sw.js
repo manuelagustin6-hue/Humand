@@ -1,9 +1,10 @@
-/* ERP Construcción — Service Worker */
-const CACHE = 'erp-v1';
+/* ERP Construcción — Service Worker v2 */
+const CACHE = 'erp-v2';
 const SHELL = [
   './',
   './index.html',
   './css/main.css',
+  './js/db.js',
   './js/utils.js',
   './js/app.js',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
@@ -23,27 +24,30 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Network first for same-origin JS modules (always fresh), cache fallback for everything else
   const url = new URL(e.request.url);
   const isSameOrigin = url.origin === self.location.origin;
-  const isModule = url.pathname.includes('/js/modules/');
 
-  if (isModule) {
+  // Network-first for ALL same-origin requests (always fresh content)
+  if (isSameOrigin) {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
+      fetch(e.request).then(res => {
+        if (res.ok) {
+          caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+        }
+        return res;
+      }).catch(() => caches.match(e.request))
     );
     return;
   }
 
+  // Cache-first for CDN resources (stable third-party assets)
   e.respondWith(
     caches.match(e.request).then(cached => {
-      const net = fetch(e.request).then(res => {
-        if (res.ok && isSameOrigin) {
-          caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-        }
+      if (cached) return cached;
+      return fetch(e.request).then(res => {
+        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         return res;
       });
-      return cached || net;
     })
   );
 });
