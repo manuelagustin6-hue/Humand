@@ -67,8 +67,8 @@ function _licListView() {
           ? '<span style="' + (overdue ? 'color:#ef4444;font-weight:600' : '') + '">' + fmtDate(l.deadline) + (overdue ? ' ⚠' : '') + '</span>'
           : '—';
         return '<tr>' +
-          '<td><strong>' + esc(l.title || '—') + '</strong></td>' +
-          '<td style="font-size:12px;color:var(--text-muted)">' + (proj ? esc(proj.name) : '—') + '</td>' +
+          '<td><strong>' + escapeHtml(l.title || '—') + '</strong></td>' +
+          '<td style="font-size:12px;color:var(--text-muted)">' + (proj ? escapeHtml(proj.name) : '—') + '</td>' +
           '<td>' + deadlineHtml + '</td>' +
           '<td style="text-align:center">' +
             '<span style="font-size:12px;font-weight:600;color:#3b82f6">' + invs.length + '</span>' +
@@ -180,8 +180,8 @@ function _licDetailView(id) {
           '</button>' +
           _licBadge(lic.status) +
         '</div>' +
-        '<div class="page-title">' + esc(lic.title || 'Sin título') + '</div>' +
-        (lic.description ? '<div class="page-subtitle">' + esc(lic.description) + '</div>' : '') +
+        '<div class="page-title">' + escapeHtml(lic.title || 'Sin título') + '</div>' +
+        (lic.description ? '<div class="page-subtitle">' + escapeHtml(lic.description) + '</div>' : '') +
       '</div>' +
       '<div class="page-actions" style="flex-wrap:wrap">' + actionBtns + '</div>' +
     '</div>' +
@@ -198,7 +198,7 @@ function _licDetailView(id) {
       '<i class="fas fa-gavel"></i>' +
       '<span onclick="licBackToList()" style="cursor:pointer;color:var(--primary)">Licitaciones</span>' +
       '<i class="fas fa-chevron-right" style="font-size:10px;margin:0 4px;color:var(--text-light)"></i>' +
-      '<span>' + esc(lic.title || 'Detalle') + '</span>';
+      '<span>' + escapeHtml(lic.title || 'Detalle') + '</span>';
   }
 }
 
@@ -240,11 +240,11 @@ function _licTabResumen(lic) {
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">' +
           '<div>' +
             '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Proyecto</div>' +
-            '<div style="font-size:14px;font-weight:500">' + (proj ? esc(proj.name) : '—') + '</div>' +
+            '<div style="font-size:14px;font-weight:500">' + (proj ? escapeHtml(proj.name) : '—') + '</div>' +
           '</div>' +
           '<div>' +
             '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">ODP de Origen</div>' +
-            '<div style="font-size:14px;font-weight:500">' + (odp ? esc(odp.number || odp.id) : '—') + '</div>' +
+            '<div style="font-size:14px;font-weight:500">' + (odp ? escapeHtml(odp.number || odp.id) : '—') + '</div>' +
           '</div>' +
           '<div>' +
             '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Fecha Límite</div>' +
@@ -268,10 +268,10 @@ function _licTabResumen(lic) {
         '<tbody>' +
         items.map(function(it) {
           return '<tr>' +
-            '<td><strong>' + esc(it.description || '—') + '</strong></td>' +
+            '<td><strong>' + escapeHtml(it.description || '—') + '</strong></td>' +
             '<td style="text-align:center">' + (it.quantity || '—') + '</td>' +
-            '<td>' + esc(it.unit || '—') + '</td>' +
-            '<td style="font-size:12px;color:var(--text-muted)">' + esc(it.specs || '—') + '</td>' +
+            '<td>' + escapeHtml(it.unit || '—') + '</td>' +
+            '<td style="font-size:12px;color:var(--text-muted)">' + escapeHtml(it.specs || '—') + '</td>' +
           '</tr>';
         }).join('') +
         '</tbody></table></div>';
@@ -313,8 +313,8 @@ function _licTabInvitaciones(lic) {
 
         return '<tr>' +
           '<td>' +
-            '<div style="font-weight:600;font-size:13px">' + esc(inv.supplier_name || (sup ? sup.name : '—')) + '</div>' +
-            '<div style="font-size:11px;color:var(--text-muted)">' + esc(inv.email || '') + '</div>' +
+            '<div style="font-weight:600;font-size:13px">' + escapeHtml(inv.supplier_name || (sup ? sup.name : '—')) + '</div>' +
+            '<div style="font-size:11px;color:var(--text-muted)">' + escapeHtml(inv.email || '') + '</div>' +
           '</td>' +
           '<td>' + _invBadge(inv.status || 'invited') + '</td>' +
           '<td style="font-size:12px;color:var(--text-muted)">' + fmtDate(inv.invited_date) + '</td>' +
@@ -377,11 +377,11 @@ function _licTabCotizaciones(lic) {
     var itemsRows = items.map(function(it) {
       var itTotal = it.total || (it.unit_price || 0) * (it.quantity || 1);
       return '<tr>' +
-        '<td>' + esc(it.description || '—') + '</td>' +
+        '<td>' + escapeHtml(it.description || '—') + '</td>' +
         '<td class="number-cell">' + fmtMoney(it.unit_price || 0) + '</td>' +
         '<td class="number-cell">' + fmtMoney(itTotal) + '</td>' +
         '<td style="text-align:center">' + (it.delivery_days || '—') + ' días</td>' +
-        '<td style="font-size:12px;color:var(--text-muted)">' + esc(it.payment_terms || '—') + '</td>' +
+        '<td style="font-size:12px;color:var(--text-muted)">' + escapeHtml(it.payment_terms || '—') + '</td>' +
       '</tr>';
     }).join('');
 
@@ -389,7 +389,7 @@ function _licTabCotizaciones(lic) {
       '<div class="card-body">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">' +
           '<div>' +
-            '<div style="font-size:15px;font-weight:700">' + esc(supplierName) + '</div>' +
+            '<div style="font-size:15px;font-weight:700">' + escapeHtml(supplierName) + '</div>' +
             '<div style="font-size:12px;color:var(--text-muted)">Enviado: ' + fmtDate(cot.submitted_date || cot.created_at) + '</div>' +
           '</div>' +
           '<div style="font-size:18px;font-weight:800;color:var(--primary)">' + fmtMoney(total) + '</div>' +
@@ -403,7 +403,7 @@ function _licTabCotizaciones(lic) {
           '</table>' +
         '</div>' +
         (cot.general_notes ? '<div style="margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px;color:var(--text-muted)">' +
-          '<i class="fas fa-comment" style="margin-right:6px"></i>' + esc(cot.general_notes) +
+          '<i class="fas fa-comment" style="margin-right:6px"></i>' + escapeHtml(cot.general_notes) +
         '</div>' : '') +
       '</div>' +
     '</div>';
@@ -448,7 +448,7 @@ function _licTabComparativa(lic) {
     });
 
     return '<tr>' +
-      '<td style="font-weight:500">' + esc(item.description || '—') + '</td>' +
+      '<td style="font-weight:500">' + escapeHtml(item.description || '—') + '</td>' +
       cells.join('') +
     '</tr>';
   });
@@ -465,7 +465,7 @@ function _licTabComparativa(lic) {
 
   var headerCells = cots.map(function(cot) {
     return '<th style="text-align:center;min-width:160px">' +
-      '<div style="font-weight:700">' + esc(cot.supplier_name || '—') + '</div>' +
+      '<div style="font-weight:700">' + escapeHtml(cot.supplier_name || '—') + '</div>' +
     '</th>';
   }).join('');
 
@@ -559,11 +559,11 @@ function _licTabAprobacion(lic) {
     return '<div style="display:flex;align-items:flex-start;gap:14px;padding:16px;border:1px solid ' + border + ';border-radius:var(--radius);margin-bottom:10px;background:' + (done && done.approved ? '#f0fdf4' : done && !done.approved ? '#fef2f2' : '#fff') + '">' +
       '<div style="font-size:24px;color:' + iconColor + ';flex-shrink:0;margin-top:2px"><i class="fas ' + iconClass + '"></i></div>' +
       '<div style="flex:1">' +
-        '<div style="font-weight:700;font-size:14px">' + esc(step.label) + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted)">' + esc(step.role) + '</div>' +
+        '<div style="font-weight:700;font-size:14px">' + escapeHtml(step.label) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted)">' + escapeHtml(step.role) + '</div>' +
         (done ? '<div style="font-size:12px;margin-top:4px;color:' + (done.approved ? '#16a34a' : '#dc2626') + '">' +
           (done.approved ? 'Aprobado' : 'Rechazado') +
-          (done.approver ? ' por <strong>' + esc(done.approver) + '</strong>' : '') +
+          (done.approver ? ' por <strong>' + escapeHtml(done.approver) + '</strong>' : '') +
           (done.date ? ' — ' + fmtDate(done.date) : '') +
         '</div>' : '') +
       '</div>' +
@@ -584,7 +584,7 @@ function _licTabAprobacion(lic) {
     '<div style="padding:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius);margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
       '<div>' +
         '<div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Proveedor Seleccionado</div>' +
-        '<div style="font-size:16px;font-weight:800;color:#1e40af">' + esc(winnerCot.supplier_name || '—') + '</div>' +
+        '<div style="font-size:16px;font-weight:800;color:#1e40af">' + escapeHtml(winnerCot.supplier_name || '—') + '</div>' +
       '</div>' +
       '<div style="text-align:right">' +
         '<div style="font-size:11px;color:#1e40af;font-weight:600">Monto total ofertado</div>' +
@@ -621,7 +621,7 @@ function _licFormView(id) {
 
   var projectOpts = '<option value="">Sin proyecto</option>' +
     projects.map(function(p) {
-      return '<option value="' + p.id + '"' + ((lic && lic.project_id === p.id) ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+      return '<option value="' + p.id + '"' + ((lic && lic.project_id === p.id) ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
     }).join('');
 
   var itemsHtml = items.map(function(it, i) {
@@ -647,7 +647,7 @@ function _licFormView(id) {
         '<div class="form-grid form-grid-2" style="margin-bottom:16px">' +
           '<div class="form-group" style="grid-column:1/-1">' +
             '<label class="form-label">Título *</label>' +
-            '<input class="form-control" id="lic-f-title" placeholder="Ej: Licitación materiales eléctricos..." value="' + esc(lic ? (lic.title || '') : '') + '">' +
+            '<input class="form-control" id="lic-f-title" placeholder="Ej: Licitación materiales eléctricos..." value="' + escapeHtml(lic ? (lic.title || '') : '') + '">' +
           '</div>' +
           '<div class="form-group">' +
             '<label class="form-label">Proyecto</label>' +
@@ -659,11 +659,11 @@ function _licFormView(id) {
           '</div>' +
           '<div class="form-group">' +
             '<label class="form-label">ODP de Origen</label>' +
-            '<input class="form-control" id="lic-f-odp" readonly value="' + (odp ? esc(odp.number || odp.id) : (lic && lic.odp_ref ? esc(lic.odp_ref) : '')) + '" style="background:var(--bg);color:var(--text-muted)">' +
+            '<input class="form-control" id="lic-f-odp" readonly value="' + (odp ? escapeHtml(odp.number || odp.id) : (lic && lic.odp_ref ? escapeHtml(lic.odp_ref) : '')) + '" style="background:var(--bg);color:var(--text-muted)">' +
           '</div>' +
           '<div class="form-group" style="grid-column:1/-1">' +
             '<label class="form-label">Descripción</label>' +
-            '<textarea class="form-control" id="lic-f-desc" rows="3" placeholder="Descripción general de la licitación...">' + esc(lic ? (lic.description || '') : '') + '</textarea>' +
+            '<textarea class="form-control" id="lic-f-desc" rows="3" placeholder="Descripción general de la licitación...">' + escapeHtml(lic ? (lic.description || '') : '') + '</textarea>' +
           '</div>' +
         '</div>' +
 
@@ -697,10 +697,10 @@ function _licFormView(id) {
 
 function _licItemRow(it, i) {
   return '<div id="lic-item-row-' + i + '" style="display:grid;grid-template-columns:2.5fr 80px 80px 2fr 34px;gap:6px;margin-bottom:8px;align-items:center">' +
-    '<input class="form-control" style="font-size:12px" placeholder="Descripción del ítem" value="' + esc(it.description || '') + '" oninput="window._licFormItems[' + i + '].description=this.value">' +
+    '<input class="form-control" style="font-size:12px" placeholder="Descripción del ítem" value="' + escapeHtml(it.description || '') + '" oninput="window._licFormItems[' + i + '].description=this.value">' +
     '<input class="form-control" style="font-size:12px;text-align:center" type="number" min="0" value="' + (it.quantity || 1) + '" oninput="window._licFormItems[' + i + '].quantity=+this.value">' +
-    '<input class="form-control" style="font-size:12px" placeholder="un" value="' + esc(it.unit || 'un') + '" oninput="window._licFormItems[' + i + '].unit=this.value">' +
-    '<input class="form-control" style="font-size:12px" placeholder="Especificaciones técnicas..." value="' + esc(it.specs || '') + '" oninput="window._licFormItems[' + i + '].specs=this.value">' +
+    '<input class="form-control" style="font-size:12px" placeholder="un" value="' + escapeHtml(it.unit || 'un') + '" oninput="window._licFormItems[' + i + '].unit=this.value">' +
+    '<input class="form-control" style="font-size:12px" placeholder="Especificaciones técnicas..." value="' + escapeHtml(it.specs || '') + '" oninput="window._licFormItems[' + i + '].specs=this.value">' +
     '<button class="btn-ghost btn danger" onclick="_licRemoveItem(' + i + ')"><i class="fas fa-times"></i></button>' +
   '</div>';
 }
@@ -830,7 +830,7 @@ function licAgregarProveedor(licId) {
     suppliers.map(function(s) {
       var alreadyInvited = invitedIds.indexOf(s.id) !== -1;
       return '<option value="' + s.id + '"' + (alreadyInvited ? ' disabled' : '') + '>' +
-        esc(s.name) + (alreadyInvited ? ' (ya invitado)' : '') +
+        escapeHtml(s.name) + (alreadyInvited ? ' (ya invitado)' : '') +
       '</option>';
     }).join('');
 

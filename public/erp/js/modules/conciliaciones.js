@@ -90,7 +90,7 @@ function _concDropzoneHtml(type, title, hint, icon, color, fileName, loaded) {
     '<div style="font-size:36px;color:' + (loaded ? color : '#94a3b8') + ';margin-bottom:12px"><i class="fas ' + icon + '"></i></div>' +
     '<div style="font-weight:700;font-size:15px;margin-bottom:6px;color:' + (loaded ? color : 'var(--text)') + '">' + title + '</div>' +
     (loaded
-      ? '<div style="font-size:12px;color:' + color + ';font-weight:600"><i class="fas fa-check-circle"></i> ' + esc(fileName) + '</div>'
+      ? '<div style="font-size:12px;color:' + color + ';font-weight:600"><i class="fas fa-check-circle"></i> ' + escapeHtml(fileName) + '</div>'
       : '<div style="font-size:12px;color:var(--text-muted)">' + hint + '<br><span style="font-size:11px;opacity:.7">Arrastrá o hacé click</span></div>'
     ) +
   '</div>';
@@ -390,8 +390,8 @@ function _concMatchedTable(matched) {
       '</td>' +
       '<td><span style="font-size:11px;font-weight:700;color:' + typeColor + '">' + typeLabel + '</span></td>' +
       '<td style="font-weight:700;text-align:right">' + fmtMoney(m.system.amount) + '</td>' +
-      '<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(m.system.desc) + '">' + esc(m.system.desc || '—') + '</td>' +
-      '<td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(m.bank.desc) + '">' + esc(m.bank.desc || '—') + '</td>' +
+      '<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(m.system.desc) + '">' + escapeHtml(m.system.desc || '—') + '</td>' +
+      '<td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(m.bank.desc) + '">' + escapeHtml(m.bank.desc || '—') + '</td>' +
       '<td style="text-align:center">' +
         '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:' + (isFuzzy?'#fef3c7':'#f0fdf4') + ';color:' + (isFuzzy?'#92400e':'#166534') + '">' +
           (isFuzzy ? '±1 día' : 'Exacto') +
@@ -430,8 +430,8 @@ function _concBankOnlyTable(rows) {
       '<td style="font-size:12px;font-weight:600">' + fmtDate(r.date) + '</td>' +
       '<td><span style="font-size:11px;font-weight:700;color:' + typeColor + '">' + typeLabel + '</span></td>' +
       '<td style="font-weight:700;text-align:right;color:' + typeColor + '">' + fmtMoney(r.amount) + '</td>' +
-      '<td style="font-size:12px">' + esc(r.desc || '—') + '</td>' +
-      '<td style="font-size:11px;color:var(--text-muted)">' + esc(r.concepto || '—') + '</td>' +
+      '<td style="font-size:12px">' + escapeHtml(r.desc || '—') + '</td>' +
+      '<td style="font-size:11px;color:var(--text-muted)">' + escapeHtml(r.concepto || '—') + '</td>' +
       '<td style="font-size:12px;text-align:right;color:var(--text-muted)">' + (r.saldo ? fmtMoney(r.saldo) : '—') + '</td>' +
     '</tr>';
   }).join('');
@@ -471,9 +471,9 @@ function _concSystemOnlyTable(rows) {
       '<td style="font-size:12px;font-weight:600">' + fmtDate(r.date) + '</td>' +
       '<td><span style="font-size:11px;font-weight:700;color:' + typeColor + '">' + typeLabel + '</span></td>' +
       '<td style="font-weight:700;text-align:right;color:' + typeColor + '">' + fmtMoney(r.amount) + '</td>' +
-      '<td style="font-size:12px">' + esc(r.desc || '—') + '</td>' +
-      '<td style="font-size:12px;color:var(--text-muted)">' + esc(r.ref || '—') + '</td>' +
-      '<td style="font-size:11px;color:var(--text-muted)">' + esc(r.account || '—') + '</td>' +
+      '<td style="font-size:12px">' + escapeHtml(r.desc || '—') + '</td>' +
+      '<td style="font-size:12px;color:var(--text-muted)">' + escapeHtml(r.ref || '—') + '</td>' +
+      '<td style="font-size:11px;color:var(--text-muted)">' + escapeHtml(r.account || '—') + '</td>' +
     '</tr>';
   }).join('');
 
