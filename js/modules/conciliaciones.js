@@ -243,24 +243,73 @@ function _concNormalizeDate(val) {
   return s.substring(0, 10);
 }
 
+/* ─── FEE GROUPING (Argentine bank taxes) ─── */
+// Lines matching these keywords are bank fees/taxes that belong to the
+// preceding main transaction on the same date (Galicia FEA format).
+var _CONC_FEE_KW = [
+  'imp. deb', 'imp deb', 'imp.deb', 'impuesto deb',
+  'imp. cre', 'imp cre', 'imp.cre', 'impuesto cre',
+  ' iva', '^iva',
+  'comision', 'comisión', 'comis.',
+  'sellado'
+];
+
+function _concIsFee(row) {
+  var text = ((row.desc || '') + ' ' + (row.concepto || '')).toLowerCase();
+  return _CONC_FEE_KW.some(function(k) {
+    return k.charAt(0) === '^' ? text.indexOf(k.slice(1)) === 0 : text.indexOf(k) !== -1;
+  });
+}
+
+// Groups fee lines with the preceding main transaction on the same date.
+// Returns a new array of rows where each main row has:
+//   _fees: [feeRow, ...]   (bundled fee rows)
+//   _grossAmount: number   (amount + sum of fees — used for matching)
+function _concGroupBankFees(rows) {
+  var result = [];
+  var lastMain = null;
+
+  rows.forEach(function(row) {
+    if (_concIsFee(row)) {
+      if (lastMain && lastMain.date === row.date) {
+        lastMain._fees.push(row);
+        lastMain._feeTotal += row.amount;
+        lastMain._grossAmount += row.amount;
+      } else {
+        // No parent on this date — keep standalone, mark as fee
+        var standalone = Object.assign({}, row, { _isFee: true, _fees: [], _feeTotal: 0, _grossAmount: row.amount });
+        result.push(standalone);
+      }
+    } else {
+      var grouped = Object.assign({}, row, { _fees: [], _feeTotal: 0, _grossAmount: row.amount });
+      result.push(grouped);
+      lastMain = grouped;
+    }
+  });
+
+  return result;
+}
+
 /* ─── RECONCILIATION ALGORITHM ─── */
 function _concRun() {
   var sys  = _concState.systemRows.slice();
-  var bank = _concState.bankRows.slice();
+  // Group bank fee lines with their parent transaction before matching
+  var bank = _concGroupBankFees(_concState.bankRows.slice());
 
   var matched   = [];
   var usedSys   = {};
   var usedBank  = {};
 
-  // Pass 1 — exact date + type + amount (tolerance 0.01)
+  // Pass 1 — exact date + type + gross amount (tolerance 0.01)
   bank.forEach(function(bRow, bi) {
+    if (bRow._isFee) return; // standalone fees skip main matching passes
+    var bAmt = bRow._grossAmount;
     for (var si = 0; si < sys.length; si++) {
       if (usedSys[si]) continue;
       var sRow = sys[si];
       if (sRow.type !== bRow.type) continue;
       if (sRow.date !== bRow.date) continue;
-      if (Math.abs(sRow.amount - bRow.amount) > 0.01) continue;
-      // Match found
+      if (Math.abs(sRow.amount - bAmt) > 0.01) continue;
       matched.push({ system: sRow, bank: bRow, matchType: 'exact' });
       usedSys[si] = true;
       usedBank[bi] = true;
@@ -268,16 +317,33 @@ function _concRun() {
     }
   });
 
-  // Pass 2 — fuzzy: ±1 day, same type, same amount
+  // Pass 2 — fuzzy ±1 day, same type, gross amount
   bank.forEach(function(bRow, bi) {
-    if (usedBank[bi]) return;
+    if (usedBank[bi] || bRow._isFee) return;
+    var bAmt = bRow._grossAmount;
+    for (var si = 0; si < sys.length; si++) {
+      if (usedSys[si]) continue;
+      var sRow = sys[si];
+      if (sRow.type !== bRow.type) continue;
+      if (Math.abs(sRow.amount - bAmt) > 0.01) continue;
+      if (!_concDateWithin(sRow.date, bRow.date, 1)) continue;
+      matched.push({ system: sRow, bank: bRow, matchType: 'fuzzy' });
+      usedSys[si] = true;
+      usedBank[bi] = true;
+      break;
+    }
+  });
+
+  // Pass 3 — net amount fallback (match without fees, for systems that record net)
+  bank.forEach(function(bRow, bi) {
+    if (usedBank[bi] || bRow._isFee) return;
     for (var si = 0; si < sys.length; si++) {
       if (usedSys[si]) continue;
       var sRow = sys[si];
       if (sRow.type !== bRow.type) continue;
       if (Math.abs(sRow.amount - bRow.amount) > 0.01) continue;
       if (!_concDateWithin(sRow.date, bRow.date, 1)) continue;
-      matched.push({ system: sRow, bank: bRow, matchType: 'fuzzy' });
+      matched.push({ system: sRow, bank: bRow, matchType: 'net' });
       usedSys[si] = true;
       usedBank[bi] = true;
       break;
@@ -306,12 +372,14 @@ function _concResultHtml() {
   var totalBank     = r.onlyBank.length;
   var totalSystem   = r.onlySystem.length;
 
-  var matchedAmt  = r.matched.reduce(function(s, m) { return s + m.bank.amount; }, 0);
-  var bankAmt     = r.onlyBank.reduce(function(s, m) { return s + m.amount; }, 0);
+  var matchedAmt  = r.matched.reduce(function(s, m) { return s + m.bank._grossAmount; }, 0);
+  var bankAmt     = r.onlyBank.reduce(function(s, m) { return s + (m._grossAmount || m.amount); }, 0);
   var systemAmt   = r.onlySystem.reduce(function(s, m) { return s + m.amount; }, 0);
 
   var exactCount  = r.matched.filter(function(m) { return m.matchType === 'exact'; }).length;
   var fuzzyCount  = r.matched.filter(function(m) { return m.matchType === 'fuzzy'; }).length;
+  var netCount    = r.matched.filter(function(m) { return m.matchType === 'net'; }).length;
+  var groupedCount = r.matched.filter(function(m) { return m.bank._fees && m.bank._fees.length > 0; }).length;
 
   var tab = _concState.activeTab;
 
@@ -338,12 +406,25 @@ function _concResultHtml() {
     '</div></div>' +
   '</div>' +
 
-  // Fuzzy notice
+  // Info notices
+  (groupedCount > 0 ?
+    '<div style="padding:10px 14px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:var(--radius);margin-bottom:8px;font-size:12px;color:#5b21b6">' +
+      '<i class="fas fa-layer-group" style="margin-right:6px"></i>' +
+      '<strong>' + groupedCount + ' movimiento' + (groupedCount>1?'s':'') + ' agrupado' + (groupedCount>1?'s':'') + ' con impuestos bancarios.</strong> ' +
+      'Los importes de Imp. Deb./Cre. e IVA fueron sumados al movimiento principal para la comparación.' +
+    '</div>'
+  : '') +
   (fuzzyCount > 0 ?
-    '<div style="padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius);margin-bottom:14px;font-size:12px;color:#92400e">' +
+    '<div style="padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius);margin-bottom:8px;font-size:12px;color:#92400e">' +
       '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
       '<strong>' + fuzzyCount + ' movimiento' + (fuzzyCount>1?'s':'') + ' conciliado' + (fuzzyCount>1?'s':'') + ' con diferencia de fecha (±1 día).</strong> ' +
       'Verificá que correspondan al mismo movimiento.' +
+    '</div>'
+  : '') +
+  (netCount > 0 ?
+    '<div style="padding:10px 14px;background:#ede9fe;border:1px solid #c4b5fd;border-radius:var(--radius);margin-bottom:8px;font-size:12px;color:#5b21b6">' +
+      '<i class="fas fa-info-circle" style="margin-right:6px"></i>' +
+      '<strong>' + netCount + ' movimiento' + (netCount>1?'s':'') + ' conciliado' + (netCount>1?'s':'') + ' por monto neto</strong> (sin impuestos).' +
     '</div>'
   : '') +
 
@@ -382,19 +463,38 @@ function _concMatchedTable(matched) {
 
   var rows = matched.map(function(m) {
     var isFuzzy = m.matchType === 'fuzzy';
+    var isNet   = m.matchType === 'net';
     var typeColor = m.system.type === 'debit' ? '#ef4444' : '#22c55e';
     var typeLabel = m.system.type === 'debit' ? 'Egreso' : 'Ingreso';
-    return '<tr style="' + (isFuzzy ? 'background:#fffbeb' : '') + '">' +
+    var hasFees = m.bank._fees && m.bank._fees.length > 0;
+    var feeHtml = hasFees
+      ? '<div style="font-size:10px;color:#7c3aed;margin-top:2px" title="' +
+          m.bank._fees.map(function(f){ return escapeHtml(f.desc) + ': ' + fmtMoney(f.amount); }).join(' | ') + '">' +
+          '<i class="fas fa-layer-group" style="margin-right:3px"></i>' +
+          m.bank._fees.length + ' imp. agrupado' + (m.bank._fees.length > 1 ? 's' : '') +
+          ' (' + fmtMoney(m.bank._feeTotal) + ')' +
+        '</div>'
+      : '';
+    var matchBg  = isFuzzy ? '#fffbeb' : isNet ? '#f5f3ff' : '';
+    var badgeBg  = isFuzzy ? '#fef3c7' : isNet ? '#ede9fe' : '#f0fdf4';
+    var badgeClr = isFuzzy ? '#92400e' : isNet ? '#5b21b6' : '#166534';
+    var badgeTxt = isFuzzy ? '±1 día' : isNet ? 'Neto' : 'Exacto';
+    return '<tr style="background:' + matchBg + '">' +
       '<td style="font-size:12px;font-weight:600">' + fmtDate(m.system.date) +
         (m.bank.date !== m.system.date ? '<div style="font-size:10px;color:#f59e0b">Banco: ' + fmtDate(m.bank.date) + '</div>' : '') +
       '</td>' +
       '<td><span style="font-size:11px;font-weight:700;color:' + typeColor + '">' + typeLabel + '</span></td>' +
-      '<td style="font-weight:700;text-align:right">' + fmtMoney(m.system.amount) + '</td>' +
+      '<td style="font-weight:700;text-align:right">' + fmtMoney(m.system.amount) +
+        (hasFees ? '<div style="font-size:10px;color:var(--text-muted)">Banco: ' + fmtMoney(m.bank._grossAmount) + '</div>' : '') +
+      '</td>' +
       '<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(m.system.desc) + '">' + escapeHtml(m.system.desc || '—') + '</td>' +
-      '<td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(m.bank.desc) + '">' + escapeHtml(m.bank.desc || '—') + '</td>' +
+      '<td style="font-size:12px;color:var(--text-muted);max-width:180px">' +
+        '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(m.bank.desc) + '">' + escapeHtml(m.bank.desc || '—') + '</div>' +
+        feeHtml +
+      '</td>' +
       '<td style="text-align:center">' +
-        '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:' + (isFuzzy?'#fef3c7':'#f0fdf4') + ';color:' + (isFuzzy?'#92400e':'#166534') + '">' +
-          (isFuzzy ? '±1 día' : 'Exacto') +
+        '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:' + badgeBg + ';color:' + badgeClr + '">' +
+          badgeTxt +
         '</span>' +
       '</td>' +
     '</tr>';
