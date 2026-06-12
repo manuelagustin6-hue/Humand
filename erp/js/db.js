@@ -213,39 +213,50 @@ const DB = {
   // Call on startup. Returns true if Supabase was reachable, false if offline.
   load: async function() {
     var cid = this._companyId;
-    try {
-      var remoteData = await _SUPA.pull(cid);
-      var isEmpty = Object.keys(remoteData).length === 0;
+    // Hard timeout: never hang the boot loader more than 8 seconds
+    var self = this;
+    var loadPromise = (async function() {
+      try {
+        var remoteData = await _SUPA.pull(cid);
+        var isEmpty = Object.keys(remoteData).length === 0;
 
-      if (isEmpty) {
-        // First time: seed Supabase with current localStorage data (or default seed)
-        var localRaw = localStorage.getItem(this.KEY);
-        var localData = localRaw ? JSON.parse(localRaw) : this.seed();
-        for (var col in localData) {
-          if (Array.isArray(localData[col]) && localData[col].length) {
-            await _SUPA.pushCollection(cid, col, localData[col]);
-          }
+        if (isEmpty) {
+          // First time: seed Supabase in background — don't block startup
+          var localRaw = localStorage.getItem(self.KEY);
+          var localData = localRaw ? JSON.parse(localRaw) : self.seed();
+          remoteData = localData;
+          // Fire-and-forget push so app starts immediately
+          (async function() {
+            for (var col in localData) {
+              if (Array.isArray(localData[col]) && localData[col].length) {
+                try { await _SUPA.pushCollection(cid, col, localData[col]); } catch(e) {}
+              }
+            }
+          })().catch(function() {});
         }
-        remoteData = localData;
+
+        // Save Supabase data to localStorage (authoritative source)
+        localStorage.setItem(self.KEY, JSON.stringify(remoteData));
+        _SUPA.online = true;
+
+        console.log('[DB] Supabase conectado ✓ (' + Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0) + ' registros)');
+        _SUPA.subscribe(cid, function(payload) { DB._onRealtimeChange(payload); });
+        return true;
+      } catch(e) {
+        console.warn('[DB] Supabase no disponible, usando localStorage:', e.message);
+        _SUPA.online = false;
+        if (!localStorage.getItem(self.KEY)) self.init();
+        return false;
       }
-
-      // Save Supabase data to localStorage (authoritative source)
-      localStorage.setItem(this.KEY, JSON.stringify(remoteData));
-      _SUPA.online = true;
-
-      // Show connection indicator
-      console.log('[DB] Supabase conectado ✓ (' + Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0) + ' registros)');
-
-      // Subscribe to real-time changes from other users
-      _SUPA.subscribe(cid, function(payload) { DB._onRealtimeChange(payload); });
-
-      return true;
-    } catch(e) {
-      console.warn('[DB] Supabase no disponible, usando localStorage:', e.message);
-      _SUPA.online = false;
-      if (!localStorage.getItem(this.KEY)) this.init();
-      return false;
-    }
+    })();
+    var timeoutPromise = new Promise(function(resolve) {
+      setTimeout(function() {
+        console.warn('[DB] Timeout — iniciando sin Supabase');
+        _SUPA.online = false;
+        resolve(false);
+      }, 8000);
+    });
+    return Promise.race([loadPromise, timeoutPromise]);
   },
 
   // Handle real-time updates from other users
