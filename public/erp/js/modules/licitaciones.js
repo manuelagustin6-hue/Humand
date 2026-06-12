@@ -53,12 +53,15 @@ function _licListView() {
 
   var today = todayStr();
 
+  var allInvs = DB.getAll('lic_invitaciones');
+  var allCots = DB.getAll('lic_cotizaciones');
+
   var rows = lics.length === 0
     ? '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-gavel"></i><p>No hay licitaciones registradas. Creá la primera.</p></div></td></tr>'
     : lics.slice().sort(function(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); }).map(function(l) {
         var proj = projects.find(function(p) { return p.id === l.project_id; });
-        var invs = DB.getAll('lic_invitaciones').filter(function(i) { return i.lic_id === l.id; });
-        var cots = DB.getAll('lic_cotizaciones').filter(function(c) { return c.lic_id === l.id; });
+        var invs = allInvs.filter(function(i) { return i.lic_id === l.id; });
+        var cots = allCots.filter(function(c) { return c.lic_id === l.id; });
         var overdue = l.deadline && l.deadline < today && l.status === 'active';
         var deadlineHtml = l.deadline
           ? '<span style="' + (overdue ? 'color:#ef4444;font-weight:600' : '') + '">' + fmtDate(l.deadline) + (overdue ? ' ⚠' : '') + '</span>'
@@ -365,7 +368,8 @@ function _licTabCotizaciones(lic) {
   }
 
   return cots.map(function(cot) {
-    var inv = invs.find(function(i) { return i.id === cot.inv_id || i.lic_id === lic.id && i.supplier_id === cot.supplier_id; });
+    var inv = invs.find(function(i) { return i.id === cot.inv_id; }) ||
+              (cot.supplier_id ? invs.find(function(i) { return i.supplier_id === cot.supplier_id; }) : null);
     var supplierName = cot.supplier_name || (inv ? inv.supplier_name : '—');
     var items = cot.items || [];
     var total = items.reduce(function(s, it) { return s + (it.total || (it.unit_price || 0) * ((it.quantity || 1))); }, 0);
@@ -722,6 +726,10 @@ function _licRemoveItem(i) {
 
 /* ─── licNueva ─── */
 function licNueva(odpId) {
+  if (typeof canView === 'function' && window.APP_STATE && window.APP_STATE.currentUser && !canView('licitaciones')) {
+    toast('Sin acceso: no tenés permiso para ver este módulo', 'warning');
+    return;
+  }
   _licState.view = 'form';
   _licState.licId = null;
   _licState.tab = 'resumen';
@@ -768,7 +776,7 @@ function licGuardar(id) {
   }
 
   window._licFormItems = [];
-  renderLicitaciones();
+  navigate('licitaciones');
 }
 
 /* ─── licActivar ─── */
@@ -809,7 +817,7 @@ function licBackToList() {
   _licState.tab = 'resumen';
   _licState._odpId = null;
   window._licFormItems = [];
-  renderLicitaciones();
+  navigate('licitaciones');
 }
 
 /* ─── licAgregarProveedor ─── */
@@ -981,8 +989,17 @@ function licAdjudicar(licId, cotId) {
 function licAprobarStep(licId, key, approved) {
   var lic = DB.getById('licitaciones', licId);
   if (!lic) return;
+  if (lic.status === 'awarded' || lic.status === 'cancelled') {
+    toast('Esta licitación ya fue ' + (lic.status === 'awarded' ? 'adjudicada' : 'cancelada') + ' y no puede modificarse.', 'warning');
+    return;
+  }
+  var existingVote = (lic.approvals || []).find(function(a) { return a.key === key; });
+  if (existingVote) {
+    toast('Este paso ya fue votado y no puede modificarse.', 'warning');
+    return;
+  }
 
-  var approvals = (lic.approvals || []).filter(function(a) { return a.key !== key; });
+  var approvals = (lic.approvals || []).slice();
   var currentUser = (window.APP_STATE && window.APP_STATE.currentUser && window.APP_STATE.currentUser.name) || 'Sistema';
 
   approvals.push({
@@ -1072,7 +1089,7 @@ function licGenerarOC(licId) {
     tax: 0,
     total: total,
     status: 'draft',
-    notes: 'Generada desde licitación: ' + esc(lic.title || licId),
+    notes: 'Generada desde licitación: ' + (lic.title || licId),
     lic_id: licId
   });
 
