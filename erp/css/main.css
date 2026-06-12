@@ -50,6 +50,7 @@ body {
   line-height: 1.5;
   overflow: hidden;
   height: 100vh;
+  height: 100dvh;
   -webkit-font-smoothing: antialiased;
 }
 a { text-decoration: none; color: inherit; }
@@ -60,6 +61,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 #app {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -274,6 +276,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 #content {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 24px;
 }
 #content::-webkit-scrollbar { width: 5px; }

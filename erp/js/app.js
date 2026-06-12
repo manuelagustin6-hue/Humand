@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-11-v2';
+var APP_VERSION = '2026-06-12-v1';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -134,6 +134,8 @@ function navigate(module) {
       content.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error al cargar modulo: ' + e.message + '</p></div>';
       console.error(e);
     }
+    // Always reset scroll to top when switching modules
+    content.scrollTop = 0;
     // Read-only banner when user has view-only access for this module
     var existingBanner = document.getElementById('readonly-banner');
     if (existingBanner) existingBanner.remove();
