@@ -255,6 +255,7 @@ function exportCertSchedule() {
 
 // ---- CONTRACT DETAIL PAGE (full page, not modal) ----
 function renderContractDetail(id) {
+  var _c = document.getElementById('content'); if (_c) _c.scrollTop = 0;
   const contract = DB.getById('contracts', id);
   if (!contract) { renderContratos(); return; }
   const proj  = DB.getById('projects',  contract.project_id);

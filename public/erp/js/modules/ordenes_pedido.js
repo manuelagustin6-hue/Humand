@@ -136,6 +136,7 @@ window._currentODPId = null;
 function renderODPForm(id) {
   id = id || null;
   window._currentODPId = id;
+  var _c = document.getElementById('content'); if (_c) _c.scrollTop = 0;
   const odp = id ? DB.getById('purchaseRequests', id) : null;
   const projects = DB.getAll('projects');
   const activeProjectId = window.APP_STATE && window.APP_STATE.activeProject;

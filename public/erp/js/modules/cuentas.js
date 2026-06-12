@@ -255,6 +255,7 @@ function _cprovInitials(name) {
 function cprovOpenDetail(supplierId) {
   _cprovState.supplierId = supplierId;
   _cprovState.tab = 'actividad';
+  var _c = document.getElementById('content'); if (_c) _c.scrollTop = 0;
   var s = DB.getById('suppliers', supplierId);
   if (!s) return;
 

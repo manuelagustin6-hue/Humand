@@ -120,6 +120,7 @@ function filterProjects(q, status, type) {
 }
 
 function openProjectDetail(id) {
+  var _c = document.getElementById('content'); if (_c) _c.scrollTop = 0;
   const p = DB.getById('projects', id);
   if (!p) return;
   const tasks = DB.getAll('ganttTasks').filter(t => t.project_id === id);
