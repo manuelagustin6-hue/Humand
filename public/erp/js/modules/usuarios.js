@@ -49,6 +49,7 @@ const PERM_MODULES = [
     { id: 'cuentas_banco',   label: 'Cuentas Bancarias y Cajas' },
     { id: 'tesoreria',       label: 'Operaciones' },
     { id: 'cheques',         label: 'Cheques' },
+    { id: 'conciliaciones',  label: 'Conciliaciones Bancarias' },
   ]},
   { group: 'Contabilidad', items: [
     { id: 'contabilidad',    label: 'Contabilidad' },

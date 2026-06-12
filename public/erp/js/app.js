@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-12-v3';
+var APP_VERSION = '2026-06-12-v4';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -65,6 +65,7 @@ const MODULES = {
   cuentas_banco:   { title: 'Cuentas Bancarias y Cajas',     icon: 'fa-landmark',               render: renderCuentasBanco },
   tesoreria:       { title: 'Operaciones',                   icon: 'fa-arrows-left-right',      render: renderTesoreria },
   cheques:         { title: 'Cheques',                       icon: 'fa-money-check',            render: renderCheques },
+  conciliaciones:  { title: 'Conciliaciones Bancarias',      icon: 'fa-balance-scale',          render: renderConciliaciones },
 
   // Contabilidad
   contabilidad:    { title: 'Contabilidad',                  icon: 'fa-book-open',              render: renderContabilidad },
