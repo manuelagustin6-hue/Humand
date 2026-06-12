@@ -83,7 +83,7 @@ function renderLeads() {
       '</div>';
     }).join('') || '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px 8px">Sin oportunidades</div>';
 
-    return '<div style="min-width:220px;flex:1">' +
+    return '<div style="flex:none;width:220px;scroll-snap-align:start">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:8px 10px;background:var(--bg);border-radius:var(--radius-sm);border-bottom:2px solid ' + st.color + '">' +
         '<span style="font-size:12px;font-weight:700;color:' + st.color + '">' + st.label + '</span>' +
         '<span style="font-size:11px;color:var(--text-muted)">' + stageleads.length + (stageVal ? ' · ' + fmtMoney(stageVal) : '') + '</span>' +
@@ -100,7 +100,7 @@ function renderLeads() {
     '<button class="btn btn-primary" onclick="leadNuevo()"><i class="fas fa-plus"></i> Nuevo Lead</button>' +
     '</div>' +
 
-    '<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">' +
+    '<div class="stats-grid" style="margin-bottom:20px">' +
       '<div class="stat-card"><div class="stat-icon blue"><i class="fas fa-funnel-dollar"></i></div>' +
         '<div><div class="stat-value">' + active.length + '</div><div class="stat-label">En Pipeline</div></div></div>' +
       '<div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-calculator"></i></div>' +
@@ -117,7 +117,7 @@ function renderLeads() {
         '<button class="tab-btn" data-tab="tab-leads-lista" onclick="leadsSetTab(\'lista\')">Lista</button>' +
       '</div>' +
       '<div id="tab-leads-pipeline" class="tab-content active">' +
-        '<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 0 12px">' + boardCols + '</div>' +
+        '<div style="display:flex;gap:10px;overflow-x:auto;padding:4px 2px 16px;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity">' + boardCols + '</div>' +
       '</div>' +
       '<div id="tab-leads-lista" class="tab-content">' + _leadsListTable(leads) + '</div>' +
     '</div>';
