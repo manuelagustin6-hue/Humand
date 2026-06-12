@@ -212,7 +212,7 @@
         <div class="form-group">
           <label class="form-label">Forma de Pago</label>
           <select class="form-control" id="payment-terms">
-            <option value="">Selecioná una opción...</option>
+            <option value="">Seleccioná una opción...</option>
             <option value="Contado">Contado</option>
             <option value="30 días">30 días</option>
             <option value="60 días">60 días</option>
@@ -330,10 +330,17 @@
       if (existingCot) {
         _existingCotId = existingCot.record_id;
         document.getElementById('already-submitted').style.display = 'block';
-        // Pre-fill with existing data
         if (existingCot.data.payment_terms) document.getElementById('payment-terms').value = existingCot.data.payment_terms;
         if (existingCot.data.general_notes)  document.getElementById('general-notes').value  = existingCot.data.general_notes;
-        _items = existingCot.data.items || [];
+        // Build lookup map keyed by description to pre-fill prices regardless of item reordering
+        var prevByDesc = {};
+        (existingCot.data.items || []).forEach(function(it) {
+          if (it.description) prevByDesc[it.description] = it;
+        });
+        _items = (_lic.items || []).map(function(it) {
+          var prev = prevByDesc[it.description] || {};
+          return Object.assign({}, it, { unit_price: prev.unit_price || '', delivery_days: prev.delivery_days || '' });
+        });
       } else {
         _items = (_lic.items || []).map(function(it) { return Object.assign({ unit_price: '', delivery_days: '' }, it); });
       }
@@ -421,6 +428,10 @@
   };
 
   window.submitCotizacion = async function() {
+    if (_lic.status !== 'active') {
+      alert('Esta licitación ya no acepta cotizaciones.');
+      return;
+    }
     var btn = document.getElementById('submit-btn');
 
     // Collect items
