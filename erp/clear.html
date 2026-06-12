@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<title>Actualizando app…</title>
+<style>
+  body { margin:0; background:#0f172a; display:flex; align-items:center; justify-content:center;
+         min-height:100vh; font-family:system-ui,sans-serif; color:#e2e8f0; flex-direction:column; gap:16px; }
+  .icon { width:60px; height:60px; border-radius:16px; background:linear-gradient(135deg,#2563eb,#1d4ed8);
+          display:flex; align-items:center; justify-content:center; font-size:26px; }
+  .msg { font-size:15px; color:#94a3b8; }
+  .ok  { font-size:15px; color:#22c55e; display:none; }
+</style>
+</head>
+<body>
+<div class="icon">🏗️</div>
+<div id="msg" class="msg">⟳ Limpiando caché…</div>
+<div id="ok"  class="ok">✓ Listo — redirigiendo…</div>
+<script>
+(function() {
+  function go() {
+    document.getElementById('msg').style.display = 'none';
+    document.getElementById('ok').style.display  = 'block';
+    setTimeout(function() {
+      window.location.replace('./index.html?bust=' + Date.now());
+    }, 800);
+  }
+
+  try { localStorage.removeItem('erp_app_version'); } catch(e) {}
+  try { sessionStorage.clear(); } catch(e) {}
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then(function(regs) {
+        return Promise.all(regs.map(function(r) { return r.unregister(); }));
+      })
+      .then(function() {
+        if ('caches' in window) {
+          return caches.keys().then(function(keys) {
+            return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+          });
+        }
+      })
+      .then(go)
+      .catch(go);
+  } else {
+    go();
+  }
+})();
+</script>
+</body>
+</html>
