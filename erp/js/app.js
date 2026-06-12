@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-12-v2';
+var APP_VERSION = '2026-06-12-v3';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -80,7 +80,7 @@ const MODULES = {
   rrhh:            { title: 'RRHH — Empleados y Liquidaciones', icon: 'fa-hard-hat',              render: renderRRHH },
 
   // Stock
-  stock:           { title: 'Stock / Almén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
+  stock:           { title: 'Stock / Almacén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
 
   // Notas Crédito / Débito
   notas:           { title: 'Notas Cr./Déb.',                  icon: 'fa-file-circle-minus',      render: renderNotas },
@@ -313,7 +313,7 @@ function buildNotifPanel() {
     var coll = docCollections[ai.doc_type];
     var doc = coll ? DB.getById(coll, ai.doc_id) : null;
     var docNum = doc ? (doc.number || ai.doc_id) : ai.doc_id;
-    return '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--primary-muted)\'" onmouseout="this.style.background=\'\'">' +
+    return '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--primary-muted)\'" onmouseout="this.style.background=\'\'\'">' +
       '<div style="font-size:12px;font-weight:600"><i class="fas fa-clock text-warning" style="margin-right:6px"></i>' + typeLabel + ': ' + docNum + '</div>' +
       '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Paso: ' + stepName + '</div>' +
       '</div>';
