@@ -2,17 +2,41 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>ERP Construcción</title>
-  <link rel="stylesheet" href="css/main.css?v=15">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ERP Obra">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="ERP Obra">
+
+  <link rel="stylesheet" href="css/main.css?v=20">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <!-- Supabase JS SDK (real-time sync) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
+<!-- ===== BOOT LOADER ===== -->
+<div id="boot-loader" style="display:none;position:fixed;inset:0;background:#0f172a;z-index:99999;flex-direction:column;align-items:center;justify-content:center;gap:18px">
+  <div style="width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(37,99,235,.45)">
+    <i class="fas fa-hard-hat" style="font-size:26px;color:#fff"></i>
+  </div>
+  <div style="color:#e2e8f0;font-size:15px;font-weight:600;letter-spacing:-.2px">ConstructERP</div>
+  <div style="display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:13px">
+    <i class="fas fa-spinner fa-spin" style="font-size:14px"></i>
+    Conectando con el servidor…
+  </div>
+</div>
 <!-- ===== LOGIN SCREEN ===== -->
 <div id="login-screen" style="position:fixed;inset:0;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px">
   <div style="background:#ffffff;border-radius:20px;padding:40px 36px;width:420px;max-width:100%;box-shadow:0 24px 64px rgba(0,0,0,.45)">
@@ -62,6 +86,14 @@
       <input type="checkbox" id="login-remember"> Mantener sesión iniciada
     </label>
 
+    <!-- Force update button -->
+    <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <button type="button" onclick="forceClearCache()"
+              style="background:none;border:none;font-size:11px;color:#94a3b8;cursor:pointer;padding:4px 8px;text-decoration:underline">
+        <i class="fas fa-rotate" style="margin-right:4px"></i>Limpiar caché y actualizar app
+      </button>
+    </div>
+
   </div>
 </div>
 
@@ -104,6 +136,11 @@
             <li class="nav-item" data-module="ordenes_compra">
               <a href="#" onclick="navigate('ordenes_compra')">
                 <i class="fas fa-file-alt"></i><span>Órdenes de Compra</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="licitaciones">
+              <a href="#" onclick="navigate('licitaciones')">
+                <i class="fas fa-gavel"></i><span>Licitaciones</span>
               </a>
             </li>
           </ul>
@@ -183,6 +220,11 @@
             <li class="nav-item" data-module="seguimiento">
               <a href="#" onclick="navigate('seguimiento')">
                 <i class="fas fa-chart-line"></i><span>Control Presupuestal</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="minutas">
+              <a href="#" onclick="navigate('minutas')">
+                <i class="fas fa-clipboard-list"></i><span>Minutas de Reunión</span>
               </a>
             </li>
             <li class="nav-item" data-module="gantt">
@@ -297,6 +339,11 @@
                 <i class="fas fa-money-check"></i><span>Cheques</span>
               </a>
             </li>
+            <li class="nav-item" data-module="conciliaciones">
+              <a href="#" onclick="navigate('conciliaciones')">
+                <i class="fas fa-balance-scale"></i><span>Conciliaciones Bancarias</span>
+              </a>
+            </li>
           </ul>
         </li>
 
@@ -383,6 +430,11 @@
       </ul>
     </nav>
 
+    <!-- Sync status indicator -->
+    <div style="padding:6px 16px 2px;text-align:center">
+      <span id="sync-status" style="font-size:10px;color:#64748b;font-weight:500;letter-spacing:.3px">○ Conectando…</span>
+    </div>
+
     <div class="sidebar-footer">
       <div onclick="openProfileModal()" title="Mi perfil" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer">
         <div class="user-avatar" id="sidebar-user-avatar">A</div>
@@ -454,19 +506,20 @@
 <div id="toast-wrap"></div>
 
 <!-- SCRIPTS -->
-<script src="js/db.js?v=11"></script>
-<script src="js/utils.js?v=12"></script>
+<script src="js/db.js?v=17"></script>
+<script src="js/utils.js?v=13"></script>
 <script src="js/modules/dashboard.js?v=7"></script>
 <script src="js/modules/projects.js?v=6"></script>
-<script src="js/modules/compras.js?v=19"></script>
+<script src="js/modules/compras.js?v=23"></script>
+<script src="js/modules/ordenes_pedido.js?v=1"></script>
 <script src="js/modules/presupuesto.js?v=6"></script>
-<script src="js/modules/seguimiento.js?v=6"></script>
+<script src="js/modules/seguimiento.js?v=12"></script>
 <script src="js/modules/gantt.js?v=6"></script>
 <script src="js/modules/facturacion.js?v=11"></script>
 <script src="js/modules/cobranzas.js?v=6"></script>
 <script src="js/modules/tesoreria.js?v=6"></script>
-<script src="js/modules/contabilidad.js?v=8"></script>
-<script src="js/modules/rubros.js?v=7"></script>
+<script src="js/modules/contabilidad.js?v=12"></script>
+<script src="js/modules/rubros.js?v=9"></script>
 <script src="js/modules/certificaciones.js?v=6"></script>
 <script src="js/modules/ordenes_pago.js?v=8"></script>
 <script src="js/modules/retenciones.js?v=6"></script>
@@ -474,12 +527,13 @@
 <script src="js/modules/empresas.js?v=2"></script>
 <script src="js/modules/asientos.js?v=5"></script>
 <script src="js/modules/aprobaciones.js?v=2"></script>
-<script src="js/modules/contratos.js?v=7"></script>
+<script src="js/modules/contratos.js?v=9"></script>
+<script src="js/modules/minutas.js?v=1"></script>
 <script src="js/modules/reportes.js?v=6"></script>
-<script src="js/modules/usuarios.js?v=15"></script>
-<script src="js/modules/ajustes.js?v=6"></script>
-<script src="js/modules/nuevos.js?v=3"></script>
-<script src="js/modules/cuentas.js?v=4"></script>
+<script src="js/modules/usuarios.js?v=17"></script>
+<script src="js/modules/ajustes.js?v=8"></script>
+<script src="js/modules/nuevos.js?v=7"></script>
+<script src="js/modules/cuentas.js?v=5"></script>
 <script src="js/modules/bancos.js?v=1"></script>
 <script src="js/modules/ventas.js?v=4"></script>
 <script src="js/modules/stock.js?v=1"></script>
@@ -487,11 +541,56 @@
 <script src="js/modules/libro_iva.js?v=1"></script>
 <script src="js/modules/apu.js?v=5"></script>
 <script src="js/modules/rrhh.js?v=1"></script>
-<script src="js/app.js?v=22"></script>
+<script src="js/modules/licitaciones.js?v=2"></script>
+<script src="js/modules/conciliaciones.js?v=1"></script>
+<script src="js/app.js?v=30"></script>
 
 <!-- Mobile FAB nav button — shows only on mobile when sidebar is closed -->
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">
   <i class="fas fa-bars"></i>
 </button>
+
+
+<script>
+if ('serviceWorker' in navigator) {
+  // Reload immediately when new SW activates and notifies us
+  navigator.serviceWorker.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'SW_UPDATED') {
+      window.location.reload();
+    }
+  });
+
+  window.addEventListener('load', function() {
+    // updateViaCache:'none' forces browser to bypass HTTP cache when checking sw.js
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(function(reg) {
+        console.log('[SW] registered', reg.scope);
+
+        // Mobile PWA: when app comes back to foreground, force SW update check
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible') {
+            reg.update();
+            // If a new SW is already waiting, tell it to activate now
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+          }
+        });
+
+        // Also handle if a new SW arrives after page load
+        reg.addEventListener('updatefound', function() {
+          var newSW = reg.installing;
+          if (!newSW) return;
+          newSW.addEventListener('statechange', function() {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              newSW.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      })
+      .catch(function(e) { console.warn('[SW] error', e); });
+  });
+}
+</script>
 </body>
 </html>
