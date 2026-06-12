@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-12-v1';
+var APP_VERSION = '2026-06-12-v2';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -30,6 +30,7 @@ const MODULES = {
   compras:         { title: 'Compras',                        icon: 'fa-shopping-cart',          render: renderCompras },
   pedidos:         { title: 'Pedidos de Materiales',          icon: 'fa-clipboard-list',         render: renderPedidos },
   ordenes_compra:  { title: 'Ordenes de Compra',             icon: 'fa-file-alt',               render: renderOrdenesCompra },
+  licitaciones:    { title: 'Licitaciones',                   icon: 'fa-gavel',                  render: renderLicitaciones },
 
   // Proveedores
   cuentas_prov:    { title: 'Cuentas Corrientes Proveedores', icon: 'fa-building-columns',       render: renderCuentasProv },
