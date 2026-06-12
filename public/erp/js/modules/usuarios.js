@@ -579,6 +579,7 @@ function canAccessProject(projectId) {
 function canView(moduleId) {
   var user = window.APP_STATE && window.APP_STATE.currentUser;
   if (!user) return true; // no session → admin-mode (dev)
+  if (user.role === 'admin') return true; // admin sees everything
   var perms = getEffectivePermissions(user.role);
   return !!(perms[moduleId] === 'view' || perms[moduleId] === 'edit');
 }
@@ -587,6 +588,7 @@ function canView(moduleId) {
 function canEdit(moduleId) {
   var user = window.APP_STATE && window.APP_STATE.currentUser;
   if (!user) return true;
+  if (user.role === 'admin') return true; // admin can edit everything
   var perms = getEffectivePermissions(user.role);
   return perms[moduleId] === 'edit';
 }
