@@ -1,5 +1,25 @@
 /* ===== APP CORE / ROUTER ===== */
 
+var APP_VERSION = '2026-06-12-v6';
+
+function forceClearCache() {
+  var btn = event && event.target ? event.target.closest('button') : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Actualizando…'; }
+  var done = function() { window.location.replace(window.location.pathname + '?bust=' + Date.now()); };
+  try { localStorage.removeItem('erp_app_version'); } catch(e) {}
+  try { sessionStorage.removeItem('_erp_bust'); } catch(e) {}
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then(function(regs) { return Promise.all(regs.map(function(r) { return r.unregister(); })); })
+      .then(function() {
+        return 'caches' in window ? caches.keys().then(function(keys) {
+          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+        }) : Promise.resolve();
+      })
+      .then(done).catch(done);
+  } else { done(); }
+}
+
 window.APP_STATE = { currentModule: 'dashboard', activeProject: '', activeCompany: 'comp-001', currentUser: null };
 
 const MODULES = {
@@ -10,6 +30,7 @@ const MODULES = {
   compras:         { title: 'Compras',                        icon: 'fa-shopping-cart',          render: renderCompras },
   pedidos:         { title: 'Pedidos de Materiales',          icon: 'fa-clipboard-list',         render: renderPedidos },
   ordenes_compra:  { title: 'Ordenes de Compra',             icon: 'fa-file-alt',               render: renderOrdenesCompra },
+  licitaciones:    { title: 'Licitaciones',                   icon: 'fa-gavel',                  render: renderLicitaciones },
 
   // Proveedores
   cuentas_prov:    { title: 'Cuentas Corrientes Proveedores', icon: 'fa-building-columns',       render: renderCuentasProv },
@@ -44,6 +65,7 @@ const MODULES = {
   cuentas_banco:   { title: 'Cuentas Bancarias y Cajas',     icon: 'fa-landmark',               render: renderCuentasBanco },
   tesoreria:       { title: 'Operaciones',                   icon: 'fa-arrows-left-right',      render: renderTesoreria },
   cheques:         { title: 'Cheques',                       icon: 'fa-money-check',            render: renderCheques },
+  conciliaciones:  { title: 'Conciliaciones Bancarias',      icon: 'fa-balance-scale',          render: renderConciliaciones },
 
   // Contabilidad
   contabilidad:    { title: 'Contabilidad',                  icon: 'fa-book-open',              render: renderContabilidad },
@@ -114,6 +136,8 @@ function navigate(module) {
       content.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error al cargar modulo: ' + e.message + '</p></div>';
       console.error(e);
     }
+    // Always reset scroll to top when switching modules
+    content.scrollTop = 0;
     // Read-only banner when user has view-only access for this module
     var existingBanner = document.getElementById('readonly-banner');
     if (existingBanner) existingBanner.remove();
@@ -326,7 +350,7 @@ function checkDataHealth() {
 }
 
 // ---- INIT ----
-document.addEventListener('DOMContentLoaded', function() {
+function _initApp() {
   // Trigger global init / migration
   DB.getGlobal();
 
@@ -350,7 +374,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Check for an existing session
   var user = (typeof sessionCurrentUser === 'function') ? sessionCurrentUser() : null;
   if (user) {
-    // Resume session
     window.APP_STATE.currentUser = user;
     document.getElementById('app').style.display = 'flex';
     document.getElementById('login-screen').style.display = 'none';
@@ -362,7 +385,53 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(syncExchangeRates, 1500);
     setTimeout(checkDataHealth, 3000);
   } else {
-    // Show login
     showLoginScreen();
   }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Force hard-reload if the browser is running a stale cached version
+  var storedVer = '';
+  try { storedVer = localStorage.getItem('erp_app_version') || ''; } catch(e) {}
+  if (storedVer !== APP_VERSION) {
+    try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
+    // sessionStorage guard prevents infinite reload if localStorage is unavailable
+    var _bustDone = false;
+    try { _bustDone = !!sessionStorage.getItem('_erp_bust'); } catch(e) {}
+    if (!_bustDone) {
+      try { sessionStorage.setItem('_erp_bust', '1'); } catch(e) {}
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          return Promise.all(regs.map(function(r) { return r.unregister(); }));
+        }).then(function() {
+          return 'caches' in window ? caches.keys().then(function(keys) {
+            return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+          }) : Promise.resolve();
+        }).then(function() {
+          window.location.replace(window.location.pathname + '?bust=' + Date.now());
+        });
+      } else {
+        window.location.replace(window.location.pathname + '?bust=' + Date.now());
+      }
+      return; // don't init while reloading
+    }
+  }
+  try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
+
+  // Show boot loader while we connect to Supabase
+  var loader = document.getElementById('boot-loader');
+  if (loader) loader.style.display = 'flex';
+
+  DB.load().then(function(online) {
+    if (loader) loader.style.display = 'none';
+    var badge = document.getElementById('sync-status');
+    if (badge) {
+      badge.textContent = online ? '● En línea' : '○ Sin conexión';
+      badge.style.color  = online ? '#22c55e'    : '#f59e0b';
+      badge.title = online
+        ? 'Sincronizado con Supabase — múltiples usuarios activos'
+        : 'Sin conexión a Supabase — datos guardados solo en este dispositivo';
+    }
+    _initApp();
+  });
 });

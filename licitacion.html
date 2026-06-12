@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal de Cotización</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+    .portal-header {
+      background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+      color: #fff;
+      padding: 20px 24px;
+      box-shadow: 0 2px 8px rgba(37,99,235,.3);
+    }
+    .portal-header h1 { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .portal-header p  { font-size: 13px; opacity: .85; margin-top: 4px; }
+    .container { max-width: 800px; margin: 0 auto; padding: 24px 16px 40px; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f1f5f9;
+      background: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-header h2 { font-size: 15px; font-weight: 700; color: #1e293b; }
+    .card-header .sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .card-body { padding: 20px; }
+    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #94a3b8; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+    .info-value { color: #334155; font-weight: 500; }
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-blue   { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+    .badge-green  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .badge-yellow { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+    .badge-red    { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead tr { background: #f8f9fb; border-bottom: 2px solid #e2e8f0; }
+    th { padding: 10px 12px; text-align: left; font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+    tbody tr { border-bottom: 1px solid #f1f5f9; }
+    tbody tr:last-child { border-bottom: none; }
+    td { padding: 10px 12px; vertical-align: middle; }
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .form-control {
+      width: 100%; padding: 10px 12px;
+      border: 1.5px solid #e2e8f0; border-radius: 8px;
+      font-size: 13px; color: #1e293b;
+      background: #fff; transition: border-color .15s;
+      -webkit-appearance: none;
+    }
+    .form-control:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+    .form-control.price-input { text-align: right; font-weight: 600; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 20px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+    .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+    .item-price-cell input { border: none; background: transparent; outline: none; text-align: right; font-weight: 600; font-size: 13px; color: #1e293b; width: 100%; }
+    .item-price-cell input:focus { background: #eff6ff; border-radius: 4px; }
+    #submit-bar {
+      position: sticky; bottom: 0;
+      background: #fff; border-top: 2px solid #e2e8f0;
+      padding: 16px 20px; display: flex; gap: 12px; align-items: center; justify-content: flex-end;
+      box-shadow: 0 -4px 12px rgba(0,0,0,.08);
+      flex-wrap: wrap;
+    }
+    .total-display { font-size: 15px; font-weight: 700; color: #2563eb; }
+    .alert { padding: 14px 18px; border-radius: 10px; font-size: 14px; display: flex; align-items: flex-start; gap: 12px; }
+    .alert-info    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .alert-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    #loading-state, #error-state, #success-state, #form-state { display: none; }
+    .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 12px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 600px) {
+      th:nth-child(4), td:nth-child(4) { display: none; }
+      .container { padding: 16px 12px 80px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="portal-header">
+  <h1><i class="fas fa-gavel"></i> Portal de Cotización</h1>
+  <p>Completá tu oferta para participar en el proceso licitatorio</p>
+</div>
+
+<div class="container">
+
+  <!-- LOADING -->
+  <div id="loading-state" style="text-align:center;padding:60px 20px">
+    <div class="spinner"></div>
+    <p style="color:#64748b;font-size:14px">Cargando datos de la licitación…</p>
+  </div>
+
+  <!-- ERROR -->
+  <div id="error-state" style="padding:40px 0">
+    <div class="alert alert-error">
+      <i class="fas fa-exclamation-circle" style="margin-top:2px;flex-shrink:0"></i>
+      <div>
+        <strong>Link inválido o expirado</strong>
+        <p id="error-msg" style="font-size:13px;margin-top:4px">El link de invitación no es válido. Por favor contactá a la empresa que te invitó.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUCCESS -->
+  <div id="success-state" style="padding:40px 0;text-align:center">
+    <div style="font-size:64px;color:#16a34a;margin-bottom:16px"><i class="fas fa-check-circle"></i></div>
+    <h2 style="font-size:22px;font-weight:700;color:#1e293b;margin-bottom:8px">¡Cotización enviada!</h2>
+    <p style="color:#64748b;font-size:15px;max-width:400px;margin:0 auto">Tu cotización fue registrada correctamente. La empresa te contactará para informarte el resultado del proceso.</p>
+  </div>
+
+  <!-- FORM -->
+  <div id="form-state">
+
+    <!-- Licitación info -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 id="lic-title-display">—</h2>
+          <div class="sub" id="lic-sub-display"></div>
+        </div>
+        <span id="lic-status-badge" class="badge badge-blue" style="margin-left:auto;flex-shrink:0"></span>
+      </div>
+      <div class="card-body">
+        <div class="info-row">
+          <span class="info-label">Proyecto</span>
+          <span class="info-value" id="lic-project-display">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Fecha límite</span>
+          <span class="info-value" id="lic-deadline-display">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Tu empresa</span>
+          <span class="info-value" id="lic-supplier-display">—</span>
+        </div>
+        <div id="lic-desc-row" class="info-row" style="flex-direction:column;gap:6px">
+          <span class="info-label">Descripción / Alcance</span>
+          <span class="info-value" id="lic-desc-display" style="white-space:pre-wrap"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Items to quote -->
+    <div class="card">
+      <div class="card-header">
+        <i class="fas fa-list" style="color:#2563eb"></i>
+        <div>
+          <h2>Ítems a Cotizar</h2>
+          <div class="sub">Ingresá el precio unitario para cada ítem. Los campos marcados con * son obligatorios.</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Descripción</th>
+              <th style="width:70px;text-align:center">Cant.</th>
+              <th style="width:70px;text-align:center">Unidad</th>
+              <th style="min-width:160px;text-align:right">Especificaciones</th>
+              <th style="width:130px;text-align:right">Precio Unitario *</th>
+              <th style="width:90px;text-align:center">Entrega (días)</th>
+              <th style="width:110px;text-align:right">Total</th>
+            </tr>
+          </thead>
+          <tbody id="items-tbody"></tbody>
+          <tfoot>
+            <tr style="background:#f8f9fb;border-top:2px solid #e2e8f0">
+              <td colspan="6" style="padding:12px;text-align:right;font-weight:700;font-size:14px">TOTAL GENERAL</td>
+              <td style="padding:12px;text-align:right;font-weight:700;font-size:16px;color:#2563eb" id="grand-total-cell">ARS 0</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- General conditions -->
+    <div class="card">
+      <div class="card-header">
+        <i class="fas fa-file-alt" style="color:#2563eb"></i>
+        <div><h2>Condiciones Generales</h2></div>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">Forma de Pago</label>
+          <select class="form-control" id="payment-terms">
+            <option value="">Seleccioná una opción...</option>
+            <option value="Contado">Contado</option>
+            <option value="30 días">30 días</option>
+            <option value="60 días">60 días</option>
+            <option value="90 días">90 días</option>
+            <option value="Transferencia inmediata">Transferencia inmediata</option>
+            <option value="Cheque 30 días">Cheque 30 días</option>
+            <option value="A convenir">A convenir</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones / Notas adicionales</label>
+          <textarea class="form-control" id="general-notes" rows="3" placeholder="Condiciones especiales, garantías, stock disponible, etc."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Already submitted notice -->
+    <div id="already-submitted" style="display:none;margin-bottom:16px">
+      <div class="alert alert-info">
+        <i class="fas fa-info-circle" style="flex-shrink:0;margin-top:2px"></i>
+        <div>Ya enviaste una cotización para esta licitación. Podés actualizar los precios y volver a enviar.</div>
+      </div>
+    </div>
+
+    <div id="submit-bar">
+      <span>Total: <span class="total-display" id="total-display-bar">ARS 0</span></span>
+      <button class="btn btn-secondary" onclick="resetForm()" type="button"><i class="fas fa-undo"></i> Limpiar</button>
+      <button class="btn btn-primary" onclick="submitCotizacion()" id="submit-btn" type="button">
+        <i class="fas fa-paper-plane"></i> Enviar Cotización
+      </button>
+    </div>
+
+  </div><!-- /form-state -->
+</div><!-- /container -->
+
+<script>
+(function() {
+  var SUPABASE_URL = 'https://yljmcqqncljpwxwdmovw.supabase.co';
+  var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsam1jcXFuY2xqcHd4d2Rtb3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDI0MDksImV4cCI6MjA5NjQxODQwOX0.sjCH01CjOz6ncpFR7zYQhcv_ZooAsUfcMM-InpfRjLU';
+  var COMP = 'comp-001';
+
+  var _token, _inv, _lic, _items = [], _existingCotId = null;
+  var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  function show(id) {
+    ['loading-state','error-state','success-state','form-state'].forEach(function(s) {
+      document.getElementById(s).style.display = s === id ? 'block' : 'none';
+    });
+  }
+
+  function fmtMoney(v) {
+    return 'ARS ' + Math.round(v || 0).toLocaleString('es-AR');
+  }
+
+  function fmtDate(d) {
+    if (!d) return '—';
+    var parts = d.split('-');
+    return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : d;
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function loadData() {
+    show('loading-state');
+    _token = new URLSearchParams(window.location.search).get('token');
+    if (!_token) { showError('Token no encontrado en el link.'); return; }
+
+    try {
+      // Find invitation by token
+      var { data: invRows, error: invErr } = await sb
+        .from('erp_data')
+        .select('*')
+        .eq('company_id', COMP)
+        .eq('collection', 'lic_invitaciones')
+        .eq('deleted', false);
+
+      if (invErr) throw new Error(invErr.message);
+
+      var invRow = (invRows || []).find(function(r) {
+        return r.data && r.data.token === _token;
+      });
+
+      if (!invRow) { showError('Este link de invitación no es válido o ya expiró.'); return; }
+      _inv = Object.assign({ id: invRow.record_id }, invRow.data);
+
+      // Load licitacion
+      var { data: licRows, error: licErr } = await sb
+        .from('erp_data')
+        .select('*')
+        .eq('company_id', COMP)
+        .eq('collection', 'licitaciones')
+        .eq('record_id', _inv.lic_id)
+        .eq('deleted', false)
+        .single();
+
+      if (licErr || !licRows) { showError('No se encontró la licitación asociada a esta invitación.'); return; }
+      _lic = Object.assign({ id: licRows.record_id }, licRows.data);
+
+      if (_lic.status === 'draft') { showError('Esta licitación aún no fue activada. Intentá más tarde.'); return; }
+      if (_lic.status === 'cancelled') { showError('Esta licitación fue cancelada.'); return; }
+
+      // Check if supplier already submitted a quote
+      var { data: cotRows } = await sb
+        .from('erp_data')
+        .select('*')
+        .eq('company_id', COMP)
+        .eq('collection', 'lic_cotizaciones')
+        .eq('deleted', false);
+
+      var existingCot = (cotRows || []).find(function(r) {
+        return r.data && r.data.lic_id === _lic.id && r.data.inv_id === _inv.id;
+      });
+      if (existingCot) {
+        _existingCotId = existingCot.record_id;
+        document.getElementById('already-submitted').style.display = 'block';
+        if (existingCot.data.payment_terms) document.getElementById('payment-terms').value = existingCot.data.payment_terms;
+        if (existingCot.data.general_notes)  document.getElementById('general-notes').value  = existingCot.data.general_notes;
+        // Build lookup map keyed by description to pre-fill prices regardless of item reordering
+        var prevByDesc = {};
+        (existingCot.data.items || []).forEach(function(it) {
+          if (it.description) prevByDesc[it.description] = it;
+        });
+        _items = (_lic.items || []).map(function(it) {
+          var prev = prevByDesc[it.description] || {};
+          return Object.assign({}, it, { unit_price: prev.unit_price || '', delivery_days: prev.delivery_days || '' });
+        });
+      } else {
+        _items = (_lic.items || []).map(function(it) { return Object.assign({ unit_price: '', delivery_days: '' }, it); });
+      }
+
+      renderForm();
+      show('form-state');
+    } catch(e) {
+      showError('Error al cargar los datos: ' + e.message);
+    }
+  }
+
+  function renderForm() {
+    // Header info
+    document.getElementById('lic-title-display').textContent = _lic.title || '—';
+    document.getElementById('lic-sub-display').textContent   = 'Invitación de cotización';
+    document.getElementById('lic-project-display').textContent  = _lic.project_name || '—';
+    document.getElementById('lic-deadline-display').textContent = fmtDate(_lic.deadline);
+    document.getElementById('lic-supplier-display').textContent = _inv.supplier_name || '—';
+
+    var statusMap = { active: ['badge-blue','Activa'], closed: ['badge-yellow','Cerrada'], awarded: ['badge-green','Adjudicada'] };
+    var sm = statusMap[_lic.status] || ['badge-blue', _lic.status || ''];
+    var badge = document.getElementById('lic-status-badge');
+    badge.className = 'badge ' + sm[0];
+    badge.textContent = sm[1];
+
+    if (_lic.description) {
+      document.getElementById('lic-desc-display').textContent = _lic.description;
+    } else {
+      document.getElementById('lic-desc-row').style.display = 'none';
+    }
+
+    // Items table
+    var tbody = document.getElementById('items-tbody');
+    tbody.innerHTML = '';
+    (_lic.items || []).forEach(function(it, idx) {
+      var existing = _items[idx] || {};
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td style="font-weight:500">' + esc(it.description || '—') + (it.specs ? '<div style="font-size:11px;color:#94a3b8;margin-top:2px">' + esc(it.specs) + '</div>' : '') + '</td>' +
+        '<td style="text-align:center;color:#64748b">' + (it.quantity || '—') + '</td>' +
+        '<td style="text-align:center;color:#64748b">' + esc(it.unit || '—') + '</td>' +
+        '<td style="text-align:right;font-size:11px;color:#94a3b8">' + esc(it.specs || '—') + '</td>' +
+        '<td class="item-price-cell" style="text-align:right">' +
+          '<input type="number" min="0" step="0.01" placeholder="0.00" value="' + (existing.unit_price || '') + '" ' +
+          'data-idx="' + idx + '" class="price-input" oninput="updateTotals()">' +
+        '</td>' +
+        '<td style="text-align:center">' +
+          '<input type="number" min="0" step="1" placeholder="—" value="' + (existing.delivery_days || '') + '" ' +
+          'data-idx-d="' + idx + '" style="width:60px;border:1.5px solid #e2e8f0;border-radius:6px;padding:6px;font-size:13px;text-align:center;outline:none" ' +
+          'onfocus="this.style.borderColor=\'#2563eb\'" onblur="this.style.borderColor=\'#e2e8f0\'">' +
+        '</td>' +
+        '<td style="text-align:right;font-weight:600" id="item-total-' + idx + '">ARS 0</td>';
+      tbody.appendChild(tr);
+    });
+    updateTotals();
+
+    if (_lic.status !== 'active') {
+      document.getElementById('submit-btn').disabled = true;
+      document.getElementById('submit-btn').textContent = 'Licitación cerrada';
+    }
+  }
+
+  window.updateTotals = function() {
+    var total = 0;
+    var priceInputs = document.querySelectorAll('.price-input');
+    priceInputs.forEach(function(inp) {
+      var idx    = parseInt(inp.getAttribute('data-idx'));
+      var qty    = parseFloat((_lic.items[idx] || {}).quantity) || 1;
+      var price  = parseFloat(inp.value) || 0;
+      var rowTot = qty * price;
+      total += rowTot;
+      var cell = document.getElementById('item-total-' + idx);
+      if (cell) cell.textContent = fmtMoney(rowTot);
+    });
+    document.getElementById('grand-total-cell').textContent = fmtMoney(total);
+    document.getElementById('total-display-bar').textContent = fmtMoney(total);
+  };
+
+  window.resetForm = function() {
+    document.querySelectorAll('.price-input').forEach(function(inp) { inp.value = ''; });
+    document.querySelectorAll('[data-idx-d]').forEach(function(inp) { inp.value = ''; });
+    document.getElementById('payment-terms').value = '';
+    document.getElementById('general-notes').value = '';
+    updateTotals();
+  };
+
+  window.submitCotizacion = async function() {
+    if (_lic.status !== 'active') {
+      alert('Esta licitación ya no acepta cotizaciones.');
+      return;
+    }
+    var btn = document.getElementById('submit-btn');
+
+    // Collect items
+    var items = (_lic.items || []).map(function(it, idx) {
+      var priceEl    = document.querySelector('.price-input[data-idx="' + idx + '"]');
+      var deliverEl  = document.querySelector('[data-idx-d="' + idx + '"]');
+      var unitPrice  = parseFloat(priceEl ? priceEl.value : 0) || 0;
+      var qty        = parseFloat(it.quantity) || 1;
+      return {
+        description:   it.description || '',
+        quantity:      it.quantity || '',
+        unit:          it.unit || '',
+        specs:         it.specs || '',
+        unit_price:    unitPrice,
+        delivery_days: deliverEl ? (parseInt(deliverEl.value) || null) : null,
+        total:         qty * unitPrice
+      };
+    });
+
+    var anyPrice = items.some(function(it) { return it.unit_price > 0; });
+    if (!anyPrice) { alert('Por favor ingresá al menos un precio antes de enviar.'); return; }
+
+    var grandTotal    = items.reduce(function(s, it) { return s + it.total; }, 0);
+    var paymentTerms  = document.getElementById('payment-terms').value;
+    var generalNotes  = document.getElementById('general-notes').value.trim();
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…';
+
+    try {
+      var now      = new Date().toISOString().split('T')[0];
+      var recordId = _existingCotId || ('cot-' + _inv.id + '-' + Date.now());
+
+      var cotData = {
+        lic_id:        _lic.id,
+        inv_id:        _inv.id,
+        supplier_id:   _inv.supplier_id || null,
+        supplier_name: _inv.supplier_name || '',
+        items:         items,
+        total:         grandTotal,
+        payment_terms: paymentTerms,
+        general_notes: generalNotes,
+        submittedAt:   now,
+        winner:        false
+      };
+
+      var { error } = await sb.from('erp_data').upsert({
+        company_id: COMP,
+        collection: 'lic_cotizaciones',
+        record_id:  recordId,
+        data:       cotData,
+        deleted:    false,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'company_id,collection,record_id' });
+
+      if (error) throw new Error(error.message);
+
+      // Update invitation status to 'quoted'
+      var { data: invRows } = await sb.from('erp_data').select('*')
+        .eq('company_id', COMP)
+        .eq('collection', 'lic_invitaciones')
+        .eq('record_id', _inv.id);
+
+      if (invRows && invRows[0]) {
+        var updatedInvData = Object.assign({}, invRows[0].data, { status: 'quoted' });
+        await sb.from('erp_data').update({ data: updatedInvData, updated_at: new Date().toISOString() })
+          .eq('company_id', COMP)
+          .eq('collection', 'lic_invitaciones')
+          .eq('record_id', _inv.id);
+      }
+
+      show('success-state');
+    } catch(e) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Cotización';
+      alert('Error al enviar la cotización: ' + e.message + '\nVerificá tu conexión a internet e intentá de nuevo.');
+    }
+  };
+
+  function showError(msg) {
+    document.getElementById('error-msg').textContent = msg;
+    show('error-state');
+  }
+
+  // Init
+  show('loading-state');
+  loadData();
+})();
+</script>
+</body>
+</html>
