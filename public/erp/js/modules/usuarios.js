@@ -15,6 +15,7 @@ const PERM_MODULES = [
   { group: 'Compras', items: [
     { id: 'pedidos',         label: 'Órdenes de Pedido' },
     { id: 'ordenes_compra',  label: 'Órdenes de Compra' },
+    { id: 'licitaciones',    label: 'Licitaciones' },
   ]},
   { group: 'Proveedores', items: [
     { id: 'cuentas_prov',    label: 'Cuentas Corrientes' },
