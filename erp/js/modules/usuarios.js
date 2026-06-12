@@ -533,7 +533,7 @@ function getEffectivePermissions(roleId) {
   // Hardcoded defaults for built-in roles without explicit permissions
   var defaults = {
     project_manager: {
-      pedidos:'edit', ordenes_compra:'edit',
+      pedidos:'edit', ordenes_compra:'edit', licitaciones:'edit',
       projects:'edit', contratos:'edit', certificaciones:'edit',
       presupuesto:'edit', seguimiento:'edit', gantt:'edit',
       rubros:'edit', apu:'edit', indices:'edit',
@@ -549,7 +549,7 @@ function getEffectivePermissions(roleId) {
       contabilidad:'edit', conta_diario:'edit', conta_balance:'edit',
       conta_resultados:'edit', conta_plan:'edit', conta_mayores:'edit',
       conta_sumas:'edit', libro_iva:'edit',
-      tesoreria:'edit', cuentas_banco:'edit', cheques:'edit',
+      tesoreria:'edit', cuentas_banco:'edit', cheques:'edit', conciliaciones:'edit',
       notas:'edit', reportes:'view', aprobaciones:'view',
     },
     inspector: {
