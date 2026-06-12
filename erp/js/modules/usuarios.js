@@ -49,6 +49,7 @@ const PERM_MODULES = [
     { id: 'cuentas_banco',   label: 'Cuentas Bancarias y Cajas' },
     { id: 'tesoreria',       label: 'Operaciones' },
     { id: 'cheques',         label: 'Cheques' },
+    { id: 'conciliaciones',  label: 'Conciliaciones Bancarias' },
   ]},
   { group: 'Contabilidad', items: [
     { id: 'contabilidad',    label: 'Contabilidad' },
@@ -228,7 +229,7 @@ function usrBuildRolesList() {
           if (!s.edit && !s.view) {
             permsHtml = '<span style="font-size:11px;color:var(--text-muted)">Sin permisos asignados</span>';
           } else {
-            permsHtml = `${s.edit?`<span class="badge badge-green" style="font-size:10px">${s.edit} editar</span> `:''}${s.view?`<span class="badge badge-blue" style="font-size:10px">${s.view} ver</span>`:''}` ;
+            permsHtml = `${s.edit?`<span class="badge badge-green" style="font-size:10px">${s.edit} editar</span> `:''}${s.view?`<span class="badge badge-blue" style="font-size:10px">${s.view} ver</span>`:''}`;
           }
         }
         return `<tr>
@@ -532,7 +533,7 @@ function getEffectivePermissions(roleId) {
   // Hardcoded defaults for built-in roles without explicit permissions
   var defaults = {
     project_manager: {
-      pedidos:'edit', ordenes_compra:'edit', licitaciones:'edit',
+      pedidos:'edit', ordenes_compra:'edit',
       projects:'edit', contratos:'edit', certificaciones:'edit',
       presupuesto:'edit', seguimiento:'edit', gantt:'edit',
       rubros:'edit', apu:'edit', indices:'edit',
