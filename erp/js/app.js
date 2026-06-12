@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-12-v4';
+var APP_VERSION = '2026-06-12-v5';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
