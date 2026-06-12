@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-12-v1';
+var APP_VERSION = '2026-06-12-v2';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -30,6 +30,7 @@ const MODULES = {
   compras:         { title: 'Compras',                        icon: 'fa-shopping-cart',          render: renderCompras },
   pedidos:         { title: 'Pedidos de Materiales',          icon: 'fa-clipboard-list',         render: renderPedidos },
   ordenes_compra:  { title: 'Ordenes de Compra',             icon: 'fa-file-alt',               render: renderOrdenesCompra },
+  licitaciones:    { title: 'Licitaciones',                   icon: 'fa-gavel',                  render: renderLicitaciones },
 
   // Proveedores
   cuentas_prov:    { title: 'Cuentas Corrientes Proveedores', icon: 'fa-building-columns',       render: renderCuentasProv },
@@ -79,7 +80,7 @@ const MODULES = {
   rrhh:            { title: 'RRHH — Empleados y Liquidaciones', icon: 'fa-hard-hat',              render: renderRRHH },
 
   // Stock
-  stock:           { title: 'Stock / Almacén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
+  stock:           { title: 'Stock / Almén de Obra',         icon: 'fa-boxes-stacking',         render: renderStock },
 
   // Notas Crédito / Débito
   notas:           { title: 'Notas Cr./Déb.',                  icon: 'fa-file-circle-minus',      render: renderNotas },

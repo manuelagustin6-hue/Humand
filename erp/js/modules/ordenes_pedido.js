@@ -20,7 +20,7 @@ function _blankODPItem() {
   return { rubro_id: '', tipo: '', item_desc: '', unit: '', quantity: 0, delivery_date: '' };
 }
 
-/* ────────────────────────────────────────── LIST VIEW */
+/* ──────────────────────────────────────────── LIST VIEW */
 function renderOrdenesPedido() {
   const requests = DB.getAll('purchaseRequests');
   const projects = DB.getAll('projects');
@@ -129,7 +129,7 @@ function filterODP(q, status, project) {
   if (wrap) wrap.innerHTML = buildODPTable(list, DB.getAll('projects'));
 }
 
-/* ────────────────────────────────────────── FORM VIEW (full page) */
+/* ──────────────────────────────────────────── FORM VIEW (full page) */
 window._odpItems = [];
 window._currentODPId = null;
 
@@ -161,6 +161,9 @@ function renderODPForm(id) {
     ? `<button class="btn btn-danger" style="font-size:13px" onclick="rejectODP('${id}')"><i class="fas fa-times"></i> Rechazar</button>
        <button class="btn btn-success" style="font-size:13px" onclick="approveODP('${id}')"><i class="fas fa-check"></i> Aprobar</button>
        <button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>`
+    : status === 'approved'
+    ? `<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>
+       <button class="btn btn-primary" style="font-size:13px" onclick="licNueva('${id}')"><i class="fas fa-gavel"></i> Licitar</button>`
     : `<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>`;
 
   document.getElementById('content').innerHTML = `
@@ -307,7 +310,7 @@ function updateODPItem(i, field, val) {
   window._odpItems[i][field] = val;
 }
 
-/* ────────────────────────────────────────── SAVE / STATUS */
+/* ──────────────────────────────────────────── SAVE / STATUS */
 function saveODP(id, isDraft) {
   const projectId = (document.getElementById('odp-project') || {}).value;
   const date = (document.getElementById('odp-date') || {}).value;
