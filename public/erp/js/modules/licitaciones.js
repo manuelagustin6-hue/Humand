@@ -390,8 +390,8 @@ function _licTabCotizaciones(lic) {
         '<td>' + escapeHtml(it.description || '—') + '</td>' +
         '<td class="number-cell">' + fmtMoney(it.unit_price || 0) + '</td>' +
         '<td class="number-cell">' + fmtMoney(itTotal) + '</td>' +
-        '<td style="text-align:center">' + (it.delivery_days || '—') + ' días</td>' +
-        '<td style="font-size:12px;color:var(--text-muted)">' + escapeHtml(it.payment_terms || '—') + '</td>' +
+        '<td style="text-align:center">' + (it.delivery_days ? it.delivery_days + ' días' : '—') + '</td>' +
+        '<td style="font-size:12px;color:var(--text-muted)">' + escapeHtml(cot.payment_terms || '—') + '</td>' +
       '</tr>';
     }).join('');
 
@@ -400,7 +400,7 @@ function _licTabCotizaciones(lic) {
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">' +
           '<div>' +
             '<div style="font-size:15px;font-weight:700">' + escapeHtml(supplierName) + '</div>' +
-            '<div style="font-size:12px;color:var(--text-muted)">Enviado: ' + fmtDate(cot.submitted_date || cot.created_at) + '</div>' +
+            '<div style="font-size:12px;color:var(--text-muted)">Enviado: ' + fmtDate(cot.submitted_date || cot.submittedAt || cot.created_at) + '</div>' +
           '</div>' +
           '<div style="font-size:18px;font-weight:800;color:var(--primary)">' + fmtMoney(total) + '</div>' +
         '</div>' +
@@ -523,7 +523,11 @@ function _licTabAprobacion(lic) {
   if (!winnerCot) {
     return '<div class="empty-state" style="padding:48px 16px">' +
       '<i class="fas fa-exclamation-triangle"></i>' +
-      '<p>No se encontró la cotización ganadora.</p>' +
+      '<p>La cotización ganadora guardada ya no es válida.</p>' +
+      '<p style="font-size:12px;color:var(--text-muted)">Volvé a la pestaña Comparativa y seleccioná nuevamente el ganador.</p>' +
+      '<button class="btn btn-primary" style="margin-top:12px" onclick="licSetTab(\'comparativa\',\'' + lic.id + '\')">' +
+        '<i class="fas fa-balance-scale"></i> Ir a Comparativa' +
+      '</button>' +
     '</div>';
   }
 
