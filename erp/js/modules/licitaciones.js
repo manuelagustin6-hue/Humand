@@ -697,7 +697,20 @@ function _licFormView(id) {
           '</div>' +
           '<div class="form-group">' +
             '<label class="form-label">ODP de Origen</label>' +
-            '<input class="form-control" id="lic-f-odp" readonly value="' + (odp ? escapeHtml(odp.number || odp.id) : (lic && lic.odp_ref ? escapeHtml(lic.odp_ref) : '')) + '" style="background:var(--bg);color:var(--text-muted)">' +
+            '<select class="form-control" id="lic-f-odp" onchange="_licOnODPChange()">' +
+              (function() {
+                var opts = '<option value="">Sin ODP</option>';
+                var allOdps = DB.getAll('purchaseRequests');
+                var curOdpId = odp ? odp.id : (lic && lic.odp_id ? lic.odp_id : '');
+                allOdps.forEach(function(o) {
+                  var label = (o.number || o.id);
+                  var proj = projects.find(function(p) { return p.id === o.project_id; });
+                  if (proj) label += ' — ' + proj.name;
+                  opts += '<option value="' + o.id + '"' + (curOdpId === o.id ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+                });
+                return opts;
+              })() +
+            '</select>' +
           '</div>' +
           '<div class="form-group" style="grid-column:1/-1">' +
             '<label class="form-label">Descripción</label>' +
@@ -731,6 +744,32 @@ function _licFormView(id) {
       '<i class="fas fa-chevron-right" style="font-size:10px;margin:0 4px;color:var(--text-light)"></i>' +
       '<span>' + (id ? 'Editar' : 'Nueva') + '</span>';
   }
+}
+
+/* ─── ODP change handler ─── */
+function _licOnODPChange() {
+  var odpSel = document.getElementById('lic-f-odp');
+  if (!odpSel || !odpSel.value) return;
+  var odp = DB.getById('purchaseRequests', odpSel.value);
+  if (!odp || !odp.items || !odp.items.length) return;
+
+  var newItems = odp.items.filter(Boolean).map(function(it) {
+    return { description: it.item_desc || '', quantity: it.quantity || 1, unit: it.unit || 'un', specs: it.tipo || '' };
+  }).filter(function(it) { return it.description; });
+  if (!newItems.length) return;
+
+  var hasExisting = (window._licFormItems || []).some(function(it) { return it && it.description; });
+  if (hasExisting && !confirm('¿Reemplazar los ítems con los de la ODP seleccionada?')) return;
+
+  window._licFormItems = newItems.slice();
+  var cont = document.getElementById('lic-items-list');
+  if (cont) cont.innerHTML = newItems.map(function(it, i) { return _licItemRow(it, i); }).join('');
+
+  // Pre-fill project from ODP if not already set
+  var projSel = document.getElementById('lic-f-project');
+  if (projSel && !projSel.value && odp.project_id) projSel.value = odp.project_id;
+
+  toast(newItems.length + ' ítems importados desde ODP', 'success');
 }
 
 function _licItemRow(it, i) {
@@ -786,7 +825,8 @@ function licGuardar(id) {
 
   var projectId = document.getElementById('lic-f-project').value;
   var description = document.getElementById('lic-f-desc').value.trim();
-  var odpId = _licState._odpId;
+  var odpSel = document.getElementById('lic-f-odp');
+  var odpId = (odpSel ? odpSel.value : null) || _licState._odpId || (id ? (DB.getById('licitaciones', id) || {}).odp_id : null) || null;
 
   var data = {
     title: title,
@@ -794,7 +834,7 @@ function licGuardar(id) {
     deadline: deadline,
     description: description,
     items: items,
-    odp_id: odpId || (id ? (DB.getById('licitaciones', id) || {}).odp_id : null),
+    odp_id: odpId,
     updated_at: todayStr()
   };
 
@@ -958,9 +998,26 @@ function licEliminarInv(invId) {
 /* ─── licCopiarLink ─── */
 function licCopiarLink(encodedLink, isDraft) {
   var link = decodeURIComponent(encodedLink);
+
+  // Force-push this invitation + licitación to Supabase now,
+  // in case they were created while the app was offline.
+  try {
+    var params    = new URLSearchParams(link.split('?')[1] || '');
+    var token     = params.get('token');
+    var licId     = params.get('lic');
+    var cid       = DB._companyId;
+    if (token && licId && typeof _SUPA !== 'undefined') {
+      var licRec = DB.getById('licitaciones', licId);
+      if (licRec) _SUPA.upsert(cid, 'licitaciones', licRec);
+      DB.getAll('lic_invitaciones').filter(function(i) {
+        return i.lic_id === licId;
+      }).forEach(function(inv) { _SUPA.upsert(cid, 'lic_invitaciones', inv); });
+    }
+  } catch(e) { console.warn('[licCopiarLink] sync:', e.message); }
+
   var msg = isDraft
     ? 'Link copiado — activá la licitación para que funcione'
-    : 'Enlace copiado al portapapeles';
+    : 'Enlace copiado. Datos sincronizados con el servidor.';
   var level = isDraft ? 'warning' : 'success';
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(link).then(function() {
