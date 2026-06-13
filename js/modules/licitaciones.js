@@ -2,12 +2,25 @@
 
 var _licState = { view: 'list', licId: null, tab: 'resumen', _odpId: null };
 var LIC_STATUS = {
-  draft:     { label: 'Borrador',    color: '#94a3b8', bg: '#f1f5f9' },
-  active:    { label: 'Activa',      color: '#2563eb', bg: '#eff6ff' },
-  closed:    { label: 'Cerrada',     color: '#f59e0b', bg: '#fffbeb' },
-  awarded:   { label: 'Adjudicada',  color: '#22c55e', bg: '#f0fdf4' },
-  cancelled: { label: 'Cancelada',   color: '#ef4444', bg: '#fef2f2' }
+  draft:      { label: 'Borrador',    color: '#94a3b8', bg: '#f1f5f9' },
+  active:     { label: 'Activa',      color: '#2563eb', bg: '#eff6ff' },
+  closed:     { label: 'Cerrada',     color: '#f59e0b', bg: '#fffbeb' },
+  en_revision:{ label: 'En Revisión', color: '#f97316', bg: '#fff7ed' },
+  awarded:    { label: 'Adjudicada',  color: '#22c55e', bg: '#f0fdf4' },
+  cancelled:  { label: 'Cancelada',   color: '#ef4444', bg: '#fef2f2' }
 };
+// Role(s) allowed to approve each step
+var _LIC_APROV_ROLES = {
+  jefe_compras: ['project_manager', 'admin'],
+  gerencia:     ['admin'],
+  direccion:    ['admin']
+};
+function _licCanApproveStep(key) {
+  var user = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!user) return false;
+  var allowed = _LIC_APROV_ROLES[key] || ['admin'];
+  return allowed.indexOf(user.role) !== -1;
+}
 var INV_STATUS = {
   invited:     { label: 'Invitado',    color: '#2563eb' },
   in_progress: { label: 'En proceso',  color: '#f59e0b' },
@@ -152,6 +165,9 @@ function _licDetailView(id) {
   }
   if (lic.status === 'active') {
     actionBtns += '<button class="btn btn-secondary" onclick="licCerrar(\'' + id + '\')"><i class="fas fa-times-circle"></i> Cerrar</button>';
+  }
+  if (lic.status === 'en_revision') {
+    actionBtns += '<button class="btn btn-primary" onclick="licReenviarAprobacion(\'' + id + '\')"><i class="fas fa-paper-plane"></i> Reenviar a aprobación</button>';
   }
   if (lic.status === 'awarded') {
     actionBtns += '<button class="btn btn-primary" onclick="licGenerarOC(\'' + id + '\')"><i class="fas fa-file-alt"></i> Generar OC</button>';
@@ -538,55 +554,67 @@ function _licTabAprobacion(lic) {
   var approvals = lic.approvals || [];
 
   var steps = [
-    { key: 'jefe_compras',  label: 'Jefe de Compras', role: 'Jefe de Compras' },
-    { key: 'gerencia',      label: 'Gerencia',         role: 'Gerente General' },
-    { key: 'direccion',     label: 'Dirección',        role: 'Director' }
+    { key: 'jefe_compras', label: 'Jefe de Compras', roleLabel: 'project_manager / admin' },
+    { key: 'gerencia',     label: 'Gerencia',         roleLabel: 'admin' },
+    { key: 'direccion',    label: 'Dirección',        roleLabel: 'admin' }
   ];
-
-  var allApproved = steps.every(function(s) {
-    var a = approvals.find(function(a) { return a.key === s.key; });
-    return a && a.approved === true;
-  });
-
-  var anyRejected = steps.some(function(s) {
-    var a = approvals.find(function(a) { return a.key === s.key; });
-    return a && a.approved === false;
-  });
 
   function stepDone(key) {
     return approvals.find(function(a) { return a.key === key; });
   }
-
   function prevApproved(idx) {
     if (idx === 0) return true;
     var prev = approvals.find(function(a) { return a.key === steps[idx - 1].key; });
     return prev && prev.approved === true;
   }
 
-  var stepsHtml = steps.map(function(step, idx) {
-    var done = stepDone(step.key);
-    var canAct = !done && prevApproved(idx) && lic.status !== 'awarded' && lic.status !== 'cancelled';
-    var iconColor = done ? (done.approved ? '#22c55e' : '#ef4444') : '#94a3b8';
-    var iconClass = done ? (done.approved ? 'fa-check-circle' : 'fa-times-circle') : 'fa-clock';
-    var border = done ? (done.approved ? '#22c55e' : '#ef4444') : '#e2e8f0';
+  var isTerminal = (lic.status === 'awarded' || lic.status === 'cancelled');
+  var isRevision  = lic.status === 'en_revision';
 
-    return '<div style="display:flex;align-items:flex-start;gap:14px;padding:16px;border:1px solid ' + border + ';border-radius:var(--radius);margin-bottom:10px;background:' + (done && done.approved ? '#f0fdf4' : done && !done.approved ? '#fef2f2' : '#fff') + '">' +
+  // Banner: en revisión
+  var revisionBanner = isRevision
+    ? '<div style="padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--radius);margin-bottom:14px;display:flex;align-items:flex-start;gap:12px">' +
+        '<i class="fas fa-exclamation-circle" style="color:#f97316;font-size:20px;flex-shrink:0;margin-top:1px"></i>' +
+        '<div>' +
+          '<div style="font-weight:700;color:#c2410c;font-size:14px">Rechazada — En revisión</div>' +
+          (lic.revision_by ? '<div style="font-size:12px;color:#9a3412;margin-top:2px">Rechazada por <strong>' + escapeHtml(lic.revision_by) + '</strong>' + (lic.revision_at ? ' el ' + fmtDate(lic.revision_at) : '') + '</div>' : '') +
+          '<div style="font-size:12px;color:#9a3412;margin-top:4px">Revisá los ítems, la descripción o las condiciones y luego usá <strong>Reenviar a aprobación</strong> para reiniciar la cadena.</div>' +
+        '</div>' +
+      '</div>'
+    : '';
+
+  var stepsHtml = steps.map(function(step, idx) {
+    var done      = stepDone(step.key);
+    var canAct    = !done && prevApproved(idx) && !isTerminal && !isRevision && _licCanApproveStep(step.key);
+    var pending   = !done && prevApproved(idx) && !isTerminal && !isRevision && !_licCanApproveStep(step.key);
+    var iconColor = done ? (done.approved ? '#22c55e' : '#ef4444') : '#94a3b8';
+    var iconClass = done ? (done.approved ? 'fa-check-circle' : 'fa-times-circle') : (pending || canAct ? 'fa-hourglass-half' : 'fa-lock');
+    var border    = done ? (done.approved ? '#22c55e' : '#ef4444') : (canAct || pending ? '#f59e0b' : '#e2e8f0');
+    var bg        = done && done.approved ? '#f0fdf4' : done && !done.approved ? '#fef2f2' : (canAct || pending ? '#fffbeb' : '#fafafa');
+
+    return '<div style="display:flex;align-items:flex-start;gap:14px;padding:16px;border:1px solid ' + border + ';border-radius:var(--radius);margin-bottom:10px;background:' + bg + '">' +
       '<div style="font-size:24px;color:' + iconColor + ';flex-shrink:0;margin-top:2px"><i class="fas ' + iconClass + '"></i></div>' +
-      '<div style="flex:1">' +
+      '<div style="flex:1;min-width:0">' +
         '<div style="font-weight:700;font-size:14px">' + escapeHtml(step.label) + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted)">' + escapeHtml(step.role) + '</div>' +
-        (done ? '<div style="font-size:12px;margin-top:4px;color:' + (done.approved ? '#16a34a' : '#dc2626') + '">' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Rol: ' + escapeHtml(step.roleLabel) + '</div>' +
+        (done ? '<div style="font-size:12px;margin-top:6px;color:' + (done.approved ? '#16a34a' : '#dc2626') + ';font-weight:600">' +
+          '<i class="fas ' + (done.approved ? 'fa-check' : 'fa-times') + '" style="margin-right:4px"></i>' +
           (done.approved ? 'Aprobado' : 'Rechazado') +
           (done.approver ? ' por <strong>' + escapeHtml(done.approver) + '</strong>' : '') +
           (done.date ? ' — ' + fmtDate(done.date) : '') +
         '</div>' : '') +
+        (done && done.comment ? '<div style="margin-top:6px;padding:8px 10px;background:rgba(0,0,0,.04);border-radius:6px;font-size:12px;color:var(--text-muted)">' +
+          '<i class="fas fa-comment" style="margin-right:5px"></i>' + escapeHtml(done.comment) +
+        '</div>' : '') +
+        (pending ? '<div style="font-size:12px;color:#92400e;margin-top:4px"><i class="fas fa-hourglass-half" style="margin-right:4px"></i>Pendiente de aprobación</div>' : '') +
+        (canAct ? '<div style="font-size:12px;color:#1d4ed8;margin-top:4px"><i class="fas fa-bell" style="margin-right:4px"></i>Acción requerida de tu parte</div>' : '') +
       '</div>' +
       (canAct ?
         '<div style="display:flex;gap:8px;flex-shrink:0">' +
-          '<button class="btn btn-sm btn-secondary" onclick="licAprobarStep(\'' + lic.id + '\',\'' + step.key + '\',false)" style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5">' +
+          '<button class="btn btn-sm btn-secondary" onclick="licPedirAprobacion(\'' + lic.id + '\',\'' + step.key + '\',false)" style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5">' +
             '<i class="fas fa-times"></i> Rechazar' +
           '</button>' +
-          '<button class="btn btn-sm btn-primary" onclick="licAprobarStep(\'' + lic.id + '\',\'' + step.key + '\',true)">' +
+          '<button class="btn btn-sm btn-primary" onclick="licPedirAprobacion(\'' + lic.id + '\',\'' + step.key + '\',true)">' +
             '<i class="fas fa-check"></i> Aprobar' +
           '</button>' +
         '</div>'
@@ -595,14 +623,14 @@ function _licTabAprobacion(lic) {
   }).join('');
 
   var winnerCard =
-    '<div style="padding:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius);margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+    '<div style="padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius);margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
       '<div>' +
         '<div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Proveedor Seleccionado</div>' +
         '<div style="font-size:16px;font-weight:800;color:#1e40af">' + escapeHtml(winnerCot.supplier_name || '—') + '</div>' +
+        '<div style="font-size:12px;color:#3b82f6;margin-top:2px">' + fmtMoney(winnerTotal) + '</div>' +
       '</div>' +
-      '<div style="text-align:right">' +
-        '<div style="font-size:11px;color:#1e40af;font-weight:600">Monto total ofertado</div>' +
-        '<div style="font-size:20px;font-weight:800;color:#1e40af">' + fmtMoney(winnerTotal) + '</div>' +
+      '<div style="font-size:11px;color:#6b7280;text-align:right">' +
+        (lic.payment_terms || winnerCot.payment_terms ? '<div>' + escapeHtml(lic.payment_terms || winnerCot.payment_terms || '') + '</div>' : '') +
       '</div>' +
     '</div>';
 
@@ -614,14 +642,14 @@ function _licTabAprobacion(lic) {
           '<i class="fas fa-trophy" style="font-size:24px;color:#16a34a"></i>' +
           '<div>' +
             '<div style="font-size:14px;font-weight:700;color:#15803d">¡Licitación Adjudicada!</div>' +
-            '<div style="font-size:12px;color:#16a34a">La licitación fue aprobada en todos los niveles.</div>' +
+            '<div style="font-size:12px;color:#16a34a">Todos los niveles aprobaron.</div>' +
           '</div>' +
         '</div>' +
         '<button class="btn btn-primary" onclick="licGenerarOC(\'' + lic.id + '\')"><i class="fas fa-file-alt"></i> Generar Orden de Compra</button>' +
       '</div>';
   }
 
-  return winnerCard + stepsHtml + awardedCard;
+  return winnerCard + revisionBanner + stepsHtml + awardedCard;
 }
 
 /* ─── FORM VIEW (full-page) ─── */
@@ -1088,8 +1116,42 @@ function licAdjudicar(licId, cotId) {
   _licDetailView(licId);
 }
 
+/* ─── licPedirAprobacion — abre modal con campo de comentario ─── */
+function licPedirAprobacion(licId, key, approved) {
+  var stepLabels = { jefe_compras: 'Jefe de Compras', gerencia: 'Gerencia', direccion: 'Dirección' };
+  var label = stepLabels[key] || key;
+  var actionLabel = approved ? 'Aprobar' : 'Rechazar';
+  var body =
+    '<div style="margin-bottom:14px;padding:12px 14px;background:' + (approved ? '#f0fdf4' : '#fef2f2') + ';border-radius:var(--radius);font-size:13px;color:' + (approved ? '#166534' : '#991b1b') + '">' +
+      '<i class="fas fa-' + (approved ? 'check-circle' : 'times-circle') + '" style="margin-right:8px"></i>' +
+      actionLabel + ': <strong>' + label + '</strong>' +
+    '</div>' +
+    '<div class="form-group">' +
+      '<label class="form-label">Comentario' + (approved ? ' (opcional)' : ' *') + '</label>' +
+      '<textarea class="form-control" id="lic-aprov-comment" rows="3" placeholder="' +
+        (approved ? 'Observaciones, condiciones, etc.' : 'Motivo del rechazo — este texto será visible para el equipo...') +
+      '"></textarea>' +
+    '</div>';
+  var footer =
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn ' + (approved ? 'btn-primary' : '') + '" ' +
+      (approved ? '' : 'style="background:#dc2626;color:#fff;border:none"') +
+      ' onclick="licConfirmarAprobacion(\'' + licId + '\',\'' + key + '\',' + approved + ')">' +
+      '<i class="fas fa-' + (approved ? 'check' : 'times') + '"></i> ' + actionLabel +
+    '</button>';
+  openModal(actionLabel + ': ' + label, body, '', footer);
+}
+
+/* ─── licConfirmarAprobacion ─── */
+function licConfirmarAprobacion(licId, key, approved) {
+  var comment = ((document.getElementById('lic-aprov-comment') || {}).value || '').trim();
+  if (!approved && !comment) { toast('El motivo del rechazo es obligatorio', 'error'); return; }
+  closeModal();
+  licAprobarStep(licId, key, approved, comment);
+}
+
 /* ─── licAprobarStep ─── */
-function licAprobarStep(licId, key, approved) {
+function licAprobarStep(licId, key, approved, comment) {
   var lic = DB.getById('licitaciones', licId);
   if (!lic) return;
   if (lic.status === 'awarded' || lic.status === 'cancelled') {
@@ -1098,7 +1160,7 @@ function licAprobarStep(licId, key, approved) {
   }
   var existingVote = (lic.approvals || []).find(function(a) { return a.key === key; });
   if (existingVote) {
-    toast('Este paso ya fue votado y no puede modificarse.', 'warning');
+    toast('Este paso ya fue registrado y no puede modificarse.', 'warning');
     return;
   }
 
@@ -1106,18 +1168,16 @@ function licAprobarStep(licId, key, approved) {
   var currentUser = (window.APP_STATE && window.APP_STATE.currentUser && window.APP_STATE.currentUser.name) || 'Sistema';
 
   approvals.push({
-    key: key,
+    key:      key,
     approved: approved,
     approver: currentUser,
-    date: todayStr()
+    date:     todayStr(),
+    comment:  comment || ''
   });
 
-  var steps = ['jefe_compras', 'gerencia', 'direccion'];
-  var allApproved = steps.every(function(s) {
+  var allSteps = ['jefe_compras', 'gerencia', 'direccion'];
+  var allApproved = allSteps.every(function(s) {
     return approvals.some(function(a) { return a.key === s && a.approved === true; });
-  });
-  var anyRejected = steps.some(function(s) {
-    return approvals.some(function(a) { return a.key === s && a.approved === false; });
   });
 
   var patch = { approvals: approvals };
@@ -1125,17 +1185,34 @@ function licAprobarStep(licId, key, approved) {
     patch.status = 'awarded';
     patch.awarded_at = todayStr();
     toast('¡Licitación adjudicada! Todos los niveles aprobaron.', 'success');
-  } else if (anyRejected) {
-    patch.status = 'cancelled';
-    patch.cancelled_at = todayStr();
-    toast('Licitación cancelada por rechazo en aprobación.', 'warning');
+  } else if (!approved) {
+    // Rejection → revision (not cancelled): the team can rework and resubmit
+    patch.status = 'en_revision';
+    patch.revision_by = currentUser;
+    patch.revision_at = todayStr();
+    toast('Paso rechazado. La licitación quedó en revisión. Corregila y reenvíala.', 'warning');
   } else {
-    toast(approved ? 'Paso aprobado' : 'Paso rechazado', approved ? 'success' : 'warning');
+    toast('Paso aprobado — ' + key, 'success');
   }
 
   DB.update('licitaciones', licId, patch);
   _licState.tab = 'aprobacion';
   _licDetailView(licId);
+}
+
+/* ─── licReenviarAprobacion — reinicia cadena tras revisión ─── */
+function licReenviarAprobacion(licId) {
+  confirmDialog('¿Reenviar a aprobación? Se reiniciará la cadena de aprobaciones desde el primer paso.', function() {
+    DB.update('licitaciones', licId, {
+      status:      'closed',
+      approvals:   [],
+      revision_by: null,
+      revision_at: null
+    });
+    toast('Licitación reenviada a aprobación', 'success');
+    _licState.tab = 'aprobacion';
+    _licDetailView(licId);
+  });
 }
 
 /* ─── licGenerarOC ─── */
