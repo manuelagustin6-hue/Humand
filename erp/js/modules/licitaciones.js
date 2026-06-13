@@ -15,9 +15,15 @@ var _LIC_APROV_ROLES = {
   gerencia:     ['admin'],
   direccion:    ['admin']
 };
-function _licCanApproveStep(key) {
+function _licCanApproveStep(key, lic) {
   var user = window.APP_STATE && window.APP_STATE.currentUser;
   if (!user) return false;
+  // If a specific user is assigned, only they can approve
+  var approvers = lic && lic.approvers;
+  if (approvers && approvers[key] && approvers[key].userId) {
+    return approvers[key].userId === user.id;
+  }
+  // Fall back to role-based
   var allowed = _LIC_APROV_ROLES[key] || ['admin'];
   return allowed.indexOf(user.role) !== -1;
 }
@@ -311,7 +317,7 @@ function _licTabInvitaciones(lic) {
   var baseUrl = window.location.origin +
     window.location.pathname.replace(/\/[^/]*$/, '/') + 'licitacion.html';
 
-  var canAdd = (lic.status === 'active' || lic.status === 'draft');
+  var canAdd = ['draft', 'active', 'closed', 'en_revision'].indexOf(lic.status) !== -1;
   var isDraft = lic.status === 'draft';
 
   var addBtn = canAdd
@@ -506,7 +512,7 @@ function _licTabComparativa(lic) {
     '</div>';
   }).join('');
 
-  var canAward = (lic.status === 'active' || lic.status === 'closed');
+  var canAward = ['active', 'closed', 'en_revision'].indexOf(lic.status) !== -1;
 
   return '<div style="overflow-x:auto">' +
     '<table style="width:100%;border-collapse:collapse">' +
@@ -553,6 +559,8 @@ function _licTabAprobacion(lic) {
 
   var approvals = lic.approvals || [];
 
+  var assignedApprovers = lic.approvers || {};
+
   var steps = [
     { key: 'jefe_compras', label: 'Jefe de Compras', roleLabel: 'project_manager / admin' },
     { key: 'gerencia',     label: 'Gerencia',         roleLabel: 'admin' },
@@ -568,8 +576,9 @@ function _licTabAprobacion(lic) {
     return prev && prev.approved === true;
   }
 
-  var isTerminal = (lic.status === 'awarded' || lic.status === 'cancelled');
+  var isTerminal  = (lic.status === 'awarded' || lic.status === 'cancelled');
   var isRevision  = lic.status === 'en_revision';
+  var canAssign   = !isTerminal;
 
   // Banner: en revisión
   var revisionBanner = isRevision
@@ -585,18 +594,23 @@ function _licTabAprobacion(lic) {
 
   var stepsHtml = steps.map(function(step, idx) {
     var done      = stepDone(step.key);
-    var canAct    = !done && prevApproved(idx) && !isTerminal && !isRevision && _licCanApproveStep(step.key);
-    var pending   = !done && prevApproved(idx) && !isTerminal && !isRevision && !_licCanApproveStep(step.key);
+    var assigned  = assignedApprovers[step.key];
+    var canAct    = !done && prevApproved(idx) && !isTerminal && !isRevision && _licCanApproveStep(step.key, lic);
+    var pending   = !done && prevApproved(idx) && !isTerminal && !isRevision && !_licCanApproveStep(step.key, lic);
     var iconColor = done ? (done.approved ? '#22c55e' : '#ef4444') : '#94a3b8';
     var iconClass = done ? (done.approved ? 'fa-check-circle' : 'fa-times-circle') : (pending || canAct ? 'fa-hourglass-half' : 'fa-lock');
     var border    = done ? (done.approved ? '#22c55e' : '#ef4444') : (canAct || pending ? '#f59e0b' : '#e2e8f0');
     var bg        = done && done.approved ? '#f0fdf4' : done && !done.approved ? '#fef2f2' : (canAct || pending ? '#fffbeb' : '#fafafa');
 
+    var assignedHtml = assigned
+      ? '<div style="font-size:11px;color:#6b7280;margin-top:3px"><i class="fas fa-user" style="margin-right:4px;color:#9ca3af"></i>Asignado: <strong>' + escapeHtml(assigned.name || assigned.userId) + '</strong></div>'
+      : '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Rol: ' + escapeHtml(step.roleLabel) + '</div>';
+
     return '<div style="display:flex;align-items:flex-start;gap:14px;padding:16px;border:1px solid ' + border + ';border-radius:var(--radius);margin-bottom:10px;background:' + bg + '">' +
       '<div style="font-size:24px;color:' + iconColor + ';flex-shrink:0;margin-top:2px"><i class="fas ' + iconClass + '"></i></div>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-weight:700;font-size:14px">' + escapeHtml(step.label) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Rol: ' + escapeHtml(step.roleLabel) + '</div>' +
+        assignedHtml +
         (done ? '<div style="font-size:12px;margin-top:6px;color:' + (done.approved ? '#16a34a' : '#dc2626') + ';font-weight:600">' +
           '<i class="fas ' + (done.approved ? 'fa-check' : 'fa-times') + '" style="margin-right:4px"></i>' +
           (done.approved ? 'Aprobado' : 'Rechazado') +
@@ -606,7 +620,7 @@ function _licTabAprobacion(lic) {
         (done && done.comment ? '<div style="margin-top:6px;padding:8px 10px;background:rgba(0,0,0,.04);border-radius:6px;font-size:12px;color:var(--text-muted)">' +
           '<i class="fas fa-comment" style="margin-right:5px"></i>' + escapeHtml(done.comment) +
         '</div>' : '') +
-        (pending ? '<div style="font-size:12px;color:#92400e;margin-top:4px"><i class="fas fa-hourglass-half" style="margin-right:4px"></i>Pendiente de aprobación</div>' : '') +
+        (pending ? '<div style="font-size:12px;color:#92400e;margin-top:4px"><i class="fas fa-hourglass-half" style="margin-right:4px"></i>Esperando aprobación' + (assigned ? ' de <strong>' + escapeHtml(assigned.name) + '</strong>' : '') + '</div>' : '') +
         (canAct ? '<div style="font-size:12px;color:#1d4ed8;margin-top:4px"><i class="fas fa-bell" style="margin-right:4px"></i>Acción requerida de tu parte</div>' : '') +
       '</div>' +
       (canAct ?
@@ -629,9 +643,11 @@ function _licTabAprobacion(lic) {
         '<div style="font-size:16px;font-weight:800;color:#1e40af">' + escapeHtml(winnerCot.supplier_name || '—') + '</div>' +
         '<div style="font-size:12px;color:#3b82f6;margin-top:2px">' + fmtMoney(winnerTotal) + '</div>' +
       '</div>' +
-      '<div style="font-size:11px;color:#6b7280;text-align:right">' +
-        (lic.payment_terms || winnerCot.payment_terms ? '<div>' + escapeHtml(lic.payment_terms || winnerCot.payment_terms || '') + '</div>' : '') +
-      '</div>' +
+      (canAssign
+        ? '<button class="btn btn-secondary btn-sm" onclick="licAsignarAprobadores(\'' + lic.id + '\')" style="flex-shrink:0">' +
+            '<i class="fas fa-user-cog"></i> Asignar aprobadores' +
+          '</button>'
+        : '') +
     '</div>';
 
   var awardedCard = '';
@@ -1106,11 +1122,18 @@ function licAdjudicar(licId, cotId) {
   var lic = DB.getById('licitaciones', licId);
   if (!lic) return;
 
+  var alreadyHad = lic.winner_cot_id && lic.winner_cot_id !== cotId;
   var patch = { winner_cot_id: cotId };
-  if (lic.status === 'active') patch.status = 'closed';
+  // Move to closed and reset approvals if changing winner or coming from revision
+  if (lic.status === 'active' || lic.status === 'en_revision' || alreadyHad) {
+    patch.status      = 'closed';
+    patch.approvals   = [];
+    patch.revision_by = null;
+    patch.revision_at = null;
+  }
 
   DB.update('licitaciones', licId, patch);
-  toast('Cotización seleccionada como ganadora', 'success');
+  toast(alreadyHad ? 'Ganador cambiado — la cadena de aprobación se reinició' : 'Cotización seleccionada como ganadora', 'success');
 
   _licState.tab = 'comparativa';
   _licDetailView(licId);
@@ -1213,6 +1236,63 @@ function licReenviarAprobacion(licId) {
     _licState.tab = 'aprobacion';
     _licDetailView(licId);
   });
+}
+
+/* ─── licAsignarAprobadores — modal para asignar usuario por paso ─── */
+function licAsignarAprobadores(licId) {
+  var lic = DB.getById('licitaciones', licId);
+  if (!lic) return;
+  var usuarios = DB.getAll('usuarios');
+  var approvers = lic.approvers || {};
+
+  var steps = [
+    { key: 'jefe_compras', label: 'Jefe de Compras' },
+    { key: 'gerencia',     label: 'Gerencia' },
+    { key: 'direccion',    label: 'Dirección' }
+  ];
+
+  var body = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">' +
+    'Asigná un usuario específico para cada nivel de aprobación. Si no se asigna nadie, puede aprobar cualquier usuario con el rol correspondiente.' +
+  '</div>' +
+  steps.map(function(step) {
+    var cur = approvers[step.key];
+    var opts = '<option value="">Sin asignar (rol por defecto)</option>' +
+      usuarios.map(function(u) {
+        return '<option value="' + u.id + '"' + (cur && cur.userId === u.id ? ' selected' : '') + '>' +
+          escapeHtml((u.name || u.email || u.id) + (u.role ? ' — ' + u.role : '')) +
+        '</option>';
+      }).join('');
+    return '<div class="form-group">' +
+      '<label class="form-label">' + step.label + '</label>' +
+      '<select class="form-control" id="lic-aprov-sel-' + step.key + '">' + opts + '</select>' +
+    '</div>';
+  }).join('');
+
+  var footer =
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="licGuardarAprobadores(\'' + licId + '\')">' +
+      '<i class="fas fa-save"></i> Guardar' +
+    '</button>';
+
+  openModal('Asignar Aprobadores', body, '', footer);
+}
+
+function licGuardarAprobadores(licId) {
+  var usuarios = DB.getAll('usuarios');
+  var steps = ['jefe_compras', 'gerencia', 'direccion'];
+  var approvers = {};
+  steps.forEach(function(key) {
+    var sel = document.getElementById('lic-aprov-sel-' + key);
+    if (sel && sel.value) {
+      var u = usuarios.find(function(x) { return x.id === sel.value; });
+      approvers[key] = { userId: sel.value, name: u ? (u.name || u.email || sel.value) : sel.value };
+    }
+  });
+  DB.update('licitaciones', licId, { approvers: approvers });
+  closeModal();
+  toast('Aprobadores asignados', 'success');
+  _licState.tab = 'aprobacion';
+  _licDetailView(licId);
 }
 
 /* ─── licGenerarOC ─── */

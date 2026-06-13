@@ -314,7 +314,7 @@
       _lic = Object.assign({ id: licRows.record_id }, licRows.data);
 
       if (_lic.status === 'draft') { showError('Esta licitación aún no fue activada. Intentá más tarde.'); return; }
-      if (_lic.status === 'cancelled') { showError('Esta licitación fue cancelada.'); return; }
+      if (_lic.status === 'cancelled' || _lic.status === 'awarded') { showError('Esta licitación ya fue cerrada definitivamente.'); return; }
 
       // Check if supplier already submitted a quote
       var { data: cotRows } = await sb
@@ -397,7 +397,9 @@
     });
     updateTotals();
 
-    if (_lic.status !== 'active') {
+    // Allow submissions while active, closed, or en_revision (comparison/revision phase)
+    var _acceptingQuotes = ['active', 'closed', 'en_revision'].indexOf(_lic.status) !== -1;
+    if (!_acceptingQuotes) {
       document.getElementById('submit-btn').disabled = true;
       document.getElementById('submit-btn').textContent = 'Licitación cerrada';
     }
@@ -428,7 +430,7 @@
   };
 
   window.submitCotizacion = async function() {
-    if (_lic.status !== 'active') {
+    if (['active', 'closed', 'en_revision'].indexOf(_lic.status) === -1) {
       alert('Esta licitación ya no acepta cotizaciones.');
       return;
     }
