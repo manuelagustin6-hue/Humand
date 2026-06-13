@@ -1135,8 +1135,14 @@ function licAdjudicar(licId, cotId) {
   DB.update('licitaciones', licId, patch);
   toast(alreadyHad ? 'Ganador cambiado — la cadena de aprobación se reinició' : 'Cotización seleccionada como ganadora', 'success');
 
+  var updatedLic = DB.getById('licitaciones', licId);
+  var goingToApproval = updatedLic && updatedLic.status === 'closed';
   _licState.tab = 'comparativa';
   _licDetailView(licId);
+  if (goingToApproval) {
+    var hasApprovers = updatedLic.approvers && Object.keys(updatedLic.approvers).length > 0;
+    if (!hasApprovers) _licPromptAprobadores(licId);
+  }
 }
 
 /* ─── licPedirAprobacion — abre modal con campo de comentario ─── */
@@ -1226,6 +1232,8 @@ function licAprobarStep(licId, key, approved, comment) {
 /* ─── licReenviarAprobacion — reinicia cadena tras revisión ─── */
 function licReenviarAprobacion(licId) {
   confirmDialog('¿Reenviar a aprobación? Se reiniciará la cadena de aprobaciones desde el primer paso.', function() {
+    var lic = DB.getById('licitaciones', licId);
+    var hasApprovers = lic && lic.approvers && Object.keys(lic.approvers).length > 0;
     DB.update('licitaciones', licId, {
       status:      'closed',
       approvals:   [],
@@ -1235,6 +1243,7 @@ function licReenviarAprobacion(licId) {
     toast('Licitación reenviada a aprobación', 'success');
     _licState.tab = 'aprobacion';
     _licDetailView(licId);
+    if (!hasApprovers) _licPromptAprobadores(licId);
   });
 }
 
@@ -1293,6 +1302,22 @@ function licGuardarAprobadores(licId) {
   toast('Aprobadores asignados', 'success');
   _licState.tab = 'aprobacion';
   _licDetailView(licId);
+}
+
+/* ─── _licPromptAprobadores — sugiere asignar aprobadores antes de iniciar la cadena ─── */
+function _licPromptAprobadores(licId) {
+  var body =
+    '<div style="text-align:center;padding:8px 0 16px">' +
+      '<i class="fas fa-user-cog" style="font-size:38px;color:#f59e0b;margin-bottom:14px;display:block"></i>' +
+      '<p style="margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)">¿Asignar aprobadores?</p>' +
+      '<p style="margin:0;font-size:13px;color:var(--text-muted)">No hay aprobadores asignados. Podés designar un usuario específico para cada nivel de aprobación, o continuar usando los roles por defecto.</p>' +
+    '</div>';
+  var footer =
+    '<button class="btn btn-secondary" onclick="closeModal();_licState.tab=\'aprobacion\';_licDetailView(\'' + licId + '\')">Continuar sin asignar</button>' +
+    '<button class="btn btn-primary" onclick="closeModal();licAsignarAprobadores(\'' + licId + '\')">' +
+      '<i class="fas fa-user-cog"></i> Asignar aprobadores' +
+    '</button>';
+  openModal('Aprobadores no asignados', body, '', footer);
 }
 
 /* ─── licGenerarOC ─── */
