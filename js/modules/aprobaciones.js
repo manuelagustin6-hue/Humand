@@ -257,7 +257,7 @@ function _apprBuildHistoryList() {
 function _apprBuildLicConfig() {
   var cfg = DB.getById('lic_aprobacion_config', 'main') || {};
   var stepsCfg = cfg.steps || {};
-  var usuarios = DB.getAll('usuarios');
+  var usuarios = DB.getAll('users');
   var allRoles = (typeof BUILTIN_ROLES !== 'undefined' ? BUILTIN_ROLES.slice() : []).concat(DB.getAll('roles'));
   var defaultRoles = { jefe_compras: ['project_manager', 'admin'], gerencia: ['admin'], direccion: ['admin'] };
   var steps = [
