@@ -28,7 +28,11 @@ var _SUPA = {
     var out = {};
     rows.forEach(function(r) {
       if (!out[r.collection]) out[r.collection] = [];
-      out[r.collection].push(r.data);
+      var d = r.data || {};
+      // Backfill id from record_id for records written without an embedded id
+      // (e.g. cotizaciones submitted from the supplier portal)
+      if (d.id == null || d.id === '') d.id = r.record_id;
+      out[r.collection].push(d);
     });
     return out;
   },
@@ -269,18 +273,22 @@ const DB = {
       var rid = row.record_id;
       var db  = this.get();
 
+      // Backfill id from record_id when missing (e.g. portal-submitted records)
+      var newData = payload.new && payload.new.data;
+      if (newData && (newData.id == null || newData.id === '')) newData.id = rid;
+
       if (ev === 'DELETE' || (payload.new && payload.new.deleted)) {
         db[col] = (db[col] || []).filter(function(r) { return r.id !== rid; });
       } else if (ev === 'INSERT') {
         if (!db[col]) db[col] = [];
         if (!db[col].find(function(r) { return r.id === rid; })) {
-          db[col].push(payload.new.data);
+          db[col].push(newData);
         }
       } else if (ev === 'UPDATE') {
         if (!db[col]) db[col] = [];
         var idx = db[col].findIndex(function(r) { return r.id === rid; });
-        if (idx >= 0) db[col][idx] = payload.new.data;
-        else db[col].push(payload.new.data);
+        if (idx >= 0) db[col][idx] = newData;
+        else db[col].push(newData);
       }
 
       // Persist locally (don't push back to Supabase — this came FROM Supabase)

@@ -466,16 +466,19 @@
       var recordId = _existingCotId || ('cot-' + _inv.id + '-' + Date.now());
 
       var cotData = {
-        lic_id:        _lic.id,
-        inv_id:        _inv.id,
-        supplier_id:   _inv.supplier_id || null,
-        supplier_name: _inv.supplier_name || '',
-        items:         items,
-        total:         grandTotal,
-        payment_terms: paymentTerms,
-        general_notes: generalNotes,
-        submittedAt:   now,
-        winner:        false
+        id:             recordId,
+        lic_id:         _lic.id,
+        inv_id:         _inv.id,
+        supplier_id:    _inv.supplier_id || null,
+        supplier_name:  _inv.supplier_name || '',
+        items:          items,
+        total:          grandTotal,
+        payment_terms:  paymentTerms,
+        general_notes:  generalNotes,
+        submittedAt:    now,
+        submitted_date: now,
+        created_at:     now,
+        winner:         false
       };
 
       var { error } = await sb.from('erp_data').upsert({
