@@ -296,6 +296,7 @@ function _licTabInvitaciones(lic) {
     window.location.pathname.replace(/\/[^/]*$/, '/') + 'licitacion.html';
 
   var canAdd = (lic.status === 'active' || lic.status === 'draft');
+  var isDraft = lic.status === 'draft';
 
   var addBtn = canAdd
     ? '<button class="btn btn-primary" onclick="licAgregarProveedor(\'' + lic.id + '\')"><i class="fas fa-plus"></i> Agregar Proveedor</button>'
@@ -320,7 +321,7 @@ function _licTabInvitaciones(lic) {
           '<td style="font-size:12px;color:var(--text-muted)">' + fmtDate(inv.invited_date) + '</td>' +
           '<td>' +
             '<div class="table-actions" style="flex-wrap:wrap">' +
-              '<button class="btn btn-sm btn-secondary" title="Copiar enlace" onclick="licCopiarLink(\'' + encodedLink + '\')"><i class="fas fa-link"></i></button>' +
+              '<button class="btn btn-sm btn-secondary" title="Copiar enlace" onclick="licCopiarLink(\'' + encodedLink + '\',' + isDraft + ')"><i class="fas fa-link"></i> Copiar link</button>' +
               '<button class="btn btn-sm btn-secondary" title="Enviar por email" onclick="licEnviarEmail(\'' + encodedEmail + '\',\'' + encodedTitle + '\',\'' + encodedLink + '\',\'' + encodedDeadline + '\')"><i class="fas fa-envelope"></i></button>' +
               (canAdd ? '<button class="btn-ghost btn btn-sm danger" title="Eliminar invitación" onclick="licEliminarInv(\'' + inv.id + '\')"><i class="fas fa-trash"></i></button>' : '') +
             '</div>' +
@@ -328,14 +329,23 @@ function _licTabInvitaciones(lic) {
         '</tr>';
       }).join('');
 
+  var draftWarning = isDraft
+    ? '<div style="padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius);margin-bottom:12px;font-size:13px;color:#92400e;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+        '<span><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+        '<strong>Licitación en borrador.</strong> Los links compartidos con proveedores no funcionarán hasta que la actives.</span>' +
+        '<button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="licActivar(\'' + lic.id + '\')"><i class="fas fa-broadcast-tower"></i> Activar ahora</button>' +
+      '</div>'
+    : '';
+
   var infoCard =
     '<div style="padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--radius);margin-bottom:16px;font-size:12px;color:#1e40af">' +
       '<i class="fas fa-info-circle" style="margin-right:6px"></i>' +
       '<strong>¿Cómo funciona?</strong> Cada proveedor invitado recibe un enlace único con un token de acceso. ' +
-      'Al ingresar al portal, pueden cargar su cotización directamente. El sistema notifica automáticamente cuando el proveedor envía su oferta.' +
+      'Al ingresar al portal, pueden cargar su cotización directamente.' +
     '</div>';
 
-  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
+  return draftWarning +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
       '<strong style="font-size:14px">Proveedores Invitados (' + invs.length + ')</strong>' +
       addBtn +
     '</div>' +
@@ -616,13 +626,40 @@ function _licFormView(id) {
   var projects = DB.getAll('projects');
   var odp = _licState._odpId ? DB.getById('purchaseRequests', _licState._odpId) : (lic && lic.odp_id ? DB.getById('purchaseRequests', lic.odp_id) : null);
 
-  var items = (lic && lic.items) ? lic.items : [{ description: '', quantity: 1, unit: 'un', specs: '' }];
+  // Auto-import items from ODP when creating new licitación from an ODP
+  var items;
+  if (!id && odp && odp.items && odp.items.length > 0) {
+    items = odp.items.filter(Boolean).map(function(it) {
+      return {
+        description: it.item_desc || '',
+        quantity:    it.quantity  || 1,
+        unit:        it.unit      || 'un',
+        specs:       it.tipo      || ''
+      };
+    }).filter(function(it) { return it.description; });
+    if (!items.length) items = [{ description: '', quantity: 1, unit: 'un', specs: '' }];
+  } else {
+    items = (lic && lic.items) ? lic.items : [{ description: '', quantity: 1, unit: 'un', specs: '' }];
+  }
   window._licFormItems = items.slice();
 
+  // Pre-select project from ODP when creating new
+  var selProjId = (lic && lic.project_id) || (!id && odp && odp.project_id) || '';
   var projectOpts = '<option value="">Sin proyecto</option>' +
     projects.map(function(p) {
-      return '<option value="' + p.id + '"' + ((lic && lic.project_id === p.id) ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
+      return '<option value="' + p.id + '"' + (selProjId === p.id ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
     }).join('');
+
+  // Pre-fill title from ODP number when creating new
+  var titleVal = lic ? (lic.title || '') : (odp ? ('Licitación - ODP ' + escapeHtml(odp.number || odp.id || '')) : '');
+
+  var odpImportBanner = (!id && odp && odp.items && odp.items.length > 0)
+    ? '<div style="padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:var(--radius);margin-bottom:16px;font-size:12px;color:#166534">' +
+        '<i class="fas fa-check-circle" style="margin-right:6px"></i>' +
+        '<strong>' + odp.items.filter(Boolean).filter(function(it){return it.item_desc;}).length + ' ítems importados desde ODP ' + escapeHtml(odp.number || '') + '.</strong>' +
+        ' Podés editarlos o agregar más.' +
+      '</div>'
+    : '';
 
   var itemsHtml = items.map(function(it, i) {
     return _licItemRow(it, i);
@@ -643,11 +680,12 @@ function _licFormView(id) {
 
     '<div class="card" style="max-width:860px">' +
       '<div class="card-body">' +
+        odpImportBanner +
 
         '<div class="form-grid form-grid-2" style="margin-bottom:16px">' +
           '<div class="form-group" style="grid-column:1/-1">' +
             '<label class="form-label">Título *</label>' +
-            '<input class="form-control" id="lic-f-title" placeholder="Ej: Licitación materiales eléctricos..." value="' + escapeHtml(lic ? (lic.title || '') : '') + '">' +
+            '<input class="form-control" id="lic-f-title" placeholder="Ej: Licitación materiales eléctricos..." value="' + escapeHtml(titleVal) + '">' +
           '</div>' +
           '<div class="form-group">' +
             '<label class="form-label">Proyecto</label>' +
@@ -918,20 +956,24 @@ function licEliminarInv(invId) {
 }
 
 /* ─── licCopiarLink ─── */
-function licCopiarLink(encodedLink) {
+function licCopiarLink(encodedLink, isDraft) {
   var link = decodeURIComponent(encodedLink);
+  var msg = isDraft
+    ? 'Link copiado — activá la licitación para que funcione'
+    : 'Enlace copiado al portapapeles';
+  var level = isDraft ? 'warning' : 'success';
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(link).then(function() {
-      toast('Enlace copiado al portapapeles', 'success');
+      toast(msg, level);
     }).catch(function() {
-      _licCopyFallback(link);
+      _licCopyFallback(link, msg, level);
     });
   } else {
-    _licCopyFallback(link);
+    _licCopyFallback(link, msg, level);
   }
 }
 
-function _licCopyFallback(text) {
+function _licCopyFallback(text, msg, level) {
   var el = document.createElement('textarea');
   el.value = text;
   el.style.position = 'fixed';
@@ -940,7 +982,7 @@ function _licCopyFallback(text) {
   el.select();
   try {
     document.execCommand('copy');
-    toast('Enlace copiado al portapapeles', 'success');
+    toast(msg || 'Enlace copiado al portapapeles', level || 'success');
   } catch (e) {
     toast('No se pudo copiar. Enlace: ' + text, 'warning');
   }
