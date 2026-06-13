@@ -10,21 +10,24 @@ var LIC_STATUS = {
   cancelled:  { label: 'Cancelada',   color: '#ef4444', bg: '#fef2f2' }
 };
 // Role(s) allowed to approve each step
-var _LIC_APROV_ROLES = {
+var _LIC_APROV_ROLES_DEFAULT = {
   jefe_compras: ['project_manager', 'admin'],
   gerencia:     ['admin'],
   direccion:    ['admin']
 };
+function _licGetAprobConfig() {
+  var cfg = DB.getById('lic_aprobacion_config', 'main');
+  return (cfg && cfg.steps) ? cfg.steps : _LIC_APROV_ROLES_DEFAULT;
+}
 function _licCanApproveStep(key, lic) {
   var user = window.APP_STATE && window.APP_STATE.currentUser;
   if (!user) return false;
-  // If a specific user is assigned, only they can approve
   var approvers = lic && lic.approvers;
   if (approvers && approvers[key] && approvers[key].userId) {
     return approvers[key].userId === user.id;
   }
-  // Fall back to role-based
-  var allowed = _LIC_APROV_ROLES[key] || ['admin'];
+  var cfg = _licGetAprobConfig();
+  var allowed = (cfg[key] && cfg[key].roles) ? cfg[key].roles : (_LIC_APROV_ROLES_DEFAULT[key] || ['admin']);
   return allowed.indexOf(user.role) !== -1;
 }
 var INV_STATUS = {
@@ -1137,6 +1140,25 @@ function licAdjudicar(licId, cotId) {
 
   var updatedLic = DB.getById('licitaciones', licId);
   var goingToApproval = updatedLic && updatedLic.status === 'closed';
+
+  // Auto-apply default approvers from global config if none set
+  if (goingToApproval && (!updatedLic.approvers || Object.keys(updatedLic.approvers).length === 0)) {
+    var aprobCfg = _licGetAprobConfig();
+    var usList = DB.getAll('usuarios');
+    var autoApprovers = {};
+    ['jefe_compras', 'gerencia', 'direccion'].forEach(function(key) {
+      var sc = aprobCfg[key] || {};
+      if (sc.default_user_id) {
+        var u = usList.find(function(x) { return x.id === sc.default_user_id; });
+        if (u) autoApprovers[key] = { userId: u.id, name: u.name || u.email || u.id };
+      }
+    });
+    if (Object.keys(autoApprovers).length > 0) {
+      DB.update('licitaciones', licId, { approvers: autoApprovers });
+      updatedLic = DB.getById('licitaciones', licId);
+    }
+  }
+
   _licState.tab = 'comparativa';
   _licDetailView(licId);
   if (goingToApproval) {
