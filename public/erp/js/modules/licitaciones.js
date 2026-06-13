@@ -10,25 +10,25 @@ var LIC_STATUS = {
   cancelled:  { label: 'Cancelada',   color: '#ef4444', bg: '#fef2f2' }
 };
 // Role(s) allowed to approve each step
-var _LIC_APROV_ROLES_DEFAULT = {
-  jefe_compras: ['project_manager', 'admin'],
-  gerencia:     ['admin'],
-  direccion:    ['admin']
-};
 function _licGetAprobConfig() {
   var cfg = DB.getById('lic_aprobacion_config', 'main');
-  return (cfg && cfg.steps) ? cfg.steps : _LIC_APROV_ROLES_DEFAULT;
+  return (cfg && cfg.steps) ? cfg.steps : { jefe_compras: { user_ids: [] }, gerencia: { user_ids: [] }, direccion: { user_ids: [] } };
 }
 function _licCanApproveStep(key, lic) {
   var user = window.APP_STATE && window.APP_STATE.currentUser;
   if (!user) return false;
-  var approvers = lic && lic.approvers;
-  if (approvers && approvers[key] && approvers[key].userId) {
-    return approvers[key].userId === user.id;
+  // 1. Per-licitación assigned approvers (multi or single)
+  var assigned = lic && lic.approvers && lic.approvers[key];
+  if (assigned) {
+    if (assigned.userIds && assigned.userIds.length > 0) return assigned.userIds.indexOf(user.id) !== -1;
+    if (assigned.userId) return assigned.userId === user.id;
   }
+  // 2. Global config user_ids
   var cfg = _licGetAprobConfig();
-  var allowed = (cfg[key] && cfg[key].roles) ? cfg[key].roles : (_LIC_APROV_ROLES_DEFAULT[key] || ['admin']);
-  return allowed.indexOf(user.role) !== -1;
+  var ids = (cfg[key] && cfg[key].user_ids) ? cfg[key].user_ids : [];
+  if (ids.length > 0) return ids.indexOf(user.id) !== -1;
+  // 3. Fallback: admin only
+  return user.role === 'admin';
 }
 var INV_STATUS = {
   invited:     { label: 'Invitado',    color: '#2563eb' },
@@ -605,9 +605,14 @@ function _licTabAprobacion(lic) {
     var border    = done ? (done.approved ? '#22c55e' : '#ef4444') : (canAct || pending ? '#f59e0b' : '#e2e8f0');
     var bg        = done && done.approved ? '#f0fdf4' : done && !done.approved ? '#fef2f2' : (canAct || pending ? '#fffbeb' : '#fafafa');
 
-    var assignedHtml = assigned
-      ? '<div style="font-size:11px;color:#6b7280;margin-top:3px"><i class="fas fa-user" style="margin-right:4px;color:#9ca3af"></i>Asignado: <strong>' + escapeHtml(assigned.name || assigned.userId) + '</strong></div>'
-      : '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Rol: ' + escapeHtml(step.roleLabel) + '</div>';
+    var assignedHtml;
+    if (assigned && (assigned.userIds && assigned.userIds.length > 0 || assigned.userId)) {
+      var dispNames = (assigned.names && assigned.names.length) ? assigned.names : (assigned.name ? [assigned.name] : [assigned.userId]);
+      assignedHtml = '<div style="font-size:11px;color:#6b7280;margin-top:3px"><i class="fas fa-user" style="margin-right:4px;color:#9ca3af"></i>' +
+        (dispNames.length > 1 ? 'Asignados' : 'Asignado') + ': <strong>' + escapeHtml(dispNames.join(', ')) + '</strong></div>';
+    } else {
+      assignedHtml = '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Sin asignación específica (solo admins)</div>';
+    }
 
     return '<div style="display:flex;align-items:flex-start;gap:14px;padding:16px;border:1px solid ' + border + ';border-radius:var(--radius);margin-bottom:10px;background:' + bg + '">' +
       '<div style="font-size:24px;color:' + iconColor + ';flex-shrink:0;margin-top:2px"><i class="fas ' + iconClass + '"></i></div>' +
@@ -623,7 +628,7 @@ function _licTabAprobacion(lic) {
         (done && done.comment ? '<div style="margin-top:6px;padding:8px 10px;background:rgba(0,0,0,.04);border-radius:6px;font-size:12px;color:var(--text-muted)">' +
           '<i class="fas fa-comment" style="margin-right:5px"></i>' + escapeHtml(done.comment) +
         '</div>' : '') +
-        (pending ? '<div style="font-size:12px;color:#92400e;margin-top:4px"><i class="fas fa-hourglass-half" style="margin-right:4px"></i>Esperando aprobación' + (assigned ? ' de <strong>' + escapeHtml(assigned.name) + '</strong>' : '') + '</div>' : '') +
+        (pending ? '<div style="font-size:12px;color:#92400e;margin-top:4px"><i class="fas fa-hourglass-half" style="margin-right:4px"></i>Esperando aprobación' + (assigned && dispNames && dispNames.length ? ' de <strong>' + escapeHtml(dispNames.join(' o ')) + '</strong>' : '') + '</div>' : '') +
         (canAct ? '<div style="font-size:12px;color:#1d4ed8;margin-top:4px"><i class="fas fa-bell" style="margin-right:4px"></i>Acción requerida de tu parte</div>' : '') +
       '</div>' +
       (canAct ?
@@ -1147,10 +1152,13 @@ function licAdjudicar(licId, cotId) {
     var usList = DB.getAll('users');
     var autoApprovers = {};
     ['jefe_compras', 'gerencia', 'direccion'].forEach(function(key) {
-      var sc = aprobCfg[key] || {};
-      if (sc.default_user_id) {
-        var u = usList.find(function(x) { return x.id === sc.default_user_id; });
-        if (u) autoApprovers[key] = { userId: u.id, name: u.name || u.email || u.id };
+      var ids = (aprobCfg[key] && aprobCfg[key].user_ids) ? aprobCfg[key].user_ids : [];
+      if (ids.length > 0) {
+        var names = ids.map(function(uid) {
+          var u = usList.find(function(x) { return x.id === uid; });
+          return u ? (u.name || u.email || uid) : uid;
+        });
+        autoApprovers[key] = { userIds: ids, names: names };
       }
     });
     if (Object.keys(autoApprovers).length > 0) {
@@ -1269,7 +1277,7 @@ function licReenviarAprobacion(licId) {
   });
 }
 
-/* ─── licAsignarAprobadores — modal para asignar usuario por paso ─── */
+/* ─── licAsignarAprobadores — modal para asignar aprobadores por paso ─── */
 function licAsignarAprobadores(licId) {
   var lic = DB.getById('licitaciones', licId);
   if (!lic) return;
@@ -1283,20 +1291,22 @@ function licAsignarAprobadores(licId) {
   ];
 
   var body = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">' +
-    'Asigná un usuario específico para cada nivel de aprobación. Si no se asigna nadie, puede aprobar cualquier usuario con el rol correspondiente.' +
+    'Seleccioná uno o más usuarios para cada paso. Cualquiera de los asignados podrá aprobar.' +
   '</div>' +
   steps.map(function(step) {
-    var cur = approvers[step.key];
-    var opts = '<option value="">Sin asignar (rol por defecto)</option>' +
-      usuarios.map(function(u) {
-        return '<option value="' + u.id + '"' + (cur && cur.userId === u.id ? ' selected' : '') + '>' +
-          escapeHtml((u.name || u.email || u.id) + (u.role ? ' — ' + u.role : '')) +
-        '</option>';
-      }).join('');
+    var cur = approvers[step.key] || {};
+    var curIds = cur.userIds || (cur.userId ? [cur.userId] : []);
     return '<div class="form-group">' +
-      '<label class="form-label">' + step.label + '</label>' +
-      '<select class="form-control" id="lic-aprov-sel-' + step.key + '">' + opts + '</select>' +
-    '</div>';
+      '<label class="form-label" style="font-weight:600">' + step.label + '</label>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">' +
+      (usuarios.length ? usuarios.map(function(u) {
+        var checked = curIds.indexOf(u.id) !== -1 ? ' checked' : '';
+        return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
+          '<input type="checkbox" id="lic-aprov-' + step.key + '-' + u.id + '" value="' + u.id + '"' + checked + '> ' +
+          escapeHtml((u.name || u.email || u.id) + (u.role ? ' — ' + u.role : '')) +
+        '</label>';
+      }).join('') : '<span style="color:var(--text-muted);font-size:12px">No hay usuarios cargados</span>') +
+      '</div></div>';
   }).join('');
 
   var footer =
@@ -1313,11 +1323,12 @@ function licGuardarAprobadores(licId) {
   var steps = ['jefe_compras', 'gerencia', 'direccion'];
   var approvers = {};
   steps.forEach(function(key) {
-    var sel = document.getElementById('lic-aprov-sel-' + key);
-    if (sel && sel.value) {
-      var u = usuarios.find(function(x) { return x.id === sel.value; });
-      approvers[key] = { userId: sel.value, name: u ? (u.name || u.email || sel.value) : sel.value };
-    }
+    var ids = [], names = [];
+    usuarios.forEach(function(u) {
+      var cb = document.getElementById('lic-aprov-' + key + '-' + u.id);
+      if (cb && cb.checked) { ids.push(u.id); names.push(u.name || u.email || u.id); }
+    });
+    if (ids.length > 0) approvers[key] = { userIds: ids, names: names };
   });
   DB.update('licitaciones', licId, { approvers: approvers });
   closeModal();
