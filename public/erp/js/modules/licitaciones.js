@@ -1144,7 +1144,7 @@ function licAdjudicar(licId, cotId) {
   // Auto-apply default approvers from global config if none set
   if (goingToApproval && (!updatedLic.approvers || Object.keys(updatedLic.approvers).length === 0)) {
     var aprobCfg = _licGetAprobConfig();
-    var usList = DB.getAll('usuarios');
+    var usList = DB.getAll('users');
     var autoApprovers = {};
     ['jefe_compras', 'gerencia', 'direccion'].forEach(function(key) {
       var sc = aprobCfg[key] || {};
@@ -1273,7 +1273,7 @@ function licReenviarAprobacion(licId) {
 function licAsignarAprobadores(licId) {
   var lic = DB.getById('licitaciones', licId);
   if (!lic) return;
-  var usuarios = DB.getAll('usuarios');
+  var usuarios = DB.getAll('users');
   var approvers = lic.approvers || {};
 
   var steps = [
@@ -1309,7 +1309,7 @@ function licAsignarAprobadores(licId) {
 }
 
 function licGuardarAprobadores(licId) {
-  var usuarios = DB.getAll('usuarios');
+  var usuarios = DB.getAll('users');
   var steps = ['jefe_compras', 'gerencia', 'direccion'];
   var approvers = {};
   steps.forEach(function(key) {
