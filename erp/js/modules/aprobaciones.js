@@ -253,14 +253,95 @@ function _apprBuildHistoryList() {
   return html;
 }
 
+// ---- LIC APPROVAL CONFIG SECTION ----
+function _apprBuildLicConfig() {
+  var cfg = DB.getById('lic_aprobacion_config', 'main') || {};
+  var stepsCfg = cfg.steps || {};
+  var usuarios = DB.getAll('usuarios');
+  var allRoles = (typeof BUILTIN_ROLES !== 'undefined' ? BUILTIN_ROLES.slice() : []).concat(DB.getAll('roles'));
+  var defaultRoles = { jefe_compras: ['project_manager', 'admin'], gerencia: ['admin'], direccion: ['admin'] };
+  var steps = [
+    { key: 'jefe_compras', label: 'Paso 1 — Jefe de Compras' },
+    { key: 'gerencia',     label: 'Paso 2 — Gerencia' },
+    { key: 'direccion',    label: 'Paso 3 — Dirección' }
+  ];
+
+  var html = '<div style="margin-bottom:32px">';
+  html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">';
+  html += '<i class="fas fa-gavel"></i> Licitaciones — Cadena de Aprobación</div>';
+  html += '<div style="border:1px solid var(--border);border-radius:10px;padding:16px;background:var(--card-bg)">';
+  html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Configurá los roles habilitados por paso y un aprobador por defecto que se auto-asigna al adjudicar una licitación.</div>';
+
+  steps.forEach(function(step) {
+    var sc = stepsCfg[step.key] || {};
+    var enabledRoles = sc.roles || defaultRoles[step.key] || ['admin'];
+    var defUserId = sc.default_user_id || '';
+
+    html += '<div style="margin-bottom:12px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">';
+    html += '<div style="font-weight:600;font-size:13px;margin-bottom:10px">' + step.label + '</div>';
+
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Roles habilitados para aprobar</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:10px">';
+    allRoles.forEach(function(r) {
+      var checked = enabledRoles.indexOf(r.id) !== -1 ? ' checked' : '';
+      html += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">' +
+        '<input type="checkbox" id="lic-cfg-' + step.key + '-role-' + r.id + '" value="' + r.id + '"' + checked + '> ' +
+        escHtml(r.label) + '</label>';
+    });
+    html += '</div></div>';
+
+    html += '<div>';
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Aprobador por defecto <span style="font-weight:400">(se auto-asigna al adjudicar si no hay uno asignado)</span></div>';
+    html += '<select class="form-control" id="lic-cfg-' + step.key + '-user" style="max-width:320px">';
+    html += '<option value="">Sin aprobador por defecto (usa roles)</option>';
+    usuarios.forEach(function(u) {
+      html += '<option value="' + u.id + '"' + (defUserId === u.id ? ' selected' : '') + '>' +
+        escHtml((u.name || u.email || u.id) + (u.role ? ' — ' + u.role : '')) + '</option>';
+    });
+    html += '</select></div>';
+    html += '</div>';
+  });
+
+  html += '<div style="margin-top:14px;text-align:right">';
+  html += '<button class="btn btn-primary btn-sm" onclick="apprSaveLicConfig()"><i class="fas fa-save"></i> Guardar configuración</button>';
+  html += '</div></div></div>';
+  return html;
+}
+
+function apprSaveLicConfig() {
+  var steps = ['jefe_compras', 'gerencia', 'direccion'];
+  var allRoles = (typeof BUILTIN_ROLES !== 'undefined' ? BUILTIN_ROLES.slice() : []).concat(DB.getAll('roles'));
+  var stepsCfg = {};
+  steps.forEach(function(key) {
+    var roles = [];
+    allRoles.forEach(function(r) {
+      var cb = document.getElementById('lic-cfg-' + key + '-role-' + r.id);
+      if (cb && cb.checked) roles.push(r.id);
+    });
+    var userSel = document.getElementById('lic-cfg-' + key + '-user');
+    stepsCfg[key] = { roles: roles, default_user_id: (userSel && userSel.value) || null };
+  });
+  var existing = DB.getById('lic_aprobacion_config', 'main');
+  if (existing) {
+    DB.update('lic_aprobacion_config', 'main', { steps: stepsCfg });
+  } else {
+    DB.insert('lic_aprobacion_config', { id: 'main', steps: stepsCfg });
+  }
+  toast('Configuración de aprobaciones guardada', 'success');
+}
+
 // ---- TAB: WORKFLOW CONFIGURATION ----
 function _apprBuildWorkflowConfig() {
   const workflows = DB.getAll('approvalWorkflows');
   const users = DB.getAll('users');
 
   var html = '<div style="padding:16px 0">';
+
+  html += _apprBuildLicConfig();
+
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
-  html += '<div><div style="font-weight:600;font-size:14px">Flujos de Aprobación</div>';
+  html += '<div><div style="font-weight:600;font-size:14px">Flujos de Aprobación Genéricos</div>';
   html += '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">Configurá aprobadores, condiciones de activación y pasos secuenciales</div></div>';
   html += '<button class="btn btn-primary" onclick="openApprWorkflowModal(null)"><i class="fas fa-plus"></i> Nuevo Flujo</button>';
   html += '</div>';
