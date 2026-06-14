@@ -20,7 +20,7 @@ function _blankODPItem() {
   return { rubro_id: '', tipo: '', item_desc: '', unit: '', quantity: 0, delivery_date: '' };
 }
 
-/* ──────────────────────────────────────────── LIST VIEW */
+/* ────────────────────────────────────────── LIST VIEW */
 function renderOrdenesPedido() {
   const requests = DB.getAll('purchaseRequests');
   const projects = DB.getAll('projects');
@@ -129,7 +129,7 @@ function filterODP(q, status, project) {
   if (wrap) wrap.innerHTML = buildODPTable(list, DB.getAll('projects'));
 }
 
-/* ──────────────────────────────────────────── FORM VIEW (full page) */
+/* ────────────────────────────────────────── FORM VIEW (full page) */
 window._odpItems = [];
 window._currentODPId = null;
 
@@ -154,17 +154,19 @@ function renderODPForm(id) {
   const critOpts = Object.entries(ODP_CRITICIDAD).map(([k, v]) =>
     `<option value="${k}" ${(odp ? odp.criticidad : 'normal') === k ? 'selected' : ''}>${v}</option>`).join('');
 
+  const pdfBtn = id ? `<button class="btn btn-secondary" style="font-size:13px" onclick="printODP('${id}')"><i class="fas fa-file-pdf"></i> PDF</button>` : '';
+
   const actionBtns = status === 'draft'
-    ? `<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id||''}',true)">Guardar borrador</button>
+    ? `${pdfBtn}<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id||''}',true)">Guardar borrador</button>
        <button class="btn btn-primary" style="font-size:13px" onclick="saveODP('${id||''}',false)"><i class="fas fa-paper-plane"></i> Enviar para aprobar</button>`
     : status === 'pending'
-    ? `<button class="btn btn-danger" style="font-size:13px" onclick="rejectODP('${id}')"><i class="fas fa-times"></i> Rechazar</button>
+    ? `${pdfBtn}<button class="btn btn-danger" style="font-size:13px" onclick="rejectODP('${id}')"><i class="fas fa-times"></i> Rechazar</button>
        <button class="btn btn-success" style="font-size:13px" onclick="approveODP('${id}')"><i class="fas fa-check"></i> Aprobar</button>
        <button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>`
     : status === 'approved'
-    ? `<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>
+    ? `${pdfBtn}<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>
        <button class="btn btn-primary" style="font-size:13px" onclick="licNueva('${id}')"><i class="fas fa-gavel"></i> Licitar</button>`
-    : `<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>`;
+    : `${pdfBtn}<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>`;
 
   document.getElementById('content').innerHTML = `
 <!-- Top bar -->
@@ -310,7 +312,7 @@ function updateODPItem(i, field, val) {
   window._odpItems[i][field] = val;
 }
 
-/* ──────────────────────────────────────────── SAVE / STATUS */
+/* ────────────────────────────────────────── SAVE / STATUS */
 function saveODP(id, isDraft) {
   const projectId = (document.getElementById('odp-project') || {}).value;
   const date = (document.getElementById('odp-date') || {}).value;
@@ -368,4 +370,58 @@ function deleteODP(id) {
     toast('ODP eliminada', 'warning');
     renderOrdenesPedido();
   });
+}
+
+function printODP(id) {
+  var odp = DB.getById('purchaseRequests', id);
+  if (!odp) return;
+  var proj = DB.getById('projects', odp.project_id);
+  var company = {};
+  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+
+  var st = ODP_STATUS[odp.status] || ODP_STATUS.draft;
+  var critLabel = ODP_CRITICIDAD[odp.criticidad] || 'Normal';
+  var critColor = ODP_CRIT_COLOR[odp.criticidad] || '#64748b';
+
+  var itemRows = (odp.items || []).filter(function(it) { return it.item_desc || it.rubro_id; }).map(function(it) {
+    var rubro = it.rubro_id ? DB.getById('rubros', it.rubro_id) : null;
+    return '<tr>' +
+      '<td>' + (rubro ? escapeHtml(rubro.code + ' — ' + rubro.name) : '—') + '</td>' +
+      '<td>' + escapeHtml(it.tipo || '—') + '</td>' +
+      '<td>' + escapeHtml(it.item_desc || '—') + '</td>' +
+      '<td class="tc">' + escapeHtml(it.unit || '—') + '</td>' +
+      '<td class="tr num"><strong>' + fmtNum(it.quantity || 0) + '</strong></td>' +
+      '<td>' + fmtDate(it.delivery_date) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var html =
+    '<div class="doc-header">' +
+      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Orden de Pedido</div></div>' +
+      '<div>' +
+        '<div class="doc-num">' + escapeHtml(odp.number) + '</div>' +
+        '<div class="doc-date">Fecha: ' + fmtDate(odp.date) + '</div>' +
+        '<div style="margin-top:6px"><span style="background:' + st.bg + ';color:' + st.color + ';border:1px solid ' + st.border + ';padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">' + st.label + '</span></div>' +
+      '</div>' +
+    '</div>' +
+    _printInfoGrid([
+      { title: 'Proyecto', content: '<strong>' + escapeHtml(proj ? proj.name : '-') + '</strong>' },
+      { title: 'Datos de la Solicitud', content:
+          'Responsable: <strong>' + escapeHtml(odp.responsable || '-') + '</strong><br>' +
+          'Aprobador: ' + escapeHtml(odp.aprobador || '-') + '<br>' +
+          'Criticidad: <strong style="color:' + critColor + '">' + critLabel + '</strong>' }
+    ]) +
+    (odp.comentarios ? '<div class="concept-box"><strong>Comentarios:</strong> ' + escapeHtml(odp.comentarios) + '</div>' : '') +
+    '<table>' +
+      '<thead><tr>' +
+        '<th>Rubro</th><th>Tipo</th><th>Ítem / Descripción</th><th class="tc">Unidad</th><th class="tr">Cantidad</th><th>Fecha Entrega</th>' +
+      '</tr></thead>' +
+      '<tbody>' + (itemRows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px">Sin ítems</td></tr>') + '</tbody>' +
+    '</table>' +
+    '<div class="sign-row">' +
+      '<div><div class="sign-line">Firma del Responsable</div></div>' +
+      '<div><div class="sign-line">Firma del Aprobador</div></div>' +
+    '</div>';
+
+  _printDoc('ODP ' + odp.number, html);
 }

@@ -168,7 +168,12 @@ function renderCollectionsTable(collections, invoices, projects) {
           <td><span class="badge badge-green">${c.method}</span></td>
           <td><span style="font-size:11px;color:var(--text-muted)">${c.reference || '-'}</span></td>
           <td class="number-cell text-right"><strong>${fmtMoney(c.amount)}</strong></td>
-          <td><button class="btn-ghost btn btn-sm danger" onclick="deleteCollection('${c.id}')"><i class="fas fa-trash"></i></button></td>
+          <td>
+            <div class="table-actions">
+              <button class="btn-ghost btn btn-sm" title="Recibo PDF" onclick="printRecibo('${c.id}')"><i class="fas fa-file-pdf"></i></button>
+              <button class="btn-ghost btn btn-sm danger" onclick="deleteCollection('${c.id}')"><i class="fas fa-trash"></i></button>
+            </div>
+          </td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -319,4 +324,46 @@ function deleteCollection(id) {
     toast('Cobro eliminado', 'warning');
     renderCobranzas();
   });
+}
+
+function printRecibo(id) {
+  var col = DB.getById('collections', id);
+  if (!col) return;
+  var inv   = col.invoice_id ? DB.getById('invoices', col.invoice_id) : null;
+  var proj  = inv ? DB.getById('projects', inv.project_id) : null;
+  var company = {};
+  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+
+  var MET = { transfer: 'Transferencia Bancaria', check: 'Cheque', cash: 'Efectivo', other: 'Otro' };
+  var recNum = 'REC-' + (col.date || '').replace(/-/g,'') + '-' + (col.id || '').slice(-4).toUpperCase();
+
+  var html =
+    '<div class="doc-header">' +
+      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Recibo de Cobro</div></div>' +
+      '<div>' +
+        '<div class="doc-num">' + recNum + '</div>' +
+        '<div class="doc-date">Fecha: ' + fmtDate(col.date) + '</div>' +
+        '<div style="margin-top:6px"><span class="badge b-green">Cobrado</span></div>' +
+      '</div>' +
+    '</div>' +
+    _printInfoGrid([
+      { title: 'Factura de Referencia', content:
+          'N°: <strong>' + escapeHtml(inv ? inv.number : '-') + '</strong><br>' +
+          'Total factura: <strong>' + fmtMoney(inv ? inv.total : 0) + '</strong><br>' +
+          'Proyecto: ' + escapeHtml(proj ? proj.name : '-') + '<br>' +
+          (inv ? 'Cliente: <strong>' + escapeHtml(inv.client_name || '-') + '</strong>' : '') },
+      { title: 'Datos del Cobro', content:
+          'Método: <strong>' + (MET[col.method] || escapeHtml(col.method || '-')) + '</strong><br>' +
+          'Referencia: ' + escapeHtml(col.reference || '-') }
+    ]) +
+    _printTotals([
+      { label: 'Importe Cobrado', value: fmtMoney(col.amount), grand: true }
+    ]) +
+    (col.notes ? '<div class="notes-box"><strong>Notas:</strong> ' + escapeHtml(col.notes) + '</div>' : '') +
+    '<div class="sign-row">' +
+      '<div><div class="sign-line">Firma del Pagador</div></div>' +
+      '<div><div class="sign-line">Firma del Receptor</div></div>' +
+    '</div>';
+
+  _printDoc('Recibo ' + recNum, html);
 }
