@@ -45,6 +45,7 @@ const MODULES = {
   presupuesto:     { title: 'Computo y Presupuesto',         icon: 'fa-calculator',             render: renderPresupuesto },
   seguimiento:     { title: 'Control Presupuestal',          icon: 'fa-chart-line',             render: renderSeguimiento },
   minutas:         { title: 'Minutas de Reunión',            icon: 'fa-clipboard-list',         render: renderMinutas },
+  parte_diario:    { title: 'Parte Diario de Obra',          icon: 'fa-hard-hat',               render: renderParteDiario },
   gantt:           { title: 'Diagrama de Gantt',             icon: 'fa-stream',                 render: renderGantt },
   rubros:          { title: 'Rubros de Obra',                icon: 'fa-list-ol',                render: renderRubros },
   apu:             { title: 'APU — Análisis de Precios Unitarios', icon: 'fa-calculator',       render: renderAPU },
