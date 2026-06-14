@@ -189,6 +189,7 @@ ${o.notes ? `<div style="font-size:12px;color:var(--text-muted)"><strong>Notas:<
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
 <button class="btn btn-secondary" onclick="printPaymentOrder('${o.id}')"><i class="fas fa-file-pdf"></i> PDF</button>
+${(o.retentions||[]).length > 0 ? `<button class="btn btn-secondary" onclick="printRetencion('${o.id}')"><i class="fas fa-percentage"></i> Comp. Retención</button>` : ''}
 ${o.status === 'pending' ? `<button class="btn btn-success" onclick="markPOPaid('${o.id}');closeModal()"><i class="fas fa-check"></i> Marcar Pagada</button>` : ''}
 `);
 }
@@ -642,6 +643,97 @@ function printPaymentOrder(id) {
     '</div>';
 
   _printDoc('Orden de Pago ' + o.number, html);
+}
+
+function printRetencion(paymentOrderId) {
+  var o = DB.getById('paymentOrders', paymentOrderId);
+  if (!o) return;
+  var sup = DB.getById('suppliers', o.supplier_id);
+  var acc = DB.getById('bankAccounts', o.account_id);
+  var company = {};
+  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+
+  var retentions = o.retentions || [];
+  if (!retentions.length) { toast('Esta orden no tiene retenciones', 'info'); return; }
+
+  // Determine first payment method label for "Forma de pago"
+  var firstPaymentMethod = '';
+  var METH_LABEL = { transfer: 'Transferencia bancaria', check: 'Cheque', cash: 'Efectivo', other: 'Otro' };
+  if (o.payment_methods && o.payment_methods.length) {
+    var pm = o.payment_methods[0];
+    firstPaymentMethod = METH_LABEL[pm.method] || pm.method || '';
+  } else if (acc) {
+    firstPaymentMethod = escapeHtml(acc.name || '');
+  }
+
+  // Retention rows
+  var retRows = retentions.map(function(r) {
+    var alicuota = r.rate != null ? (r.rate + '%') : '-';
+    var baseImponible = fmtMoney(o.gross_amount);
+    var codigo = escapeHtml(r.type || r.name || '-');
+    var tipo = escapeHtml(r.name || r.type || '-');
+    var importe = fmtMoney(r.amount || 0);
+    return '<tr>' +
+      '<td>' + tipo + '</td>' +
+      '<td>' + codigo + '</td>' +
+      '<td class="tr num">' + baseImponible + '</td>' +
+      '<td class="tr">' + alicuota + '</td>' +
+      '<td class="tr num">' + importe + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var retTable =
+    '<table style="margin-bottom:0">' +
+      '<thead><tr>' +
+        '<th>Tipo de Retención</th>' +
+        '<th>Código Régimen</th>' +
+        '<th class="tr">Base Imponible</th>' +
+        '<th class="tr">Alícuota</th>' +
+        '<th class="tr">Importe Retenido</th>' +
+      '</tr></thead>' +
+      '<tbody>' + retRows + '</tbody>' +
+    '</table>';
+
+  var html =
+    '<div class="doc-header">' +
+      '<div>' +
+        '<h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1>' +
+        '<div class="subtitle">Comprobante de Retención</div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="doc-num">CR-' + escapeHtml(o.number) + '</div>' +
+        '<div class="doc-date">Fecha: ' + fmtDate(o.date) + '</div>' +
+        '<div style="margin-top:8px"><span class="badge b-green">Emitido</span></div>' +
+      '</div>' +
+    '</div>' +
+    _printInfoGrid([
+      { title: 'Agente de Retención',
+        content: '<strong style="font-size:14px">' + escapeHtml(company.name || '-') + '</strong>' +
+          (company.cuit ? '<br>CUIT: ' + escapeHtml(company.cuit) : '') +
+          (company.address ? '<br>' + escapeHtml(company.address) : '') },
+      { title: 'Sujeto Retenido',
+        content: '<strong style="font-size:14px">' + escapeHtml(sup ? sup.name : '-') + '</strong>' +
+          (sup && sup.cuit ? '<br>CUIT: ' + escapeHtml(sup.cuit) : '') +
+          (sup && sup.address ? '<br>' + escapeHtml(sup.address) : '') },
+      { title: 'Comprobante de Referencia',
+        content: 'Orden de Pago: <strong>' + escapeHtml(o.number) + '</strong>' +
+          '<br>Fecha de pago: <strong>' + fmtDate(o.date) + '</strong>' +
+          '<br>Concepto: <strong>' + escapeHtml(o.concept || '-') + '</strong>' },
+      { title: 'Datos del Pago',
+        content: 'Importe bruto: <strong>' + fmtMoney(o.gross_amount) + '</strong>' +
+          '<br>Forma de pago: <strong>' + firstPaymentMethod + '</strong>' }
+    ]) +
+    retTable +
+    _printTotals([
+      { label: 'Total Retenido', value: fmtMoney(o.total_retentions || 0), grand: true }
+    ]) +
+    '<div class="notes-box">Este comprobante es válido como constancia de retención impositiva conforme a la normativa vigente de ARCA/AFIP. Conservarlo junto al comprobante de pago.</div>' +
+    '<div class="sign-row">' +
+      '<div><div class="sign-line">Firma Autorizada — Agente de Retención</div></div>' +
+      '<div><div class="sign-line">Conforme — Sujeto Retenido</div></div>' +
+    '</div>';
+
+  _printDoc('Comprobante de Retención ' + o.number, html);
 }
 
 function exportPaymentOrders() {
