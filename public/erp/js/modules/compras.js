@@ -1232,6 +1232,11 @@ function openSIForm(id, prefillPoId, prefillCertId) {
           '<option value="">Seleccionar...</option>' +
           suppliers.map(function(s) { return '<option value="' + s.id + '"' + (selectedSupplierId === s.id ? ' selected' : '') + '>' + s.name + '</option>'; }).join('') +
         '</select></div>' +
+      '<div class="form-group"><label class="form-label">Empresa del Grupo</label>' +
+        '<select class="form-control" id="si-company">' +
+          '<option value="">Sin empresa asignada</option>' +
+          (function() { try { return DB.getAllCompanies().map(function(c) { var sel = si && si.company_id === c.id ? ' selected' : ''; return '<option value="' + c.id + '"' + sel + '>' + escapeHtml(c.name) + '</option>'; }).join(''); } catch(e) { return ''; } })() +
+        '</select></div>' +
       '<div class="form-group"><label class="form-label">Proyecto</label>' +
         '<select class="form-control" id="si-project">' +
           '<option value="">Sin proyecto</option>' +
@@ -1436,6 +1441,7 @@ function saveSI(id) {
     cert_id:          certId,
     supplier_id:      supplierId,
     project_id:       document.getElementById('si-project').value || '',
+    company_id:       document.getElementById('si-company') ? document.getElementById('si-company').value || '' : '',
     date:             document.getElementById('si-date').value,
     due_date:         document.getElementById('si-due').value,
     subtotal:         sub,
