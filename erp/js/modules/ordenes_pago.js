@@ -215,12 +215,15 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
     if (!methods || !methods.length) return '';
     var MET = [['transfer','Transferencia'],['check','Cheque'],['cash','Efectivo'],['other','Otro']];
     return methods.map(function(m) {
-      return '<div class="pm-row" style="display:grid;grid-template-columns:160px 1fr 1fr 32px;gap:6px;margin-bottom:6px;align-items:center">' +
-        '<select class="form-control" style="font-size:12px" name="pm-type">' +
+      var refPlaceholder = m.type === 'check' ? 'N° cheque / banco' : m.type === 'transfer' ? 'CBU / alias / referencia' : 'Referencia';
+      var datePlaceholder = m.type === 'check' ? 'Fecha cheque' : 'Fecha acreditación';
+      return '<div class="pm-row" style="display:grid;grid-template-columns:148px 1fr 1fr 120px 32px;gap:6px;margin-bottom:6px;align-items:center">' +
+        '<select class="form-control" style="font-size:12px" name="pm-type" onchange="_pmRowTypeChange(this)">' +
         MET.map(function(x) { return '<option value="' + x[0] + '"' + (m.type===x[0]?' selected':'') + '>' + x[1] + '</option>'; }).join('') +
         '</select>' +
         '<input class="form-control" style="font-size:12px" type="number" name="pm-amount" placeholder="Importe" value="' + (m.amount||'') + '">' +
-        '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="Ref / N° cheque" value="' + escapeHtml(m.reference||'') + '">' +
+        '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="' + refPlaceholder + '" value="' + escapeHtml(m.reference||'') + '">' +
+        '<input class="form-control" style="font-size:12px" type="date" name="pm-date" title="' + datePlaceholder + '" value="' + (m.date||'') + '">' +
         '<button type="button" onclick="this.closest(\'.pm-row\').remove()" style="background:#fee2e2;border:none;border-radius:6px;cursor:pointer;width:32px;height:32px;color:#991b1b;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0">×</button>' +
         '</div>';
     }).join('');
@@ -356,21 +359,33 @@ function prefillPOFromInvoiceCB() {
   }, 10);
 }
 
-function addPOMethodRow(type, amount, reference) {
+function addPOMethodRow(type, amount, reference, date) {
   var wrap = document.getElementById('op-methods');
   if (!wrap) return;
   var MET = [['transfer','Transferencia'],['check','Cheque'],['cash','Efectivo'],['other','Otro']];
+  var t = type || 'transfer';
   var row = document.createElement('div');
   row.className = 'pm-row';
-  row.style.cssText = 'display:grid;grid-template-columns:160px 1fr 1fr 32px;gap:6px;margin-bottom:6px;align-items:center';
+  row.style.cssText = 'display:grid;grid-template-columns:148px 1fr 1fr 120px 32px;gap:6px;margin-bottom:6px;align-items:center';
   row.innerHTML =
-    '<select class="form-control" style="font-size:12px" name="pm-type">' +
-    MET.map(function(x) { return '<option value="' + x[0] + '"' + (type===x[0]?' selected':'') + '>' + x[1] + '</option>'; }).join('') +
+    '<select class="form-control" style="font-size:12px" name="pm-type" onchange="_pmRowTypeChange(this)">' +
+    MET.map(function(x) { return '<option value="' + x[0] + '"' + (t===x[0]?' selected':'') + '>' + x[1] + '</option>'; }).join('') +
     '</select>' +
     '<input class="form-control" style="font-size:12px" type="number" name="pm-amount" placeholder="Importe" value="' + (amount||'') + '">' +
-    '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="Ref / N° cheque" value="' + escapeHtml(reference||'') + '">' +
+    '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="' + (t==='check'?'N° cheque / banco':'CBU / alias / referencia') + '" value="' + escapeHtml(reference||'') + '">' +
+    '<input class="form-control" style="font-size:12px" type="date" name="pm-date" title="' + (t==='check'?'Fecha cheque':'Fecha acreditación') + '" value="' + (date||'') + '">' +
     '<button type="button" onclick="this.closest(\'.pm-row\').remove()" style="background:#fee2e2;border:none;border-radius:6px;cursor:pointer;width:32px;height:32px;color:#991b1b;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0">×</button>';
   wrap.appendChild(row);
+}
+
+function _pmRowTypeChange(sel) {
+  var row = sel.closest('.pm-row');
+  if (!row) return;
+  var t = sel.value;
+  var refEl = row.querySelector('[name="pm-ref"]');
+  var dateEl = row.querySelector('[name="pm-date"]');
+  if (refEl) refEl.placeholder = t === 'check' ? 'N° cheque / banco' : t === 'cash' ? 'Referencia' : 'CBU / alias / referencia';
+  if (dateEl) { dateEl.title = t === 'check' ? 'Fecha cheque' : 'Fecha acreditación'; dateEl.style.display = t === 'cash' ? 'none' : ''; }
 }
 
 function recalcPORetentions() {
@@ -420,7 +435,8 @@ function savePaymentOrder(id) {
     var type = row.querySelector('[name="pm-type"]')?.value || 'transfer';
     var amount = parseFloat(row.querySelector('[name="pm-amount"]')?.value) || 0;
     var ref = (row.querySelector('[name="pm-ref"]')?.value || '').trim();
-    return amount > 0 ? { type: type, amount: amount, reference: ref } : null;
+    var date = (row.querySelector('[name="pm-date"]')?.value || '').trim();
+    return amount > 0 ? { type: type, amount: amount, reference: ref, date: date } : null;
   }).filter(Boolean);
 
   const firstInv = appliedInvoices[0];
@@ -519,26 +535,70 @@ function printPaymentOrder(id) {
       '</div>';
   }
 
-  // Medios de pago
-  var methSection = '';
-  if (o.payment_methods && o.payment_methods.length) {
-    var methRows = o.payment_methods.map(function(m) {
-      return '<tr>' +
-        '<td><strong>' + escapeHtml(METH_LABEL[m.type] || m.type) + '</strong>' + (m.reference ? ' — <span style="color:#64748b">' + escapeHtml(m.reference) + '</span>' : '') + '</td>' +
-        '<td class="tr num">' + fmtMoney(m.amount) + '</td>' +
-        '</tr>';
-    }).join('');
-    methSection =
-      '<div style="margin-bottom:22px">' +
-        '<div class="info-title" style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px">Medios de Pago</div>' +
-        '<table>' +
-          '<thead><tr><th>Medio</th><th class="tr">Importe</th></tr></thead>' +
-          '<tbody>' + methRows + '</tbody>' +
-        '</table>' +
-      '</div>';
-  } else if (acc) {
-    methSection = '<div class="notes-box" style="margin-bottom:18px"><strong>Cuenta de pago:</strong> ' + escapeHtml(acc.name) + (acc.bank ? ' — ' + escapeHtml(acc.bank) : '') + '</div>';
+  // ---------- Medios de pago — layout detallado ----------
+  function _methCard(iconColor, title, lines) {
+    return '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:15px 18px;margin-bottom:12px;background:#fafbfc">' +
+      '<div style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px;border-bottom:1px solid #f1f5f9;padding-bottom:8px">' + title + '</div>' +
+      lines.map(function(l) {
+        return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:13px">' +
+          '<span style="color:#64748b;font-size:12px">' + l[0] + '</span>' +
+          '<span style="font-weight:' + (l[2]?'800':'500') + ';color:' + (l[3]||'#0f172a') + ';font-variant-numeric:tabular-nums">' + l[1] + '</span>' +
+          '</div>';
+      }).join('') +
+    '</div>';
   }
+
+  var paySection = '<div style="margin-bottom:24px">' +
+    '<div style="font-size:10px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.14em;margin-bottom:14px;padding-bottom:6px;border-bottom:2px solid #dbeafe">Detalle del Pago</div>';
+
+  // Payment methods cards
+  if (o.payment_methods && o.payment_methods.length) {
+    o.payment_methods.forEach(function(m) {
+      var lines = [];
+      if (m.type === 'transfer') {
+        if (acc) lines.push(['Cuenta', escapeHtml(acc.name) + (acc.bank ? ' — ' + escapeHtml(acc.bank) : '')]);
+        if (m.reference) lines.push(['CBU / Referencia', escapeHtml(m.reference)]);
+        lines.push(['Monto', fmtMoney(m.amount), true, '#1e3a8a']);
+        if (m.date) lines.push(['Fecha de acreditación', fmtDate(m.date)]);
+      } else if (m.type === 'check') {
+        if (m.reference) lines.push(['N° de cheque / banco', escapeHtml(m.reference)]);
+        lines.push(['Monto', fmtMoney(m.amount), true, '#1e3a8a']);
+        if (m.date) lines.push(['Fecha del cheque', fmtDate(m.date)]);
+      } else {
+        if (m.reference) lines.push(['Referencia', escapeHtml(m.reference)]);
+        lines.push(['Monto', fmtMoney(m.amount), true, '#1e3a8a']);
+        if (m.date) lines.push(['Fecha', fmtDate(m.date)]);
+      }
+      paySection += _methCard('#2563eb', METH_LABEL[m.type] || m.type, lines);
+    });
+  } else if (acc) {
+    paySection += _methCard('#2563eb', 'Cuenta de Pago', [['Cuenta', escapeHtml(acc.name)]]);
+  }
+
+  // Retentions card (amber)
+  if (o.retentions && o.retentions.length) {
+    var retLines = (o.retentions||[]).map(function(r) {
+      return [escapeHtml(r.name) + ' (' + r.rate + '%)', '− ' + fmtMoney(r.amount), false, '#92400e'];
+    });
+    retLines.push(['Total retenciones', '− ' + fmtMoney(o.total_retentions||0), true, '#92400e']);
+    paySection += '<div style="border:1px solid #fde68a;border-radius:8px;padding:15px 18px;margin-bottom:12px;background:#fffbeb">' +
+      '<div style="font-size:9.5px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px;border-bottom:1px solid #fde68a;padding-bottom:8px">Retenciones</div>' +
+      retLines.map(function(l) {
+        return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:13px">' +
+          '<span style="color:#78350f;font-size:12px">' + l[0] + '</span>' +
+          '<span style="font-weight:' + (l[2]?'800':'500') + ';color:' + (l[3]||'#92400e') + ';font-variant-numeric:tabular-nums">' + l[1] + '</span>' +
+          '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  // Net total highlight
+  paySection +=
+    '<div style="background:#1e3a8a;border-radius:8px;padding:15px 20px;display:flex;justify-content:space-between;align-items:center">' +
+      '<span style="color:#bfdbfe;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em">Neto a Pagar</span>' +
+      '<span style="color:#fff;font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em">' + fmtMoney(o.net_amount) + '</span>' +
+    '</div>' +
+  '</div>';
 
   var html =
     '<div class="doc-header">' +
@@ -555,20 +615,15 @@ function printPaymentOrder(id) {
           (sup && sup.cuit ? '<br>CUIT: ' + escapeHtml(sup.cuit) : '') +
           (sup && sup.address ? '<br>' + escapeHtml(sup.address) : '') +
           (sup && sup.email ? '<br>' + escapeHtml(sup.email) : '') },
-      { title: 'Datos del Pago',
+      { title: 'Datos Generales',
         content: 'Proyecto: <strong>' + escapeHtml(proj ? proj.name : '-') + '</strong>' +
-          '<br>Cuenta: ' + escapeHtml(acc ? acc.name : '-') +
-          '<br>Fecha de pago: <strong>' + fmtDate(o.date) + '</strong>' }
+          '<br>Fecha: <strong>' + fmtDate(o.date) + '</strong>' +
+          '<br>Importe bruto: <strong>' + fmtMoney(o.gross_amount) + '</strong>' }
     ]) +
     '<div class="concept-box"><strong>Concepto:</strong> ' + escapeHtml(o.concept) + '</div>' +
     invSection +
-    methSection +
-    _printTotals(
-      [{ label: 'Importe Bruto', value: fmtMoney(o.gross_amount) }]
-        .concat((o.retentions||[]).map(function(r) { return { label: escapeHtml(r.name) + ' (' + r.rate + '%)', value: '− ' + fmtMoney(r.amount), warn: true }; }))
-        .concat([{ label: 'Neto a Pagar', value: fmtMoney(o.net_amount), grand: true }])
-    ) +
-    (o.notes ? '<div class="notes-box" style="margin-top:18px"><strong>Notas:</strong> ' + escapeHtml(o.notes) + '</div>' : '') +
+    paySection +
+    (o.notes ? '<div class="notes-box" style="margin-top:4px"><strong>Notas:</strong> ' + escapeHtml(o.notes) + '</div>' : '') +
     '<div class="sign-row">' +
       '<div><div class="sign-line">Firma del Autorizante</div></div>' +
       '<div><div class="sign-line">Conforme — Firma del Beneficiario</div></div>' +
