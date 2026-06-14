@@ -535,73 +535,78 @@ function printPaymentOrder(id) {
       '</div>';
   }
 
-  // ---------- Medios de pago — layout detallado ----------
-  function _methCard(iconColor, title, lines) {
-    return '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:15px 18px;margin-bottom:12px;background:#fafbfc">' +
-      '<div style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px;border-bottom:1px solid #f1f5f9;padding-bottom:8px">' + title + '</div>' +
-      lines.map(function(l) {
-        return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:13px">' +
-          '<span style="color:#64748b;font-size:12px">' + l[0] + '</span>' +
-          '<span style="font-weight:' + (l[2]?'800':'500') + ';color:' + (l[3]||'#0f172a') + ';font-variant-numeric:tabular-nums">' + l[1] + '</span>' +
-          '</div>';
-      }).join('') +
-    '</div>';
-  }
-
+  // ---------- Medios de pago — tabla compacta (una fila por medio) ----------
   var paySection = '<div style="margin-bottom:24px">' +
-    '<div style="font-size:10px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.14em;margin-bottom:14px;padding-bottom:6px;border-bottom:2px solid #dbeafe">Detalle del Pago</div>';
+    '<div style="font-size:10px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.14em;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #dbeafe">Detalle del Pago</div>';
 
-  // Payment methods cards
+  // Medios de pago — una fila por medio
+  var methRows = '';
   if (o.payment_methods && o.payment_methods.length) {
-    o.payment_methods.forEach(function(m) {
-      var lines = [];
+    methRows = o.payment_methods.map(function(m) {
+      var detalle = '';
       if (m.type === 'transfer') {
-        if (acc) lines.push(['Cuenta', escapeHtml(acc.name) + (acc.bank ? ' — ' + escapeHtml(acc.bank) : '')]);
-        if (m.reference) lines.push(['CBU / Referencia', escapeHtml(m.reference)]);
-        lines.push(['Monto', fmtMoney(m.amount), true, '#1e3a8a']);
-        if (m.date) lines.push(['Fecha de acreditación', fmtDate(m.date)]);
-      } else if (m.type === 'check') {
-        if (m.reference) lines.push(['N° de cheque / banco', escapeHtml(m.reference)]);
-        lines.push(['Monto', fmtMoney(m.amount), true, '#1e3a8a']);
-        if (m.date) lines.push(['Fecha del cheque', fmtDate(m.date)]);
+        var parts = [];
+        if (acc) parts.push(escapeHtml(acc.name));
+        if (m.reference) parts.push(escapeHtml(m.reference));
+        detalle = parts.join(' — ');
       } else {
-        if (m.reference) lines.push(['Referencia', escapeHtml(m.reference)]);
-        lines.push(['Monto', fmtMoney(m.amount), true, '#1e3a8a']);
-        if (m.date) lines.push(['Fecha', fmtDate(m.date)]);
+        detalle = m.reference ? escapeHtml(m.reference) : '';
       }
-      paySection += _methCard('#2563eb', METH_LABEL[m.type] || m.type, lines);
-    });
-  } else if (acc) {
-    paySection += _methCard('#2563eb', 'Transferencia Bancaria', [
-      ['Cuenta', escapeHtml(acc.name) + (acc.bank ? ' — ' + escapeHtml(acc.bank) : '')],
-      ['Monto', fmtMoney(o.gross_amount), true, '#1e3a8a']
-    ]);
+      var fechaCol = m.type === 'check' ? 'Fecha cheque' : 'Fecha acred.';
+      return '<tr>' +
+        '<td><strong>' + (METH_LABEL[m.type]||m.type) + '</strong></td>' +
+        '<td>' + detalle + '</td>' +
+        '<td class="tr num" style="color:#1e3a8a;font-weight:700">' + fmtMoney(m.amount) + '</td>' +
+        '<td class="tr" style="color:#64748b">' + (m.date ? fmtDate(m.date) : '—') + '</td>' +
+        '</tr>';
+    }).join('');
   } else {
-    paySection += _methCard('#2563eb', 'Pago', [
-      ['Monto', fmtMoney(o.gross_amount), true, '#1e3a8a']
-    ]);
+    var accDetail = acc ? escapeHtml(acc.name) + (acc.bank ? ' — ' + escapeHtml(acc.bank) : '') : '—';
+    methRows = '<tr>' +
+      '<td><strong>Transferencia bancaria</strong></td>' +
+      '<td>' + accDetail + '</td>' +
+      '<td class="tr num" style="color:#1e3a8a;font-weight:700">' + fmtMoney(o.gross_amount) + '</td>' +
+      '<td class="tr" style="color:#64748b">—</td>' +
+      '</tr>';
   }
 
-  // Retentions card (amber)
+  paySection += '<table>' +
+    '<thead><tr>' +
+      '<th>Medio de pago</th>' +
+      '<th>Cuenta / Referencia</th>' +
+      '<th class="tr">Monto</th>' +
+      '<th class="tr">Fecha</th>' +
+    '</tr></thead>' +
+    '<tbody>' + methRows + '</tbody>' +
+  '</table>';
+
+  // Retenciones — tabla compacta con fondo ámbar
   if (o.retentions && o.retentions.length) {
-    var retLines = (o.retentions||[]).map(function(r) {
-      return [escapeHtml(r.name) + ' (' + r.rate + '%)', '− ' + fmtMoney(r.amount), false, '#92400e'];
-    });
-    retLines.push(['Total retenciones', '− ' + fmtMoney(o.total_retentions||0), true, '#92400e']);
-    paySection += '<div style="border:1px solid #fde68a;border-radius:8px;padding:15px 18px;margin-bottom:12px;background:#fffbeb">' +
-      '<div style="font-size:9.5px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px;border-bottom:1px solid #fde68a;padding-bottom:8px">Retenciones</div>' +
-      retLines.map(function(l) {
-        return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:13px">' +
-          '<span style="color:#78350f;font-size:12px">' + l[0] + '</span>' +
-          '<span style="font-weight:' + (l[2]?'800':'500') + ';color:' + (l[3]||'#92400e') + ';font-variant-numeric:tabular-nums">' + l[1] + '</span>' +
-          '</div>';
-      }).join('') +
-    '</div>';
+    var retTbody = (o.retentions||[]).map(function(r) {
+      return '<tr>' +
+        '<td style="color:#92400e">' + escapeHtml(r.name) + ' (' + r.rate + '%)</td>' +
+        '<td class="tr num" style="color:#92400e">− ' + fmtMoney(r.amount) + '</td>' +
+      '</tr>';
+    }).join('') +
+    '<tr style="border-top:2px solid #fde68a">' +
+      '<td style="color:#92400e;font-weight:700">Total retenciones</td>' +
+      '<td class="tr num" style="color:#92400e;font-weight:700">− ' + fmtMoney(o.total_retentions||0) + '</td>' +
+    '</tr>';
+    paySection +=
+      '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;overflow:hidden;margin-top:2px">' +
+        '<table style="margin:0">' +
+          '<thead><tr>' +
+            '<th style="background:#fef3c7;color:#92400e">Retenciones</th>' +
+            '<th class="tr" style="background:#fef3c7;color:#92400e">Monto</th>' +
+          '</tr></thead>' +
+          '<tbody>' + retTbody + '</tbody>' +
+        '</table>' +
+      '</div>';
   }
 
-  // Net total highlight
+  // Neto a pagar
   paySection +=
-    '<div style="background:#1e3a8a;border-radius:8px;padding:15px 20px;display:flex;justify-content:space-between;align-items:center">' +
+    '<div style="background:#1e3a8a;border-radius:8px;padding:13px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:12px">' +
       '<span style="color:#bfdbfe;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em">Neto a Pagar</span>' +
       '<span style="color:#fff;font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em">' + fmtMoney(o.net_amount) + '</span>' +
     '</div>' +
