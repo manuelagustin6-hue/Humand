@@ -572,7 +572,14 @@ function printPaymentOrder(id) {
       paySection += _methCard('#2563eb', METH_LABEL[m.type] || m.type, lines);
     });
   } else if (acc) {
-    paySection += _methCard('#2563eb', 'Cuenta de Pago', [['Cuenta', escapeHtml(acc.name)]]);
+    paySection += _methCard('#2563eb', 'Transferencia Bancaria', [
+      ['Cuenta', escapeHtml(acc.name) + (acc.bank ? ' — ' + escapeHtml(acc.bank) : '')],
+      ['Monto', fmtMoney(o.gross_amount), true, '#1e3a8a']
+    ]);
+  } else {
+    paySection += _methCard('#2563eb', 'Pago', [
+      ['Monto', fmtMoney(o.gross_amount), true, '#1e3a8a']
+    ]);
   }
 
   // Retentions card (amber)
