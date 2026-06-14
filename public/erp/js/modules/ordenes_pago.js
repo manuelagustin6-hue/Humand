@@ -199,15 +199,31 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
   const projects = DB.getAll('projects');
   const accounts = DB.getAll('bankAccounts');
   const retentions = DB.getAll('retentions').filter(r => r.active && r.applies_to === 'payment');
-  const allSIs = DB.getAll('supplierInvoices');
   const nextNum = `OP-${new Date().getFullYear()}-${String(DB.getAll('paymentOrders').length + 1).padStart(3,'0')}`;
-  const effectiveSIId = prefillSIId || (o ? o.supplier_invoice_id : null);
 
-  // Build supplier invoice options filtered by current supplier if editing
-  function buildSIOpts(supplierId) {
-    const filtered = allSIs.filter(si => si.status !== 'cancelled' && (!supplierId || si.supplier_id === supplierId));
-    const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
-    return filtered.map(si => '<option value="' + si.id + '" ' + (effectiveSIId===si.id?'selected':'') + '>' + si.number + ' — ' + fmtMoney(si.total) + ' [' + (statusLabel[si.status]||si.status) + ']</option>').join('');
+  // Track which invoices are already applied (for checkbox pre-selection)
+  window._poEditApplied = [];
+  if (o && o.applied_invoices && o.applied_invoices.length) {
+    window._poEditApplied = o.applied_invoices.map(function(x) { return typeof x === 'string' ? x : x.id; });
+  } else if (o && o.supplier_invoice_id) {
+    window._poEditApplied = [o.supplier_invoice_id];
+  }
+  if (prefillSIId && window._poEditApplied.indexOf(prefillSIId) === -1) window._poEditApplied.push(prefillSIId);
+
+  // Build payment method rows HTML for existing data
+  function buildMethodRows(methods) {
+    if (!methods || !methods.length) return '';
+    var MET = [['transfer','Transferencia'],['check','Cheque'],['cash','Efectivo'],['other','Otro']];
+    return methods.map(function(m) {
+      return '<div class="pm-row" style="display:grid;grid-template-columns:160px 1fr 1fr 32px;gap:6px;margin-bottom:6px;align-items:center">' +
+        '<select class="form-control" style="font-size:12px" name="pm-type">' +
+        MET.map(function(x) { return '<option value="' + x[0] + '"' + (m.type===x[0]?' selected':'') + '>' + x[1] + '</option>'; }).join('') +
+        '</select>' +
+        '<input class="form-control" style="font-size:12px" type="number" name="pm-amount" placeholder="Importe" value="' + (m.amount||'') + '">' +
+        '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="Ref / N° cheque" value="' + escapeHtml(m.reference||'') + '">' +
+        '<button type="button" onclick="this.closest(\'.pm-row\').remove()" style="background:#fee2e2;border:none;border-radius:6px;cursor:pointer;width:32px;height:32px;color:#991b1b;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0">×</button>' +
+        '</div>';
+    }).join('');
   }
 
   openModal(o ? 'Editar Orden de Pago' : 'Nueva Orden de Pago', `
@@ -233,11 +249,10 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
     </select>
   </div>
   <div class="form-group full">
-    <label class="form-label">Factura del Proveedor</label>
-    <select class="form-control" id="op-invoice" onchange="prefillPOFromInvoice(this.value)">
-      <option value="">Sin factura de referencia</option>
-      ${buildSIOpts(o?.supplier_id || '')}
-    </select>
+    <label class="form-label">Facturas Aplicadas</label>
+    <div id="op-inv-wrap" style="border:1px solid var(--border);border-radius:8px;max-height:150px;overflow-y:auto;font-size:13px">
+      <div style="padding:10px 12px;font-size:12px;color:var(--text-muted)">Seleccioná un proveedor para ver sus facturas</div>
+    </div>
   </div>
   <div class="form-group">
     <label class="form-label">Proyecto</label>
@@ -267,6 +282,10 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
   </div>
 </div>
 <div class="divider"></div>
+<div style="font-size:13px;font-weight:600;margin-bottom:8px">Medios de Pago</div>
+<div id="op-methods">${buildMethodRows(o?.payment_methods)}</div>
+<button type="button" onclick="addPOMethodRow()" style="font-size:12px;color:var(--primary);background:none;border:1px dashed var(--border);border-radius:6px;padding:5px 14px;cursor:pointer;margin-bottom:14px"><i class="fas fa-plus"></i> Agregar medio de pago</button>
+<div class="divider"></div>
 <div style="font-size:13px;font-weight:600;margin-bottom:8px">Retenciones a Aplicar</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="op-retentions">
   ${retentions.map(r => `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;background:var(--bg);padding:8px;border-radius:6px">
@@ -285,36 +304,73 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="savePaymentOrder('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
 `);
-  if (prefillSIId) {
-    setTimeout(function() {
-      var selEl = document.getElementById('op-invoice');
-      if (selEl && selEl.value !== prefillSIId) { selEl.value = prefillSIId; prefillPOFromInvoice(prefillSIId); }
-      else if (selEl && selEl.value === prefillSIId) prefillPOFromInvoice(prefillSIId);
-    }, 80);
-  }
+
+  // Load invoice checkboxes after modal renders
+  setTimeout(function() {
+    if (o?.supplier_id || prefillSIId) reloadPOInvoiceSelect(o?.supplier_id || '');
+  }, 60);
 }
 
 function reloadPOInvoiceSelect(supplierId) {
-  const allSIs = DB.getAll('supplierInvoices');
-  const sel = document.getElementById('op-invoice');
-  if (!sel) return;
-  const statusLabel = { pending: 'Pendiente', paid: 'Pagada' };
-  const filtered = allSIs.filter(si => si.status !== 'cancelled' && (!supplierId || si.supplier_id === supplierId));
-  sel.innerHTML = '<option value="">Sin factura de referencia</option>' +
-    filtered.map(si => '<option value="' + si.id + '">' + si.number + ' — ' + fmtMoney(si.total) + ' [' + (statusLabel[si.status]||si.status) + ']</option>').join('');
+  var wrap = document.getElementById('op-inv-wrap');
+  if (!wrap) return;
+  var allSIs = DB.getAll('supplierInvoices');
+  var filtered = allSIs.filter(function(si) { return si.status !== 'cancelled' && (!supplierId || si.supplier_id === supplierId); });
+  if (!filtered.length) {
+    wrap.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-muted)">Sin facturas disponibles para este proveedor</div>';
+    return;
+  }
+  var existing = window._poEditApplied || [];
+  var stLabel = { pending: 'Pendiente', paid: 'Pagada', overdue: 'Vencida' };
+  var stBadge = { pending: 'badge-yellow', paid: 'badge-green', overdue: 'badge-red' };
+  wrap.innerHTML = filtered.map(function(si) {
+    var checked = existing.indexOf(si.id) !== -1 ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-light);cursor:pointer" onclick="prefillPOFromInvoiceCB()">' +
+      '<input type="checkbox" name="op-inv-cb" value="' + si.id + '" ' + checked + '>' +
+      '<span style="flex:1;font-weight:600;font-size:13px">' + escapeHtml(si.number) + '</span>' +
+      '<span style="color:var(--primary);font-variant-numeric:tabular-nums;font-size:13px">' + fmtMoney(si.total) + '</span>' +
+      '<span class="badge ' + (stBadge[si.status]||'badge-gray') + '" style="font-size:10px">' + (stLabel[si.status]||si.status) + '</span>' +
+      '</label>';
+  }).join('');
 }
 
-function prefillPOFromInvoice(invoiceId) {
-  if (!invoiceId) return;
-  const si = DB.getById('supplierInvoices', invoiceId);
-  if (!si) return;
-  const grossEl = document.getElementById('op-gross');
-  const conceptEl = document.getElementById('op-concept');
-  const projEl = document.getElementById('op-project');
-  if (grossEl && !grossEl.value) grossEl.value = si.total;
-  if (conceptEl && !conceptEl.value) conceptEl.value = 'Pago factura ' + si.number;
-  if (projEl && si.project_id) projEl.value = si.project_id;
-  recalcPORetentions();
+function prefillPOFromInvoiceCB() {
+  // Small delay so the checkbox state updates before we read it
+  setTimeout(function() {
+    var checked = Array.from(document.querySelectorAll('#op-inv-wrap input[name="op-inv-cb"]:checked'));
+    if (!checked.length) return;
+    var grossEl = document.getElementById('op-gross');
+    var conceptEl = document.getElementById('op-concept');
+    var projEl = document.getElementById('op-project');
+    var firstSI = DB.getById('supplierInvoices', checked[0].value);
+    if (!firstSI) return;
+    if (grossEl && !grossEl.value) {
+      var total = checked.reduce(function(s, cb) { var si = DB.getById('supplierInvoices', cb.value); return s + (si ? (si.total||0) : 0); }, 0);
+      grossEl.value = total;
+      recalcPORetentions();
+    }
+    if (conceptEl && !conceptEl.value) {
+      conceptEl.value = checked.length === 1 ? 'Pago factura ' + firstSI.number : 'Pago facturas (' + checked.length + ')';
+    }
+    if (projEl && firstSI.project_id && !projEl.value) projEl.value = firstSI.project_id;
+  }, 10);
+}
+
+function addPOMethodRow(type, amount, reference) {
+  var wrap = document.getElementById('op-methods');
+  if (!wrap) return;
+  var MET = [['transfer','Transferencia'],['check','Cheque'],['cash','Efectivo'],['other','Otro']];
+  var row = document.createElement('div');
+  row.className = 'pm-row';
+  row.style.cssText = 'display:grid;grid-template-columns:160px 1fr 1fr 32px;gap:6px;margin-bottom:6px;align-items:center';
+  row.innerHTML =
+    '<select class="form-control" style="font-size:12px" name="pm-type">' +
+    MET.map(function(x) { return '<option value="' + x[0] + '"' + (type===x[0]?' selected':'') + '>' + x[1] + '</option>'; }).join('') +
+    '</select>' +
+    '<input class="form-control" style="font-size:12px" type="number" name="pm-amount" placeholder="Importe" value="' + (amount||'') + '">' +
+    '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="Ref / N° cheque" value="' + escapeHtml(reference||'') + '">' +
+    '<button type="button" onclick="this.closest(\'.pm-row\').remove()" style="background:#fee2e2;border:none;border-radius:6px;cursor:pointer;width:32px;height:32px;color:#991b1b;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0">×</button>';
+  wrap.appendChild(row);
 }
 
 function recalcPORetentions() {
@@ -351,16 +407,33 @@ function savePaymentOrder(id) {
   }));
   const totalRet = retentions.reduce((s,r) => s + r.amount, 0);
 
-  const invoiceId = document.getElementById('op-invoice')?.value || '';
-  const invoiceRef = invoiceId ? (DB.getById('supplierInvoices', invoiceId)?.number || '') : '';
+  // Collect applied invoices from checkboxes
+  const appliedInvCBs = Array.from(document.querySelectorAll('#op-inv-wrap input[name="op-inv-cb"]:checked'));
+  const appliedInvoices = appliedInvCBs.map(function(cb) {
+    var si = DB.getById('supplierInvoices', cb.value);
+    return si ? { id: si.id, number: si.number, total: si.total } : null;
+  }).filter(Boolean);
+
+  // Collect payment methods from rows
+  const pmRows = Array.from(document.querySelectorAll('#op-methods .pm-row'));
+  const paymentMethods = pmRows.map(function(row) {
+    var type = row.querySelector('[name="pm-type"]')?.value || 'transfer';
+    var amount = parseFloat(row.querySelector('[name="pm-amount"]')?.value) || 0;
+    var ref = (row.querySelector('[name="pm-ref"]')?.value || '').trim();
+    return amount > 0 ? { type: type, amount: amount, reference: ref } : null;
+  }).filter(Boolean);
+
+  const firstInv = appliedInvoices[0];
   const data = {
     number: document.getElementById('op-num').value,
     supplier_id: supplierId,
     project_id: document.getElementById('op-project').value || '',
     account_id: document.getElementById('op-account').value || '',
     date: document.getElementById('op-date').value,
-    supplier_invoice_id: invoiceId,
-    reference_doc: invoiceRef,
+    supplier_invoice_id: firstInv ? firstInv.id : '',
+    reference_doc: firstInv ? firstInv.number : '',
+    applied_invoices: appliedInvoices,
+    payment_methods: paymentMethods,
     concept,
     gross_amount: gross,
     retentions,
@@ -383,7 +456,10 @@ function markPOPaid(id) {
   }
   const o = DB.getById('paymentOrders', id);
   DB.update('paymentOrders', id, { status: 'paid' });
-  if (o && o.supplier_invoice_id) {
+  // Mark all applied invoices as paid
+  if (o && o.applied_invoices && o.applied_invoices.length) {
+    o.applied_invoices.forEach(function(inv) { DB.update('supplierInvoices', inv.id, { status: 'paid' }); });
+  } else if (o && o.supplier_invoice_id) {
     DB.update('supplierInvoices', o.supplier_invoice_id, { status: 'paid' });
   }
   toast('Orden marcada como pagada', 'success');
@@ -404,16 +480,65 @@ function printPaymentOrder(id) {
   var sup  = DB.getById('suppliers', o.supplier_id);
   var proj = DB.getById('projects', o.project_id);
   var acc  = DB.getById('bankAccounts', o.account_id);
-  var si   = o.supplier_invoice_id ? DB.getById('supplierInvoices', o.supplier_invoice_id) : null;
   var company = {};
   try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
 
   var ST_BADGE = { draft: 'b-gray', pending: 'b-yellow', paid: 'b-green', cancelled: 'b-red' };
   var ST_LABEL = { draft: 'Borrador', pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
+  var METH_LABEL = { transfer: 'Transferencia bancaria', check: 'Cheque', cash: 'Efectivo', other: 'Otro' };
+  var INV_ST = { pending: 'Pendiente', paid: 'Pagada', overdue: 'Vencida' };
+  var INV_BD = { pending: 'b-yellow', paid: 'b-green', overdue: 'b-red' };
 
-  var retRows = (o.retentions || []).map(function(r) {
-    return '<div class="trow warn"><span>' + escapeHtml(r.name) + ' (' + r.rate + '%)</span><span class="num">- ' + fmtMoney(r.amount) + '</span></div>';
-  }).join('');
+  // Facturas aplicadas: use applied_invoices array (or fall back to single supplier_invoice_id)
+  var appliedInvs = [];
+  if (o.applied_invoices && o.applied_invoices.length) {
+    appliedInvs = o.applied_invoices;
+  } else if (o.supplier_invoice_id) {
+    var siBack = DB.getById('supplierInvoices', o.supplier_invoice_id);
+    if (siBack) appliedInvs = [{ id: siBack.id, number: siBack.number, total: siBack.total }];
+  }
+
+  var invSection = '';
+  if (appliedInvs.length) {
+    var invRows = appliedInvs.map(function(inv) {
+      var siLocal = DB.getById('supplierInvoices', inv.id);
+      var st = siLocal ? siLocal.status : 'pending';
+      return '<tr>' +
+        '<td><strong>' + escapeHtml(inv.number) + '</strong></td>' +
+        '<td class="tr num">' + fmtMoney(inv.total) + '</td>' +
+        '<td><span class="badge ' + (INV_BD[st]||'b-gray') + '">' + (INV_ST[st]||st) + '</span></td>' +
+        '</tr>';
+    }).join('');
+    invSection =
+      '<div style="margin-bottom:22px">' +
+        '<div class="info-title" style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px">Facturas Aplicadas</div>' +
+        '<table>' +
+          '<thead><tr><th>Número de Factura</th><th class="tr">Importe</th><th>Estado</th></tr></thead>' +
+          '<tbody>' + invRows + '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  // Medios de pago
+  var methSection = '';
+  if (o.payment_methods && o.payment_methods.length) {
+    var methRows = o.payment_methods.map(function(m) {
+      return '<tr>' +
+        '<td><strong>' + escapeHtml(METH_LABEL[m.type] || m.type) + '</strong>' + (m.reference ? ' — <span style="color:#64748b">' + escapeHtml(m.reference) + '</span>' : '') + '</td>' +
+        '<td class="tr num">' + fmtMoney(m.amount) + '</td>' +
+        '</tr>';
+    }).join('');
+    methSection =
+      '<div style="margin-bottom:22px">' +
+        '<div class="info-title" style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px">Medios de Pago</div>' +
+        '<table>' +
+          '<thead><tr><th>Medio</th><th class="tr">Importe</th></tr></thead>' +
+          '<tbody>' + methRows + '</tbody>' +
+        '</table>' +
+      '</div>';
+  } else if (acc) {
+    methSection = '<div class="notes-box" style="margin-bottom:18px"><strong>Cuenta de pago:</strong> ' + escapeHtml(acc.name) + (acc.bank ? ' — ' + escapeHtml(acc.bank) : '') + '</div>';
+  }
 
   var html =
     '<div class="doc-header">' +
@@ -421,29 +546,32 @@ function printPaymentOrder(id) {
       '<div>' +
         '<div class="doc-num">' + escapeHtml(o.number) + '</div>' +
         '<div class="doc-date">Fecha: ' + fmtDate(o.date) + '</div>' +
-        '<div style="margin-top:6px"><span class="badge ' + (ST_BADGE[o.status]||'b-gray') + '">' + (ST_LABEL[o.status]||o.status) + '</span></div>' +
+        '<div style="margin-top:8px"><span class="badge ' + (ST_BADGE[o.status]||'b-gray') + '">' + (ST_LABEL[o.status]||o.status) + '</span></div>' +
       '</div>' +
     '</div>' +
     _printInfoGrid([
-      { title: 'Beneficiario', content:
-          '<strong>' + escapeHtml(sup ? sup.name : '-') + '</strong><br>' +
-          'CUIT: ' + escapeHtml(sup ? (sup.cuit||'-') : '-') + '<br>' +
-          escapeHtml(sup && sup.address ? sup.address : '') },
-      { title: 'Datos del Pago', content:
-          'Proyecto: <strong>' + escapeHtml(proj ? proj.name : '-') + '</strong><br>' +
-          'Cuenta: ' + escapeHtml(acc ? acc.name : '-') + '<br>' +
-          (si ? 'Factura prov.: <strong>' + escapeHtml(si.number) + '</strong> — ' + fmtMoney(si.total) : ('Ref: ' + escapeHtml(o.reference_doc||'-'))) }
+      { title: 'Beneficiario',
+        content: '<strong style="font-size:14px">' + escapeHtml(sup ? sup.name : '-') + '</strong>' +
+          (sup && sup.cuit ? '<br>CUIT: ' + escapeHtml(sup.cuit) : '') +
+          (sup && sup.address ? '<br>' + escapeHtml(sup.address) : '') +
+          (sup && sup.email ? '<br>' + escapeHtml(sup.email) : '') },
+      { title: 'Datos del Pago',
+        content: 'Proyecto: <strong>' + escapeHtml(proj ? proj.name : '-') + '</strong>' +
+          '<br>Cuenta: ' + escapeHtml(acc ? acc.name : '-') +
+          '<br>Fecha de pago: <strong>' + fmtDate(o.date) + '</strong>' }
     ]) +
     '<div class="concept-box"><strong>Concepto:</strong> ' + escapeHtml(o.concept) + '</div>' +
+    invSection +
+    methSection +
     _printTotals(
       [{ label: 'Importe Bruto', value: fmtMoney(o.gross_amount) }]
-        .concat((o.retentions||[]).map(function(r) { return { label: escapeHtml(r.name) + ' (' + r.rate + '%)', value: '- ' + fmtMoney(r.amount), warn: true }; }))
+        .concat((o.retentions||[]).map(function(r) { return { label: escapeHtml(r.name) + ' (' + r.rate + '%)', value: '− ' + fmtMoney(r.amount), warn: true }; }))
         .concat([{ label: 'Neto a Pagar', value: fmtMoney(o.net_amount), grand: true }])
     ) +
-    (o.notes ? '<div class="notes-box"><strong>Notas:</strong> ' + escapeHtml(o.notes) + '</div>' : '') +
+    (o.notes ? '<div class="notes-box" style="margin-top:18px"><strong>Notas:</strong> ' + escapeHtml(o.notes) + '</div>' : '') +
     '<div class="sign-row">' +
       '<div><div class="sign-line">Firma del Autorizante</div></div>' +
-      '<div><div class="sign-line">Firma del Beneficiario</div></div>' +
+      '<div><div class="sign-line">Conforme — Firma del Beneficiario</div></div>' +
     '</div>';
 
   _printDoc('Orden de Pago ' + o.number, html);
