@@ -320,56 +320,79 @@ function escapeHtml(str) {
 }
 
 // ---- PRINT / PDF DOCUMENT ----
-// Opens a new window with a clean printable layout and auto-triggers print dialog.
+// Creates an in-page full-screen overlay with a proper document layout.
+// Uses window.print() with @media print CSS to hide the rest of the app.
 function _printDoc(title, bodyHtml) {
-  var win = window.open('', '_blank', 'width=960,height=760');
-  if (!win) { toast('El navegador bloqueó la ventana. Habilitá los popups para este sitio.', 'error'); return; }
-  var company = {};
-  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
-  win.document.write(
-    '<!DOCTYPE html><html lang="es"><head>' +
-    '<meta charset="UTF-8"><title>' + escapeHtml(title) + '</title>' +
-    '<style>' +
-    '*{box-sizing:border-box;margin:0;padding:0}' +
-    'body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#1e293b;font-size:13px;padding:36px;background:#fff;max-width:860px;margin:0 auto}' +
-    'h1{font-size:22px;font-weight:800;color:#2563eb;letter-spacing:-.02em}' +
-    '.subtitle{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-top:4px}' +
-    '.doc-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:18px;margin-bottom:22px;border-bottom:2px solid #e2e8f0}' +
-    '.doc-num{font-size:28px;font-weight:800;color:#1e293b;text-align:right;letter-spacing:-.02em}' +
-    '.doc-date{font-size:12px;color:#64748b;text-align:right;margin-top:5px}' +
-    '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}' +
-    '.info-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px}' +
-    '.info-title{font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px}' +
-    '.info-box p{line-height:1.8;font-size:12px}' +
-    'table{width:100%;border-collapse:collapse;font-size:12px;margin:16px 0}' +
-    'thead th{background:#f1f5f9;padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-bottom:2px solid #e2e8f0;white-space:nowrap}' +
-    'tbody td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}' +
-    'tbody tr:last-child td{border-bottom:none}' +
-    '.tr{text-align:right}.tc{text-align:center}' +
-    '.num{font-variant-numeric:tabular-nums}' +
-    '.totals{max-width:300px;margin-left:auto;margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}' +
-    '.trow{display:flex;justify-content:space-between;padding:8px 14px;font-size:13px;border-bottom:1px solid #f1f5f9}' +
-    '.trow:last-child{border-bottom:none}' +
-    '.trow.grand{background:#2563eb;color:#fff;font-size:15px;font-weight:800}' +
-    '.trow.warn{color:#b45309}' +
-    '.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}' +
-    '.b-green{background:#dcfce7;color:#166534}.b-yellow{background:#fef9c3;color:#92400e}.b-gray{background:#f1f5f9;color:#64748b}.b-red{background:#fee2e2;color:#991b1b}' +
-    '.concept-box{background:#f8fafc;border-left:3px solid #2563eb;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;margin-bottom:18px}' +
-    '.notes-box{font-size:12px;color:#64748b;margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:6px}' +
-    '.sign-row{margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:40px;font-size:11px;color:#64748b}' +
-    '.sign-line{border-top:1px solid #1e293b;margin-bottom:6px;padding-top:8px;text-align:center}' +
-    '.no-print{margin-top:28px;padding-top:20px;border-top:1px solid #e2e8f0;display:flex;gap:10px}' +
-    '@media print{.no-print{display:none}body{padding:16px}}' +
-    'button{padding:10px 22px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}' +
-    '.btn-print{background:#2563eb;color:#fff}.btn-close{background:#f1f5f9;color:#1e293b}' +
-    '</style></head><body>' +
+  var prev = document.getElementById('erp-print-overlay');
+  if (prev) prev.remove();
+  var prevCss = document.getElementById('erp-print-css');
+  if (prevCss) prevCss.remove();
+
+  var st = document.createElement('style');
+  st.id = 'erp-print-css';
+  st.textContent =
+    '@page{size:A4 portrait;margin:16mm 14mm}' +
+    '@media print{' +
+      '*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}' +
+      'html,body{height:auto!important;overflow:visible!important}' +
+      'body>*{display:none!important}' +
+      '#erp-print-overlay{display:block!important;position:static!important;background:#fff!important;overflow:visible!important;padding:0!important;margin:0!important;width:100%!important;height:auto!important}' +
+      '#erp-print-overlay .epdoc-shell{box-shadow:none!important;border-radius:0!important;margin:0!important;padding:0!important;max-width:100%!important;min-height:0!important}' +
+      '#erp-print-overlay .epdoc-actions{display:none!important}' +
+    '}' +
+    '#erp-print-overlay{position:fixed;inset:0;background:rgba(15,23,42,.82);z-index:99999;overflow-y:auto;padding:32px 16px;-webkit-overflow-scrolling:touch}' +
+    '#erp-print-overlay .epdoc-shell{max-width:794px;min-height:1040px;margin:0 auto 32px;background:#fff;border-radius:8px;box-shadow:0 24px 60px rgba(0,0,0,.5);padding:52px 60px;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#0f172a;font-size:13.5px;line-height:1.6}' +
+    '@media(max-width:860px){#erp-print-overlay .epdoc-shell{padding:32px 24px;min-height:0}}' +
+    '#erp-print-overlay h1{font-size:22px;font-weight:800;color:#1e3a8a;letter-spacing:-.02em;margin:0;padding:0;border:none}' +
+    '#erp-print-overlay .subtitle{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.16em;margin-top:5px;display:block}' +
+    '#erp-print-overlay .doc-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:22px;margin-bottom:28px;border-bottom:3px solid #1e3a8a;gap:16px}' +
+    '#erp-print-overlay .doc-num{font-size:34px;font-weight:800;color:#1e293b;letter-spacing:-.03em;line-height:1.1;text-align:right}' +
+    '#erp-print-overlay .doc-date{font-size:12px;color:#64748b;text-align:right;margin-top:6px}' +
+    '#erp-print-overlay .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}' +
+    '#erp-print-overlay .info-box{border:1px solid #e2e8f0;border-radius:7px;padding:14px 16px;background:#fafbfc}' +
+    '#erp-print-overlay .info-title{font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:9px;display:block}' +
+    '#erp-print-overlay .info-box p{font-size:13px;line-height:1.8;margin:0}' +
+    '#erp-print-overlay .concept-box{background:#eff6ff;border-left:4px solid #2563eb;padding:13px 16px;border-radius:0 7px 7px 0;margin-bottom:22px;font-size:13.5px}' +
+    '#erp-print-overlay .notes-box{font-size:12.5px;color:#475569;margin-top:16px;padding:12px 16px;background:#f8fafc;border-radius:7px;border:1px solid #e2e8f0}' +
+    '#erp-print-overlay table{width:100%;border-collapse:collapse;font-size:12.5px;margin:20px 0}' +
+    '#erp-print-overlay thead th{background:#1e3a8a;color:#fff;padding:10px 13px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;border:none}' +
+    '#erp-print-overlay tbody tr:nth-child(even) td{background:#f8fafc}' +
+    '#erp-print-overlay tbody td{padding:10px 13px;border-bottom:1px solid #e2e8f0;vertical-align:middle}' +
+    '#erp-print-overlay tbody tr:last-child td{border-bottom:none}' +
+    '#erp-print-overlay .tr{text-align:right}#erp-print-overlay .tc{text-align:center}#erp-print-overlay .num{font-variant-numeric:tabular-nums}' +
+    '#erp-print-overlay .totals{max-width:320px;margin-left:auto;margin-top:20px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}' +
+    '#erp-print-overlay .trow{display:flex;justify-content:space-between;padding:10px 16px;font-size:13.5px;border-bottom:1px solid #f1f5f9}' +
+    '#erp-print-overlay .trow:last-child{border-bottom:none}' +
+    '#erp-print-overlay .trow.grand{background:#1e3a8a;color:#fff;font-size:16px;font-weight:800}' +
+    '#erp-print-overlay .trow.warn{color:#92400e}' +
+    '#erp-print-overlay .badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}' +
+    '#erp-print-overlay .b-green,#erp-print-overlay .badge-green{background:#dcfce7;color:#166534}' +
+    '#erp-print-overlay .b-yellow,#erp-print-overlay .badge-yellow{background:#fef3c7;color:#92400e}' +
+    '#erp-print-overlay .b-gray,#erp-print-overlay .badge-gray{background:#f1f5f9;color:#475569}' +
+    '#erp-print-overlay .b-red,#erp-print-overlay .badge-red{background:#fee2e2;color:#991b1b}' +
+    '#erp-print-overlay .b-blue,#erp-print-overlay .badge-blue{background:#dbeafe;color:#1e40af}' +
+    '#erp-print-overlay .sign-row{margin-top:64px;display:grid;grid-template-columns:1fr 1fr;gap:48px}' +
+    '#erp-print-overlay .sign-line{border-top:1px solid #1e293b;padding-top:8px;text-align:center;font-size:11px;color:#64748b;margin-top:36px}' +
+    '#erp-print-overlay .epdoc-actions{margin-top:40px;padding-top:24px;border-top:2px solid #e2e8f0;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}' +
+    '.epdoc-btn-p{padding:13px 36px;background:#1e3a8a;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:-.01em}' +
+    '.epdoc-btn-c{padding:13px 28px;background:#f1f5f9;color:#374151;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit}' +
+    '.epdoc-btn-p:hover{background:#1e40af}.epdoc-btn-c:hover{background:#e2e8f0}';
+
+  document.head.appendChild(st);
+
+  var ol = document.createElement('div');
+  ol.id = 'erp-print-overlay';
+  ol.innerHTML =
+    '<div class="epdoc-shell">' +
     bodyHtml +
-    '<div class="no-print">' +
-    '<button class="btn-print" onclick="window.print()">&#128438; Imprimir / Guardar PDF</button>' +
-    '<button class="btn-close" onclick="window.close()">Cerrar</button>' +
-    '</div></body></html>'
-  );
-  win.document.close();
+    '<div class="epdoc-actions">' +
+    '<button class="epdoc-btn-p" onclick="window.print()">&#128444; Guardar PDF / Imprimir</button>' +
+    '<button class="epdoc-btn-c" onclick="document.getElementById(\'erp-print-overlay\').remove();document.getElementById(\'erp-print-css\').remove()">Cerrar</button>' +
+    '</div>' +
+    '</div>';
+
+  document.body.appendChild(ol);
+  ol.scrollTop = 0;
 }
 
 // Build a standard two-column info grid section for print docs
