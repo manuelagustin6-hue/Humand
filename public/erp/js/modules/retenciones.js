@@ -104,12 +104,32 @@ function renderRetenciones() {
     <div class="card">
       <div class="card-body">
         <div style="font-size:14px;font-weight:700;margin-bottom:4px">Exportar para ARCA / SICORE</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Generá el archivo de retenciones practicadas para presentar en ARCA (ex-AFIP). Filtrá por período y razón social antes de exportar.</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Generá el archivo de retenciones practicadas para presentar en ARCA (ex-AFIP). Seleccioná la razón social del grupo para la que presentás y filtrá por período.</div>
+
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 18px;margin-bottom:18px">
+          <div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Agente de Retención (presentante)</div>
+          <div class="form-grid form-grid-2" style="margin:0">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Razón Social del Grupo *</label>
+              <select class="form-control" id="arca-company" onchange="renderArcaPreview()">
+                ${(function() {
+                  try {
+                    return DB.getAllCompanies().map(c => '<option value="' + c.id + '" data-cuit="' + (c.cuit||'') + '" data-name="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + (c.cuit ? ' — ' + c.cuit : '') + '</option>').join('');
+                  } catch(e) { return ''; }
+                })()}
+              </select>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">CUIT Agente</label>
+              <input class="form-control" id="arca-company-cuit" placeholder="Se completa automático" readonly style="background:#f8fafc">
+            </div>
+          </div>
+        </div>
 
         <div class="form-grid form-grid-2" style="margin-bottom:16px">
           <div class="form-group">
-            <label class="form-label">Razón Social / Proveedor</label>
-            <input class="form-control" id="arca-q" placeholder="Filtrar por nombre..." oninput="renderArcaPreview()">
+            <label class="form-label">Filtrar por proveedor</label>
+            <input class="form-control" id="arca-q" placeholder="Nombre del proveedor..." oninput="renderArcaPreview()">
           </div>
           <div class="form-group">
             <label class="form-label">Tipo de Retención</label>
@@ -193,7 +213,24 @@ function _arcaFilteredRows() {
   return rows;
 }
 
+function _arcaSelectedCompany() {
+  const sel = document.getElementById('arca-company');
+  if (!sel || !sel.value) {
+    try { return DB.getAllCompanies()[0] || {}; } catch(e) { return {}; }
+  }
+  try {
+    const companies = DB.getAllCompanies();
+    const c = companies.find(function(c) { return c.id === sel.value; });
+    // Sync CUIT field
+    const cuitEl = document.getElementById('arca-company-cuit');
+    if (cuitEl) cuitEl.value = c ? (c.cuit||'') : '';
+    return c || {};
+  } catch(e) { return {}; }
+}
+
 function renderArcaPreview() {
+  // Sync company CUIT on every render
+  _arcaSelectedCompany();
   const wrap = document.getElementById('arca-preview-wrap');
   if (!wrap) return;
   const rows = _arcaFilteredRows();
@@ -202,9 +239,14 @@ function renderArcaPreview() {
     return;
   }
   const total = rows.reduce((s,r)=>s+(r.amount||0),0);
-  wrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">' + rows.length + ' registros · Total: <strong>' + fmtMoney(total) + '</strong></div>' +
+  const co = _arcaSelectedCompany();
+  const agLabel = co.name ? (escapeHtml(co.name) + (co.cuit ? ' · ' + co.cuit : '')) : '—';
+  wrap.innerHTML =
+    '<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 14px;font-size:12px;margin-bottom:10px;color:#0369a1">' +
+      '<strong>Agente de retención:</strong> ' + agLabel + '</div>' +
+    '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">' + rows.length + ' registros · Total retenido: <strong>' + fmtMoney(total) + '</strong></div>' +
     '<div class="table-wrap"><table><thead><tr>' +
-    '<th>Período</th><th>N° OP</th><th>Fecha</th><th>Razón Social</th><th>CUIT</th><th>Tipo Retención</th><th style="text-align:right">Base Imponible</th><th style="text-align:right">Alícuota</th><th style="text-align:right">Importe Retenido</th>' +
+    '<th>Período</th><th>N° OP</th><th>Fecha</th><th>Sujeto Retenido</th><th>CUIT Retenido</th><th>Tipo Retención</th><th style="text-align:right">Base Imponible</th><th style="text-align:right">Alícuota</th><th style="text-align:right">Importe Retenido</th>' +
     '</tr></thead><tbody>' +
     rows.map(r => '<tr>' +
       '<td style="font-size:11px">' + (r.date ? r.date.slice(0,7).replace('-','/') : '-') + '</td>' +
@@ -223,8 +265,7 @@ function renderArcaPreview() {
 function exportARCAExcel() {
   const rows = _arcaFilteredRows();
   if (!rows.length) { toast('Sin registros para exportar', 'warning'); return; }
-  var company = {};
-  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+  var company = _arcaSelectedCompany();
   exportXLSX('retenciones_arca.xlsx',
     ['Período','Tipo Comprobante','N° Comprobante','Fecha','CUIT Agente Retención','Agente Retención','CUIT Sujeto Retenido','Razón Social','Tipo Retención','Base Imponible','Alícuota (%)','Importe Retenido'],
     rows.map(function(r) {
@@ -251,8 +292,7 @@ function exportARCAExcel() {
 function exportARCATxt() {
   const rows = _arcaFilteredRows();
   if (!rows.length) { toast('Sin registros para exportar', 'warning'); return; }
-  var company = {};
-  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+  var company = _arcaSelectedCompany();
   const agenteCUIT = (company.cuit || '').replace(/[-\s]/g, '').padEnd(11,' ');
 
   // SICORE-compatible text format (pipe-delimited for ARCA import)
