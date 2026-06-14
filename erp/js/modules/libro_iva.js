@@ -78,11 +78,13 @@ function renderLibroIVA() {
     <button class="tab-btn" data-tab="tab-iva-ventas">IVA Ventas</button>
     <button class="tab-btn" data-tab="tab-iva-ddjj">Posición IVA (DDJJ)</button>
     <button class="tab-btn" data-tab="tab-iva-citi">Exportar CITI</button>
+    <button class="tab-btn" data-tab="tab-iva-concil">Conciliar ARCA</button>
   </div>
   <div id="tab-iva-compras" class="tab-content">${livaRenderComprasTab(sis)}</div>
   <div id="tab-iva-ventas"  class="tab-content">${livaRenderVentasTab(invs)}</div>
   <div id="tab-iva-ddjj"   class="tab-content">${livaRenderDDJJTab(sis, invs)}</div>
   <div id="tab-iva-citi"   class="tab-content">${livaRenderCitiTab(sis, invs)}</div>
+  <div id="tab-iva-concil" class="tab-content">${livaRenderConciliarTab()}</div>
 </div>
 `;
   initTabs('libro-iva-tabs');
@@ -875,4 +877,331 @@ function livaCitiExportVentas(mode) {
     _citiSaveFile('VENTAS_ALICUOTA_' + ym + '.TXT', alicLines.join('\r\n'));
     toast('VENTAS_ALICUOTA_' + ym + '.TXT generado (' + alicLines.length + ' registros)', 'success');
   }
+}
+
+// =====================================================================
+// CONCILIADOR DE COMPROBANTES ARCA
+// =====================================================================
+
+function livaRenderConciliarTab() {
+  return '<div class="card"><div class="card-body">' +
+    '<div style="font-size:14px;font-weight:700;margin-bottom:4px">Conciliador de Comprobantes ARCA</div>' +
+    '<div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">' +
+      'Bajá el listado de comprobantes desde el portal ARCA → Mis Comprobantes → Exportar CSV. ' +
+      'Subí el archivo y el sistema compara contra los cargados en el ERP para detectar diferencias, ' +
+      'comprobantes apócrifos o facturas sin cargar.' +
+    '</div>' +
+    '<div class="form-grid form-grid-2" style="margin-bottom:16px">' +
+      '<div class="form-group">' +
+        '<label class="form-label">Tipo</label>' +
+        '<select class="form-control" id="conc-tipo">' +
+          '<option value="compras">Comprobantes recibidos (Compras)</option>' +
+          '<option value="ventas">Comprobantes emitidos (Ventas)</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Archivo ARCA (.csv / .txt)</label>' +
+        '<input type="file" class="form-control" id="conc-file" accept=".csv,.txt,.tsv">' +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-bottom:20px">' +
+      '<button class="btn btn-primary" onclick="livaConciliarProcesar()"><i class="fas fa-sync-alt"></i> Procesar y Conciliar</button>' +
+    '</div>' +
+    '<div style="background:#f8fafc;border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;color:#475569;margin-bottom:16px">' +
+      '<strong>Cómo funciona el cruce:</strong> se compara CUIT + número de comprobante (fuerte) o CUIT + total (fallback). ' +
+      'Los del período visible en el libro se toman como base del ERP. Cambiá el período/empresa en el header para ajustar el scope.' +
+    '</div>' +
+    '<div id="conc-resultado"></div>' +
+  '</div></div>';
+}
+
+function _concilNormCuit(c) {
+  return (c || '').replace(/[-\s\.\(\)]/g, '').trim();
+}
+
+function _concilNormNum(pv, num) {
+  var p = (pv || '').replace(/\D/g, '').padStart(5, '0');
+  var n = (num || '').replace(/\D/g, '').padStart(8, '0');
+  return p + '-' + n;
+}
+
+function _parsearArchivoARCA(text) {
+  // Detect separator: semicolon or comma (whichever is more frequent in header)
+  var lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+                  .map(function(l) { return l.trim(); }).filter(function(l) { return l; });
+  if (!lines.length) return [];
+
+  var firstLine = lines[0];
+  var sepSemi  = (firstLine.match(/;/g) || []).length;
+  var sepComma = (firstLine.match(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/g) || []).length;
+  var sep = sepSemi >= sepComma ? ';' : ',';
+
+  function splitLine(line) {
+    // Handles quoted fields
+    var result = []; var cur = ''; var inQ = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === sep && !inQ) { result.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  var header = splitLine(lines[0]).map(function(h) { return h.replace(/"/g,'').toLowerCase().trim(); });
+
+  function findCol() {
+    var names = Array.prototype.slice.call(arguments);
+    for (var ni = 0; ni < names.length; ni++) {
+      var n = names[ni];
+      for (var hi = 0; hi < header.length; hi++) {
+        if (header[hi].includes(n)) return hi;
+      }
+    }
+    return -1;
+  }
+
+  var iDate  = findCol('fecha');
+  var iTipo  = findCol('tipo de comprobante', 'tipo comp', 'tipo');
+  var iPV    = findCol('punto de venta', 'pto. venta', 'pto venta', 'pto.venta');
+  var iNum   = findCol('número de comprobante', 'número', 'numero', 'nro comprobante', 'nro. comprobante');
+  var iCUIT  = findCol('cuit del emisor', 'cuit emisor', 'cuit del receptor', 'cuit receptor', 'cuit');
+  var iNom   = findCol('denominación', 'razon social', 'razón social', 'nombre');
+  var iTotal = findCol('imp. total', 'importe total', 'total', 'monto total');
+  var iNeto  = findCol('imp. neto gravado', 'neto gravado', 'importe neto', 'neto');
+  var iIVA   = findCol('imp. iva', 'importe iva', 'iva');
+
+  var rows = [];
+  for (var i = 1; i < lines.length; i++) {
+    var cols = splitLine(lines[i]);
+    if (cols.length < 2) continue;
+    function g(idx) { return idx >= 0 && idx < cols.length ? (cols[idx] || '').replace(/"/g,'').trim() : ''; }
+
+    var pvRaw  = g(iPV);
+    var numRaw = g(iNum);
+    var cuit   = _concilNormCuit(g(iCUIT));
+    var nroCompleto = (pvRaw || numRaw)
+      ? (pvRaw ? _concilNormNum(pvRaw, numRaw) : numRaw.replace(/\D/g,'').padStart(8,'0'))
+      : '';
+    var totalStr = g(iTotal).replace(/\./g,'').replace(',','.');
+    var total  = parseFloat(totalStr) || 0;
+
+    rows.push({
+      fecha:      g(iDate),
+      tipo:       g(iTipo),
+      nroCompleto: nroCompleto,
+      pv:         pvRaw,
+      num:        numRaw,
+      cuit:       cuit,
+      nombre:     g(iNom),
+      total:      total,
+      neto:       parseFloat(g(iNeto).replace(/\./g,'').replace(',','.')) || 0,
+      iva:        parseFloat(g(iIVA).replace(/\./g,'').replace(',','.')) || 0,
+    });
+  }
+  return rows;
+}
+
+function _concilGetERPCompras() {
+  var p    = window._libroIvaPeriod;
+  var coId = window._livaCompanyFilter || '';
+  var supMap = {};
+  try { DB.getAll('suppliers').forEach(function(s) { supMap[s.id] = s; }); } catch(e) {}
+  return DB.getAll('supplierInvoices').filter(function(si) {
+    return _livaInPeriod(si.date, p) && (!coId || si.company_id === coId);
+  }).map(function(si) {
+    var sup = supMap[si.supplier_id] || {};
+    var num = _parseCitiNum(si.number);
+    return {
+      fecha:       si.date,
+      tipo:        si.tipo_comprobante || '',
+      nroCompleto: num.ptoVenta + '-' + num.nroComp,
+      cuit:        _concilNormCuit(sup.cuit || sup.tax_id || ''),
+      nombre:      sup.name || '',
+      total:       parseFloat(si.total) || 0,
+      _id:         si.id,
+      _number:     si.number,
+    };
+  });
+}
+
+function _concilGetERPVentas() {
+  var p    = window._libroIvaPeriod;
+  var coId = window._livaCompanyFilter || '';
+  return DB.getAll('invoices').filter(function(inv) {
+    return _livaInPeriod(inv.date, p) && (!coId || inv.company_id === coId);
+  }).map(function(inv) {
+    var num = _parseCitiNum(inv.number);
+    return {
+      fecha:       inv.date,
+      tipo:        inv.tipo_comprobante || inv.type || '',
+      nroCompleto: num.ptoVenta + '-' + num.nroComp,
+      cuit:        _concilNormCuit(inv.client_cuit || ''),
+      nombre:      inv.client_name || '',
+      total:       parseFloat(inv.total) || 0,
+      _id:         inv.id,
+      _number:     inv.number,
+    };
+  });
+}
+
+function _conciliarRows(arcaRows, erpRows) {
+  var matched   = [];
+  var soloArca  = [];
+  var usedErp   = new Set();
+
+  arcaRows.forEach(function(ar) {
+    var matchIdx = -1;
+
+    // 1. Strong: CUIT + nroCompleto exact
+    if (ar.cuit && ar.nroCompleto) {
+      erpRows.forEach(function(er, i) {
+        if (matchIdx >= 0 || usedErp.has(i)) return;
+        if (er.cuit === ar.cuit && er.nroCompleto === ar.nroCompleto) matchIdx = i;
+      });
+    }
+
+    // 2. Fallback: CUIT + total (within $1)
+    if (matchIdx < 0 && ar.cuit && ar.total > 0) {
+      erpRows.forEach(function(er, i) {
+        if (matchIdx >= 0 || usedErp.has(i)) return;
+        if (er.cuit === ar.cuit && Math.abs(er.total - ar.total) < 1.01) matchIdx = i;
+      });
+    }
+
+    if (matchIdx >= 0) {
+      usedErp.add(matchIdx);
+      matched.push({ arca: ar, erp: erpRows[matchIdx] });
+    } else {
+      soloArca.push(ar);
+    }
+  });
+
+  var soloErp = erpRows.filter(function(_, i) { return !usedErp.has(i); });
+  return { matched: matched, soloArca: soloArca, soloErp: soloErp };
+}
+
+function _concilTable(rows, mode, tipo) {
+  if (!rows.length) {
+    var msgs = {
+      matched:   '¡Todo coincide!',
+      solo_arca: 'Todos los comprobantes de ARCA están cargados en el ERP.',
+      solo_erp:  'Todos los comprobantes del ERP aparecen en ARCA.',
+    };
+    return '<div class="empty-state" style="padding:24px"><i class="fas fa-check-circle" style="color:var(--success);opacity:1;font-size:28px;margin-bottom:8px;display:block"></i><p>' + (msgs[mode] || 'Sin registros') + '</p></div>';
+  }
+  var isArca  = mode === 'matched' || mode === 'solo_arca';
+  var isErp   = mode === 'matched' || mode === 'solo_erp';
+  var bgHead  = mode === 'solo_arca' ? 'background:#fef2f2' : mode === 'solo_erp' ? 'background:#fffbeb' : '';
+
+  var html = '<div class="table-wrap"><table><thead><tr style="' + bgHead + '">' +
+    '<th>Fecha</th><th>CUIT</th><th>Razón Social</th><th>Tipo</th><th>N° Comprobante</th>' +
+    '<th style="text-align:right">Total</th>';
+  if (mode === 'solo_arca') html += '<th style="color:#dc2626">Estado</th>';
+  if (mode === 'solo_erp')  html += '<th style="color:#d97706">Estado</th>';
+  html += '</tr></thead><tbody>';
+
+  rows.forEach(function(row) {
+    var ar = row.arca || row;
+    var er = row.erp  || row;
+    var fecha  = ar.fecha  || er.fecha  || '-';
+    var cuit   = ar.cuit   || er.cuit   || '-';
+    var nombre = ar.nombre || er.nombre || '-';
+    var tipo2  = ar.tipo   || er.tipo   || '-';
+    var nro    = ar.nroCompleto || er.nroCompleto || (er._number ? er._number : '-');
+    var total  = ar.total  || er.total  || 0;
+
+    html += '<tr>' +
+      '<td style="white-space:nowrap;font-size:12px">' + escapeHtml(fecha) + '</td>' +
+      '<td style="font-size:11px;color:#64748b">' + escapeHtml(cuit) + '</td>' +
+      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(nombre) + '</td>' +
+      '<td><span class="badge badge-gray" style="font-size:10px">' + escapeHtml(tipo2) + '</span></td>' +
+      '<td style="font-size:12px"><strong>' + escapeHtml(nro) + '</strong></td>' +
+      '<td style="text-align:right;font-variant-numeric:tabular-nums"><strong>' + fmtMoney(total) + '</strong></td>';
+
+    if (mode === 'solo_arca') {
+      html += '<td><span class="badge badge-red" style="font-size:10px">No cargado en ERP</span></td>';
+    } else if (mode === 'solo_erp') {
+      html += '<td><span class="badge" style="font-size:10px;background:#fef3c7;color:#b45309">No está en ARCA</span></td>';
+    }
+    html += '</tr>';
+  });
+
+  var totales = rows.reduce(function(s, r) { return s + (r.arca ? r.arca.total : r.total || 0); }, 0);
+  html += '<tr class="total-row"><td colspan="5">Total</td><td style="text-align:right">' + fmtMoney(totales) + '</td>';
+  if (mode !== 'matched') html += '<td></td>';
+  html += '</tr></tbody></table></div>';
+  return html;
+}
+
+function livaConciliarProcesar() {
+  var fileEl = document.getElementById('conc-file');
+  var tipo   = document.getElementById('conc-tipo')?.value || 'compras';
+  var wrap   = document.getElementById('conc-resultado');
+
+  if (!fileEl || !fileEl.files.length) { toast('Seleccioná el archivo de ARCA primero', 'warning'); return; }
+  if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin fa-2x"></i><div style="margin-top:8px">Procesando…</div></div>';
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var arcaRows = _parsearArchivoARCA(e.target.result);
+      if (!arcaRows.length) {
+        if (wrap) wrap.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle" style="color:var(--danger);opacity:1"></i><p>No se pudieron leer registros del archivo.<br><small>Verificá que sea un CSV exportado desde ARCA con encabezados.</small></p></div>';
+        return;
+      }
+      var erpRows = tipo === 'compras' ? _concilGetERPCompras() : _concilGetERPVentas();
+      var result  = _conciliarRows(arcaRows, erpRows);
+      _renderConciliacion(result, tipo, arcaRows.length, erpRows.length, wrap);
+    } catch(err) {
+      if (wrap) wrap.innerHTML = '<div class="empty-state"><i class="fas fa-times-circle" style="color:var(--danger);opacity:1"></i><p>Error al procesar el archivo: ' + escapeHtml(err.message) + '</p></div>';
+    }
+  };
+  reader.readAsText(fileEl.files[0]);
+}
+
+function _renderConciliacion(r, tipo, arcaTotal, erpTotal, wrap) {
+  if (!wrap) wrap = document.getElementById('conc-resultado');
+  if (!wrap) return;
+
+  var pct = arcaTotal > 0 ? Math.round(r.matched.length / arcaTotal * 100) : 0;
+  var color = pct === 100 ? 'var(--success)' : pct >= 80 ? 'var(--warning)' : 'var(--danger)';
+
+  var summary =
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:stretch">' +
+      '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 20px;text-align:center;flex:1;min-width:110px">' +
+        '<div style="font-size:26px;font-weight:800;color:#16a34a">' + r.matched.length + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:#15803d">✅ Coinciden</div>' +
+      '</div>' +
+      '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px 20px;text-align:center;flex:1;min-width:110px">' +
+        '<div style="font-size:26px;font-weight:800;color:#dc2626">' + r.soloArca.length + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:#b91c1c">❌ Solo en ARCA</div>' +
+        '<div style="font-size:10px;color:var(--text-muted)">sin cargar en ERP</div>' +
+      '</div>' +
+      '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:14px 20px;text-align:center;flex:1;min-width:110px">' +
+        '<div style="font-size:26px;font-weight:800;color:#d97706">' + r.soloErp.length + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:#b45309">⚠️ Solo en ERP</div>' +
+        '<div style="font-size:10px;color:var(--text-muted)">emisor no declaró?</div>' +
+      '</div>' +
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 20px;text-align:center;flex:1;min-width:110px">' +
+        '<div style="font-size:26px;font-weight:800;color:' + color + '">' + pct + '%</div>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--text-muted)">Concordancia</div>' +
+        '<div style="font-size:10px;color:var(--text-muted)">ARCA: ' + arcaTotal + ' · ERP: ' + erpTotal + '</div>' +
+      '</div>' +
+    '</div>';
+
+  var tabId = 'conc-res-tabs';
+  wrap.innerHTML = summary +
+    '<div id="' + tabId + '">' +
+      '<div class="tabs">' +
+        '<button class="tab-btn" data-tab="cr-matched">✅ Coinciden (' + r.matched.length + ')</button>' +
+        '<button class="tab-btn" data-tab="cr-solo-arca">❌ Solo en ARCA (' + r.soloArca.length + ')</button>' +
+        '<button class="tab-btn" data-tab="cr-solo-erp">⚠️ Solo en ERP (' + r.soloErp.length + ')</button>' +
+      '</div>' +
+      '<div id="cr-matched"    class="tab-content">' + _concilTable(r.matched,  'matched',   tipo) + '</div>' +
+      '<div id="cr-solo-arca"  class="tab-content">' + _concilTable(r.soloArca, 'solo_arca', tipo) + '</div>' +
+      '<div id="cr-solo-erp"   class="tab-content">' + _concilTable(r.soloErp,  'solo_erp',  tipo) + '</div>' +
+    '</div>';
+  initTabs(tabId);
 }
