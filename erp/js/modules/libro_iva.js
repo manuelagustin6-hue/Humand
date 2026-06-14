@@ -64,10 +64,12 @@ function renderLibroIVA() {
     <button class="tab-btn" data-tab="tab-iva-compras">IVA Compras</button>
     <button class="tab-btn" data-tab="tab-iva-ventas">IVA Ventas</button>
     <button class="tab-btn" data-tab="tab-iva-ddjj">Posición IVA (DDJJ)</button>
+    <button class="tab-btn" data-tab="tab-iva-citi">Exportar CITI</button>
   </div>
   <div id="tab-iva-compras" class="tab-content">${livaRenderComprasTab(sis)}</div>
   <div id="tab-iva-ventas"  class="tab-content">${livaRenderVentasTab(invs)}</div>
   <div id="tab-iva-ddjj"   class="tab-content">${livaRenderDDJJTab(sis, invs)}</div>
+  <div id="tab-iva-citi"   class="tab-content">${livaRenderCitiTab(sis, invs)}</div>
 </div>
 `;
   initTabs('libro-iva-tabs');
@@ -560,4 +562,263 @@ function livaExportVentas() {
       r.neto21, r.neto105, r.neto27, r.netoExento,
       r.iva21,  r.iva105,  r.iva27,  r.total])
   );
+}
+
+// =====================================================================
+// CITI COMPRAS Y VENTAS (RG 3685)
+// =====================================================================
+
+// Tipo de comprobante → código AFIP 3 dígitos
+function _citiTipoComp(tipo) {
+  var t = (tipo || 'B').toUpperCase().trim();
+  // accept single letters or prefixed forms like 'FA', 'FB', 'FC'
+  var letter = t.length === 1 ? t : t.slice(-1);
+  var base = { A: '001', B: '006', C: '011', M: '051', E: '019' };
+  return base[letter] || '006';
+}
+
+// Parse "00001-00000123" or "0001-00000123" → { ptoVenta, nroComp }
+function _parseCitiNum(str) {
+  var clean = (str || '').replace(/[^0-9\-]/g, '');
+  var dash  = clean.indexOf('-');
+  if (dash > 0) {
+    return {
+      ptoVenta: clean.slice(0, dash).padStart(5, '0').slice(-5),
+      nroComp:  clean.slice(dash + 1).padStart(8, '0').slice(-8),
+    };
+  }
+  return { ptoVenta: '00001', nroComp: clean.padStart(8, '0').slice(-8) };
+}
+
+function _fmtC(v) { return (parseFloat(v) || 0).toFixed(2).replace('.', ','); }
+
+// Alícuota IVA % → código AFIP
+const _CITI_ALIC = { 0:'3', 2.5:'9', 5:'8', 10.5:'4', 21:'5', 27:'6' };
+function _citiAlicCod(rate) {
+  var r = Math.round(parseFloat(rate || 21) * 10) / 10;
+  return _CITI_ALIC[r] || '5';
+}
+
+function _citiSaveFile(filename, content) {
+  var blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Render the CITI tab UI
+function livaRenderCitiTab(comprasRows, ventasRows) {
+  var companyOpts = '';
+  try {
+    companyOpts = DB.getAllCompanies().map(function(c) {
+      return '<option value="' + c.id + '" data-cuit="' + (c.cuit||'') + '">' +
+             escapeHtml(c.name) + (c.cuit ? ' — ' + c.cuit : '') + '</option>';
+    }).join('');
+  } catch(e) {}
+
+  return '<div class="card"><div class="card-body">' +
+    '<div style="font-size:14px;font-weight:700;margin-bottom:4px">Exportar CITI Compras y Ventas</div>' +
+    '<div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Régimen Informativo RG 3685 — genera los archivos TXT para importar en el portal ARCA. El período se toma del selector de mes/año del encabezado.</div>' +
+    '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 18px;margin-bottom:18px">' +
+      '<div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Razón Social Emisora (para VENTAS)</div>' +
+      '<div class="form-grid form-grid-2" style="margin:0">' +
+        '<div class="form-group" style="margin:0"><label class="form-label">Empresa del grupo</label>' +
+          '<select class="form-control" id="citi-company" onchange="_citiSyncCuit()">' + companyOpts + '</select></div>' +
+        '<div class="form-group" style="margin:0"><label class="form-label">CUIT Emisor</label>' +
+          '<input class="form-control" id="citi-company-cuit" readonly style="background:#f8fafc" placeholder="Automático"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">' +
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:16px">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:4px"><i class="fas fa-shopping-cart" style="margin-right:6px"></i>CITI Compras</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + comprasRows.filter(function(r){return r.docType==='FAC';}).length + ' facturas de proveedor en el período</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="btn btn-secondary btn-sm" onclick="livaCitiExportCompras()"><i class="fas fa-download"></i> COMPRAS_CBTE.TXT</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="livaCitiExportCompras(\'alicuota\')"><i class="fas fa-download"></i> COMPRAS_ALICUOTA.TXT</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:16px">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--success);margin-bottom:4px"><i class="fas fa-file-invoice-dollar" style="margin-right:6px"></i>CITI Ventas</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">' + ventasRows.filter(function(r){return r.docType==='FAC';}).length + ' facturas emitidas en el período</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="btn btn-primary btn-sm" onclick="livaCitiExportVentas()"><i class="fas fa-download"></i> VENTAS_CBTE.TXT</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="livaCitiExportVentas(\'alicuota\')"><i class="fas fa-download"></i> VENTAS_ALICUOTA.TXT</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="background:#fefce8;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;font-size:12px;color:#78350f">' +
+      '<i class="fas fa-info-circle"></i> <strong>Formato RG 3685:</strong> campos delimitados por punto y coma (;), sin encabezado, con punto y coma al final de cada registro. ' +
+      'Importe con coma decimal (ej: 1234,56). Fecha AAAAMMDD. CUIT sin guiones.' +
+    '</div>' +
+  '</div></div>';
+}
+
+function _citiSyncCuit() {
+  try {
+    var sel = document.getElementById('citi-company');
+    var el  = document.getElementById('citi-company-cuit');
+    if (!sel || !el) return;
+    var companies = DB.getAllCompanies();
+    var co = companies.find(function(c) { return c.id === sel.value; });
+    el.value = co ? (co.cuit || '') : '';
+  } catch(e) {}
+}
+
+function livaCitiExportCompras(mode) {
+  var p   = window._libroIvaPeriod;
+  var ym  = p.year + String(p.month).padStart(2, '0');
+  var supMap = {};
+  try { DB.getAll('suppliers').forEach(function(s) { supMap[s.id] = s; }); } catch(e) {}
+
+  var sis = DB.getAll('supplierInvoices').filter(function(si) {
+    return _livaInPeriod(si.date, p) && _livaIsAfipDoc(si.tipo_comprobante);
+  });
+
+  if (!sis.length) { toast('Sin comprobantes de compras AFIP para el período', 'warning'); return; }
+
+  var cbteLines = [];
+  var alicLines = [];
+
+  sis.forEach(function(si) {
+    var sup   = supMap[si.supplier_id] || {};
+    var cuit  = (sup.cuit || sup.tax_id || '').replace(/[-\s]/g, '');
+    var razon = (sup.name || '').substring(0, 30);
+    var num   = _parseCitiNum(si.number);
+    var tipo  = _citiTipoComp(si.tipo_comprobante);
+    var fecha = (si.date || '').replace(/-/g, '');
+    var sub   = parseFloat(si.subtotal)  || 0;
+    var iva   = parseFloat(si.tax)       || 0;
+    var pIva  = parseFloat(si.perc_iva)  || 0;
+    var pIibb = parseFloat(si.perc_iibb) || 0;
+    var total = parseFloat(si.total)     || 0;
+    var rate  = parseFloat(si.iva_rate)  || 21;
+
+    cbteLines.push([
+      fecha,                     // 1  Fecha AAAAMMDD
+      tipo,                      // 2  Tipo comprobante
+      num.ptoVenta,              // 3  Punto de venta
+      num.nroComp,               // 4  Número comprobante
+      '                ',        // 5  Nro. despacho importación (16 esp)
+      '80',                      // 6  Tipo doc (CUIT)
+      cuit.padEnd(20, ' '),      // 7  CUIT proveedor
+      razon,                     // 8  Razón social
+      _fmtC(total),              // 9  Importe total
+      _fmtC(0),                  // 10 No gravado
+      _fmtC(0),                  // 11 Exento
+      _fmtC(pIva),               // 12 Percepción IVA
+      _fmtC(0),                  // 13 Otros imp. nac.
+      _fmtC(pIibb),              // 14 Percepción IIBB
+      _fmtC(0),                  // 15 Percepción municipal
+      _fmtC(0),                  // 16 Imp. internos
+      'PES',                     // 17 Moneda
+      '1,000000',                // 18 Tipo de cambio
+      '1',                       // 19 Cant. alícuotas
+      ' ',                       // 20 Cód. operación
+      _fmtC(iva),                // 21 CF computable
+      _fmtC(0),                  // 22 Otros tributos
+      cuit,                      // 23 CUIT emisor
+    ].join(';') + ';');
+
+    alicLines.push([
+      tipo,
+      num.ptoVenta,
+      num.nroComp,
+      '80',
+      cuit.padEnd(20, ' '),
+      _fmtC(sub),
+      _citiAlicCod(rate),
+      _fmtC(iva),
+    ].join(';') + ';');
+  });
+
+  if (!mode || mode === 'cbte') {
+    _citiSaveFile('COMPRAS_CBTE_' + ym + '.TXT', cbteLines.join('\r\n'));
+    toast('COMPRAS_CBTE_' + ym + '.TXT generado (' + cbteLines.length + ' registros)', 'success');
+  }
+  if (mode === 'alicuota') {
+    _citiSaveFile('COMPRAS_ALICUOTA_' + ym + '.TXT', alicLines.join('\r\n'));
+    toast('COMPRAS_ALICUOTA_' + ym + '.TXT generado (' + alicLines.length + ' registros)', 'success');
+  }
+}
+
+function livaCitiExportVentas(mode) {
+  var p  = window._libroIvaPeriod;
+  var ym = p.year + String(p.month).padStart(2, '0');
+
+  // Get emisor CUIT from company selector
+  var emisorCuit = '';
+  try {
+    _citiSyncCuit();
+    var sel = document.getElementById('citi-company');
+    var el  = document.getElementById('citi-company-cuit');
+    if (el) emisorCuit = (el.value || '').replace(/[-\s]/g, '');
+  } catch(e) {}
+
+  var invs = DB.getAll('invoices').filter(function(inv) {
+    return _livaInPeriod(inv.date, p) && _livaIsAfipDoc(inv.tipo_comprobante || inv.type);
+  });
+
+  if (!invs.length) { toast('Sin comprobantes de ventas AFIP para el período', 'warning'); return; }
+
+  var cbteLines = [];
+  var alicLines = [];
+
+  invs.forEach(function(inv) {
+    var cuitCli = (inv.client_cuit || inv.entity_id || '').replace(/[-\s]/g, '');
+    var razon   = (inv.client_name || inv.entity_name || '').substring(0, 30);
+    var num     = _parseCitiNum(inv.number);
+    var tipo    = _citiTipoComp(inv.tipo_comprobante || inv.type);
+    var fecha   = (inv.date || '').replace(/-/g, '');
+    var sub     = parseFloat(inv.subtotal) || 0;
+    var iva     = parseFloat(inv.tax)      || 0;
+    var total   = parseFloat(inv.total)    || 0;
+    var rate    = inv.iva_rate ? parseFloat(inv.iva_rate) : (sub > 0 && iva > 0 ? Math.round((iva/sub)*1000)/10 : 21);
+
+    cbteLines.push([
+      fecha,
+      tipo,
+      num.ptoVenta,
+      num.nroComp,
+      '                ',
+      '80',
+      cuitCli.padEnd(20, ' '),
+      razon,
+      _fmtC(total),
+      _fmtC(0),
+      _fmtC(0),
+      _fmtC(0),
+      _fmtC(0),
+      _fmtC(0),
+      _fmtC(0),
+      _fmtC(0),
+      'PES',
+      '1,000000',
+      '1',
+      ' ',
+      _fmtC(iva),
+      _fmtC(0),
+      emisorCuit || cuitCli,
+    ].join(';') + ';');
+
+    alicLines.push([
+      tipo,
+      num.ptoVenta,
+      num.nroComp,
+      '80',
+      cuitCli.padEnd(20, ' '),
+      _fmtC(sub),
+      _citiAlicCod(rate),
+      _fmtC(iva),
+    ].join(';') + ';');
+  });
+
+  if (!mode || mode === 'cbte') {
+    _citiSaveFile('VENTAS_CBTE_' + ym + '.TXT', cbteLines.join('\r\n'));
+    toast('VENTAS_CBTE_' + ym + '.TXT generado (' + cbteLines.length + ' registros)', 'success');
+  }
+  if (mode === 'alicuota') {
+    _citiSaveFile('VENTAS_ALICUOTA_' + ym + '.TXT', alicLines.join('\r\n'));
+    toast('VENTAS_ALICUOTA_' + ym + '.TXT generado (' + alicLines.length + ' registros)', 'success');
+  }
 }

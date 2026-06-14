@@ -289,31 +289,71 @@ function exportARCAExcel() {
   toast('Archivo Excel generado', 'success');
 }
 
+function _siCodImpuesto(retName) {
+  var n = (retName || '').toLowerCase();
+  if (n.includes('ganancia')) return '217';
+  if (n.includes('iva'))      return '767';
+  if (n.includes('iibb') || n.includes('ingresos brutos')) return '219';
+  if (n.includes('sello'))    return '221';
+  if (n.includes('municipal'))return '221';
+  return '217';
+}
+
 function exportARCATxt() {
   const rows = _arcaFilteredRows();
   if (!rows.length) { toast('Sin registros para exportar', 'warning'); return; }
   var company = _arcaSelectedCompany();
-  const agenteCUIT = (company.cuit || '').replace(/[-\s]/g, '').padEnd(11,' ');
+  const agenteCUIT = (company.cuit || '').replace(/[-\s]/g, '').padStart(11, '0');
 
-  // SICORE-compatible text format (pipe-delimited for ARCA import)
-  // Fields: periodo|tipo_comp|nro_comp|fecha|cuit_agente|cuit_retenido|razon_social|tipo_retencion|base_imponible|alicuota|importe_retenido
+  // Preload retention rules for codes
+  var retRules = {};
+  try { DB.getAll('retentions').forEach(function(rt) { retRules[rt.name] = rt; }); } catch(e) {}
+
+  // SICORE semicolon-delimited format (RG 2233) — 17 campos
+  // Campos: TIPO_OP;CUIT_AGENTE;COD_IMPUESTO;COD_REGIMEN;TIPO_COMP;LETRA_COMP;NRO_COMP;FECHA_COMP;
+  //         CUIT_RETENIDO;DENOMINACION;CONDICION_IVA;DOMICILIO;BASE_IMPONIBLE;FECHA_RETENCION;
+  //         IMPORTE_RETENCION;PORC_EXCLUSION;FECHA_EXCLUSION
   const lines = rows.map(function(r) {
-    var periodo = r.date ? r.date.slice(0,7).replace('-','') : '';
-    var fecha = r.date ? r.date.replace(/-/g,'') : '';
-    var cuitRet = (r.supplier_cuit || '').replace(/[-\s]/g, '').padStart(11,'0');
-    var base = (r.gross_amount||0).toFixed(2);
-    var imp = (r.amount||0).toFixed(2);
-    return [periodo, 'OP', r.order_number, fecha, agenteCUIT.trim(), cuitRet, r.supplier, r.name, base, r.rate, imp].join('|');
+    var dd = r.date ? r.date.slice(8,10) : '01';
+    var mm = r.date ? r.date.slice(5,7)  : '01';
+    var aa = r.date ? r.date.slice(0,4)  : '2024';
+    var fecha = dd + mm + aa;
+    var cuitRet = (r.supplier_cuit || '').replace(/[-\s]/g, '').padStart(11, '0');
+    var denom   = (r.supplier || '').substring(0, 30);
+    var base    = (r.gross_amount || 0).toFixed(2).replace('.', ',');
+    var imp     = (r.amount || 0).toFixed(2).replace('.', ',');
+    var nroComp = (r.order_number || '').padEnd(16, ' ').substring(0, 16);
+    var rule = retRules[r.name] || {};
+    var codImp = rule.codigo_impuesto || _siCodImpuesto(r.name);
+    var codReg = (rule.codigo_regimen || '000').toString().padStart(3, '0');
+    return [
+      '1',        // Tipo operación: 1=retención practicada
+      agenteCUIT, // CUIT agente
+      codImp,     // Código impuesto (3 dígitos)
+      codReg,     // Código régimen  (3 dígitos)
+      '06',       // Tipo comprobante: 06=Orden de Pago
+      ' ',        // Letra comprobante
+      nroComp,    // Número comprobante (16 chars)
+      fecha,      // Fecha comprobante DDMMAAAA
+      cuitRet,    // CUIT retenido
+      denom,      // Denominación (30 chars)
+      '01',       // Condición IVA: 01=Responsable Inscripto
+      '',         // Domicilio (opcional)
+      base,       // Base imponible (coma decimal)
+      fecha,      // Fecha retención
+      imp,        // Importe retención
+      '0,00',     // Porcentaje exclusión
+      '00000000', // Fecha exclusión
+    ].join(';');
   });
 
-  const header = 'PERIODO|TIPO_COMP|NRO_COMP|FECHA|CUIT_AGENTE|CUIT_RETENIDO|RAZON_SOCIAL|TIPO_RETENCION|BASE_IMPONIBLE|ALICUOTA|IMPORTE_RETENIDO';
-  const content = [header, ...lines].join('\r\n');
+  const content = lines.join('\r\n');
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'sicore_retenciones.txt'; a.click();
   URL.revokeObjectURL(url);
-  toast('Archivo SICORE .txt generado', 'success');
+  toast('Archivo SICORE .txt generado (' + lines.length + ' registros)', 'success');
 }
 
 function openRetentionForm(id = null) {
@@ -351,6 +391,28 @@ function openRetentionForm(id = null) {
       <option value="false" ${r?.active===false?'selected':''}>Inactiva</option>
     </select>
   </div>
+  <div class="form-group">
+    <label class="form-label">Cód. Impuesto AFIP <small style="font-weight:400;color:var(--text-muted)">(para SICORE)</small></label>
+    <input class="form-control" id="rt-cod-imp" list="rt-cod-imp-list" value="${r?.codigo_impuesto || ''}" placeholder="Ej: 217">
+    <datalist id="rt-cod-imp-list">
+      <option value="217" label="217 — Ganancias">
+      <option value="767" label="767 — IVA">
+      <option value="219" label="219 — IIBB">
+      <option value="221" label="221 — Sellos">
+    </datalist>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Cód. Régimen AFIP <small style="font-weight:400;color:var(--text-muted)">(para SICORE)</small></label>
+    <input class="form-control" id="rt-cod-reg" list="rt-cod-reg-list" value="${r?.codigo_regimen || ''}" placeholder="Ej: 110">
+    <datalist id="rt-cod-reg-list">
+      <option value="070" label="070 — Honorarios y compensaciones">
+      <option value="110" label="110 — Locaciones de obra y servicios">
+      <option value="194" label="194 — Operaciones con bolsas y mercados">
+      <option value="217" label="217 — Construcción (Ganancias)">
+      <option value="461" label="461 — Transporte de carga">
+      <option value="767" label="767 — IVA ret. prov. de servicios">
+    </datalist>
+  </div>
 </div>
 `, '', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -368,6 +430,8 @@ function saveRetention(id) {
     name, type, rate,
     applies_to: document.getElementById('rt-applies').value,
     active: document.getElementById('rt-active').value === 'true',
+    codigo_impuesto: (document.getElementById('rt-cod-imp')?.value || '').trim() || _siCodImpuesto(name),
+    codigo_regimen:  (document.getElementById('rt-cod-reg')?.value || '').trim(),
   };
 
   if (id) { DB.update('retentions', id, data); toast('Retención actualizada', 'success'); }
