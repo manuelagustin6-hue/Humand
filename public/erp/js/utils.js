@@ -318,3 +318,71 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+// ---- PRINT / PDF DOCUMENT ----
+// Opens a new window with a clean printable layout and auto-triggers print dialog.
+function _printDoc(title, bodyHtml) {
+  var win = window.open('', '_blank', 'width=960,height=760');
+  if (!win) { toast('El navegador bloqueó la ventana. Habilitá los popups para este sitio.', 'error'); return; }
+  var company = {};
+  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+  win.document.write(
+    '<!DOCTYPE html><html lang="es"><head>' +
+    '<meta charset="UTF-8"><title>' + escapeHtml(title) + '</title>' +
+    '<style>' +
+    '*{box-sizing:border-box;margin:0;padding:0}' +
+    'body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#1e293b;font-size:13px;padding:36px;background:#fff;max-width:860px;margin:0 auto}' +
+    'h1{font-size:22px;font-weight:800;color:#2563eb;letter-spacing:-.02em}' +
+    '.subtitle{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-top:4px}' +
+    '.doc-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:18px;margin-bottom:22px;border-bottom:2px solid #e2e8f0}' +
+    '.doc-num{font-size:28px;font-weight:800;color:#1e293b;text-align:right;letter-spacing:-.02em}' +
+    '.doc-date{font-size:12px;color:#64748b;text-align:right;margin-top:5px}' +
+    '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}' +
+    '.info-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px}' +
+    '.info-title{font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px}' +
+    '.info-box p{line-height:1.8;font-size:12px}' +
+    'table{width:100%;border-collapse:collapse;font-size:12px;margin:16px 0}' +
+    'thead th{background:#f1f5f9;padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-bottom:2px solid #e2e8f0;white-space:nowrap}' +
+    'tbody td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}' +
+    'tbody tr:last-child td{border-bottom:none}' +
+    '.tr{text-align:right}.tc{text-align:center}' +
+    '.num{font-variant-numeric:tabular-nums}' +
+    '.totals{max-width:300px;margin-left:auto;margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}' +
+    '.trow{display:flex;justify-content:space-between;padding:8px 14px;font-size:13px;border-bottom:1px solid #f1f5f9}' +
+    '.trow:last-child{border-bottom:none}' +
+    '.trow.grand{background:#2563eb;color:#fff;font-size:15px;font-weight:800}' +
+    '.trow.warn{color:#b45309}' +
+    '.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}' +
+    '.b-green{background:#dcfce7;color:#166534}.b-yellow{background:#fef9c3;color:#92400e}.b-gray{background:#f1f5f9;color:#64748b}.b-red{background:#fee2e2;color:#991b1b}' +
+    '.concept-box{background:#f8fafc;border-left:3px solid #2563eb;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;margin-bottom:18px}' +
+    '.notes-box{font-size:12px;color:#64748b;margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:6px}' +
+    '.sign-row{margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:40px;font-size:11px;color:#64748b}' +
+    '.sign-line{border-top:1px solid #1e293b;margin-bottom:6px;padding-top:8px;text-align:center}' +
+    '.no-print{margin-top:28px;padding-top:20px;border-top:1px solid #e2e8f0;display:flex;gap:10px}' +
+    '@media print{.no-print{display:none}body{padding:16px}}' +
+    'button{padding:10px 22px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}' +
+    '.btn-print{background:#2563eb;color:#fff}.btn-close{background:#f1f5f9;color:#1e293b}' +
+    '</style></head><body>' +
+    bodyHtml +
+    '<div class="no-print">' +
+    '<button class="btn-print" onclick="window.print()">&#128438; Imprimir / Guardar PDF</button>' +
+    '<button class="btn-close" onclick="window.close()">Cerrar</button>' +
+    '</div></body></html>'
+  );
+  win.document.close();
+}
+
+// Build a standard two-column info grid section for print docs
+function _printInfoGrid(boxes) {
+  return '<div class="info-grid">' + boxes.map(function(b) {
+    return '<div class="info-box"><div class="info-title">' + b.title + '</div><p>' + b.content + '</p></div>';
+  }).join('') + '</div>';
+}
+
+// Build totals block for print docs
+function _printTotals(rows) {
+  return '<div class="totals">' + rows.map(function(r) {
+    return '<div class="trow' + (r.grand ? ' grand' : '') + (r.warn ? ' warn' : '') + '">' +
+      '<span>' + r.label + '</span><span class="num">' + r.value + '</span></div>';
+  }).join('') + '</div>';
+}

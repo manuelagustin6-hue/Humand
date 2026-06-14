@@ -62,40 +62,63 @@ function renderCertificaciones() {
 }
 
 function buildCertTable(certs, projects) {
-  if (!certs.length) return `<div class="empty-state"><i class="fas fa-certificate"></i><p>No hay certificaciones. Creá la primera.</p></div>`;
+  if (!certs.length) return '<div class="empty-state"><i class="fas fa-certificate"></i><p>No hay certificaciones. Creá la primera.</p></div>';
 
-  const statusColor = { draft: 'badge-gray', pending: 'badge-yellow', approved: 'badge-green', rejected: 'badge-red' };
-  const statusLabel = { draft: 'Borrador', pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado' };
+  var ST_COLOR = {
+    draft:    { color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0', label: 'Borrador' },
+    pending:  { color: '#d97706', bg: '#fef9c3', border: '#fde68a', label: 'Pendiente' },
+    approved: { color: '#059669', bg: '#dcfce7', border: '#86efac', label: 'Aprobado' },
+    rejected: { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5', label: 'Rechazado' },
+  };
 
-  return `<table><thead><tr>
-    <th>N° Certificado</th><th>Proyecto</th><th>Período</th><th>Fecha</th>
-    <th class="text-right">Monto</th><th class="text-right">Retención</th><th class="text-right">Neto</th>
-    <th>Estado</th><th>Acciones</th>
-  </tr></thead>
-  <tbody>
-  ${certs.sort((a,b)=>b.date.localeCompare(a.date)).map(c => {
-    const proj = projects.find(p => p.id === c.project_id);
-    return `<tr>
-      <td><strong>${c.number}</strong></td>
-      <td>${proj?.name || '-'}</td>
-      <td style="font-size:12px">${fmtDate(c.period_from)} — ${fmtDate(c.period_to)}</td>
-      <td>${fmtDate(c.date)}</td>
-      <td class="number-cell text-right">${fmtMoney(c.subtotal)}</td>
-      <td class="number-cell text-right text-warning">${fmtMoney(c.retention_amount||0)}</td>
-      <td class="number-cell text-right"><strong>${fmtMoney(c.net_amount)}</strong></td>
-      <td><span class="badge ${statusColor[c.status]||'badge-gray'}">${statusLabel[c.status]||c.status}</span></td>
-      <td><div class="table-actions">
-        <button class="btn-ghost btn btn-sm" onclick="viewCert('${c.id}')"><i class="fas fa-eye"></i></button>
-        <button class="btn-ghost btn btn-sm" onclick="openCertForm('${c.id}')"><i class="fas fa-edit"></i></button>
-        ${c.status === 'pending' ? `
-          <button class="btn btn-sm btn-success" onclick="approveCert('${c.id}')"><i class="fas fa-check"></i></button>
-          <button class="btn btn-sm btn-danger" onclick="rejectCert('${c.id}')"><i class="fas fa-times"></i></button>
-        ` : ''}
-        <button class="btn-ghost btn btn-sm danger" onclick="deleteCert('${c.id}')"><i class="fas fa-trash"></i></button>
-      </div></td>
-    </tr>`;
-  }).join('')}
-  </tbody></table>`;
+  var sorted = certs.slice().sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
+
+  var rows = sorted.map(function(c, idx) {
+    var proj  = projects.find(function(p) { return p.id === c.project_id; });
+    var st    = ST_COLOR[c.status] || ST_COLOR.draft;
+    var rowBg = idx % 2 === 0 ? '#ffffff' : '#f8f9fb';
+    return '<tr style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;cursor:pointer"' +
+        ' onclick="viewCert(\'' + c.id + '\')"' +
+        ' onmouseenter="this.style.background=\'#eef4ff\'" onmouseleave="this.style.background=\'' + rowBg + '\'">' +
+      '<td style="padding:10px 12px"><strong style="color:#2563eb">' + escapeHtml(c.number) + '</strong></td>' +
+      '<td style="padding:10px 12px;font-size:12px">' + escapeHtml(proj ? proj.name : '-') + '</td>' +
+      '<td style="padding:10px 12px;font-size:11px;color:#64748b;white-space:nowrap">' + fmtDate(c.period_from) + ' — ' + fmtDate(c.period_to) + '</td>' +
+      '<td style="padding:10px 12px;font-size:12px;white-space:nowrap">' + fmtDate(c.date) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(c.subtotal) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#d97706">' + fmtMoney(c.retention_amount||0) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums"><strong>' + fmtMoney(c.net_amount) + '</strong></td>' +
+      '<td style="padding:10px 12px">' +
+        '<span style="background:' + st.bg + ';color:' + st.color + ';border:1px solid ' + st.border + ';font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:.4px">' + st.label + '</span>' +
+      '</td>' +
+      '<td style="padding:10px 12px;white-space:nowrap" onclick="event.stopPropagation()">' +
+        '<div class="table-actions">' +
+          '<button class="btn-ghost btn btn-sm" title="Ver" onclick="viewCert(\'' + c.id + '\')"><i class="fas fa-eye"></i></button>' +
+          '<button class="btn-ghost btn btn-sm" title="PDF" onclick="printCertificacion(\'' + c.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
+          '<button class="btn-ghost btn btn-sm" title="Editar" onclick="openCertForm(\'' + c.id + '\')"><i class="fas fa-edit"></i></button>' +
+          (c.status === 'pending' ?
+            '<button class="btn btn-sm btn-success" onclick="approveCert(\'' + c.id + '\')"><i class="fas fa-check"></i></button>' +
+            '<button class="btn btn-sm btn-danger" onclick="rejectCert(\'' + c.id + '\')"><i class="fas fa-times"></i></button>'
+          : '') +
+          '<button class="btn-ghost btn btn-sm danger" title="Eliminar" onclick="deleteCert(\'' + c.id + '\')"><i class="fas fa-trash"></i></button>' +
+        '</div>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+
+  return '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+    '<thead><tr style="background:#f8f9fb;border-bottom:2px solid #e2e8f0">' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">N° Cert.</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proyecto</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Período</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Fecha</th>' +
+      '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Monto</th>' +
+      '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Retención</th>' +
+      '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Neto</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Estado</th>' +
+      '<th style="padding:10px 12px;font-size:11px;color:#64748b;font-weight:600">Acciones</th>' +
+    '</tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+  '</table>';
 }
 
 window._certFilters = { q: '', status: '', project: '' };
@@ -186,7 +209,7 @@ ${cert.contab_tipo ? `<div style="margin-top:10px;padding:10px;background:var(--
 ${cert.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)"><strong>Notas:</strong> ${cert.notes}</div>` : ''}
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
-<button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+<button class="btn btn-secondary" onclick="printCertificacion('${cert.id}')"><i class="fas fa-file-pdf"></i> PDF</button>
 ${cert.status === 'pending' ? `
   <button class="btn btn-danger" onclick="rejectCert('${cert.id}');closeModal()"><i class="fas fa-times"></i> Rechazar</button>
   <button class="btn btn-success" onclick="approveCert('${cert.id}');closeModal()"><i class="fas fa-check"></i> Aprobar</button>
@@ -274,8 +297,8 @@ function certItemRow(it, i) {
     <input class="form-control" style="font-size:11px" type="number" min="0" value="${it.quantity_contract||0}" oninput="updateCertItem(${i},'quantity_contract',+this.value)">
     <input class="form-control" style="font-size:11px" type="number" min="0" value="${it.quantity_period||0}" oninput="updateCertItem(${i},'quantity_period',+this.value)">
     <input class="form-control" style="font-size:11px" type="number" min="0" value="${it.unit_price||0}" oninput="updateCertItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:11px;background:#f8fafc" readonly id="ci-amount-${i}" value="${it.amount_period||0}">
-    <input class="form-control" style="font-size:11px;background:#f8fafc" readonly id="ci-pct-${i}" value="${it.pct_complete||0}">
+    <input class="form-control" style="font-size:11px;background:#f8fafc;font-variant-numeric:tabular-nums" readonly id="ci-amount-${i}" value="${fmtMoney(it.amount_period||0)}">
+    <input class="form-control" style="font-size:11px;background:#f8fafc" readonly id="ci-pct-${i}" value="${fmtPct(it.pct_complete||0)}">
     <button class="btn-ghost btn danger" onclick="removeCertItem(${i})"><i class="fas fa-times" style="font-size:10px"></i></button>
   </div>`;
 }
@@ -299,8 +322,8 @@ function updateCertItem(i, field, val) {
   it.pct_complete = it.quantity_contract > 0 ? Math.round((it.quantity_period / it.quantity_contract) * 100 * 10) / 10 : 0;
   const amtEl = document.getElementById(`ci-amount-${i}`);
   const pctEl = document.getElementById(`ci-pct-${i}`);
-  if (amtEl) amtEl.value = it.amount_period;
-  if (pctEl) pctEl.value = it.pct_complete;
+  if (amtEl) amtEl.value = fmtMoney(it.amount_period);
+  if (pctEl) pctEl.value = fmtPct(it.pct_complete);
   updateCertTotals();
 }
 
@@ -373,6 +396,69 @@ function deleteCert(id) {
     toast('Certificación eliminada', 'warning');
     renderCertificaciones();
   });
+}
+
+function printCertificacion(id) {
+  var cert = DB.getById('certificates', id);
+  if (!cert) return;
+  var proj = DB.getById('projects', cert.project_id);
+  var company = {};
+  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+
+  var ST_BADGE = { draft: 'b-gray', pending: 'b-yellow', approved: 'b-green', rejected: 'b-red' };
+  var ST_LABEL = { draft: 'Borrador', pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado' };
+
+  var itemRows = (cert.items || []).map(function(it) {
+    return '<tr>' +
+      '<td>' + escapeHtml(it.description || '') + '</td>' +
+      '<td class="tc">' + escapeHtml(it.unit || '') + '</td>' +
+      '<td class="tr num">' + fmtNum(it.quantity_contract || 0) + '</td>' +
+      '<td class="tr num">' + fmtNum(it.quantity_period || 0) + '</td>' +
+      '<td class="tr num">' + fmtMoney(it.unit_price || 0) + '</td>' +
+      '<td class="tr num"><strong>' + fmtMoney(it.amount_period || 0) + '</strong></td>' +
+      '<td class="tr">' + fmtPct(it.pct_complete || 0) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var html =
+    '<div class="doc-header">' +
+      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Certificado de Avance de Obra</div></div>' +
+      '<div>' +
+        '<div class="doc-num">' + escapeHtml(cert.number) + '</div>' +
+        '<div class="doc-date">Fecha: ' + fmtDate(cert.date) + '</div>' +
+        '<div style="margin-top:6px"><span class="badge ' + (ST_BADGE[cert.status]||'b-gray') + '">' + (ST_LABEL[cert.status]||cert.status) + '</span></div>' +
+      '</div>' +
+    '</div>' +
+    _printInfoGrid([
+      { title: 'Proyecto', content:
+          '<strong>' + escapeHtml(proj ? proj.name : '-') + '</strong><br>' +
+          escapeHtml(proj && proj.client ? proj.client : '') +
+          (proj && proj.address ? '<br>' + escapeHtml(proj.address) : '') },
+      { title: 'Período', content:
+          'Desde: <strong>' + fmtDate(cert.period_from) + '</strong><br>' +
+          'Hasta: <strong>' + fmtDate(cert.period_to) + '</strong><br>' +
+          (cert.approved_by ? 'Aprobado por: <strong>' + escapeHtml(cert.approved_by) + '</strong>' : '') }
+    ]) +
+    '<table>' +
+      '<thead><tr>' +
+        '<th>Descripción</th><th class="tc">Unidad</th>' +
+        '<th class="tr">Cant. Contrato</th><th class="tr">Cant. Período</th>' +
+        '<th class="tr">P. Unit.</th><th class="tr">Monto</th><th class="tr">% Avance</th>' +
+      '</tr></thead>' +
+      '<tbody>' + (itemRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">Sin ítems</td></tr>') + '</tbody>' +
+    '</table>' +
+    _printTotals([
+      { label: 'Subtotal del Período', value: fmtMoney(cert.subtotal) },
+      { label: 'Fondo de Reparo (' + (cert.retention_pct || 5) + '%)', value: '- ' + fmtMoney(cert.retention_amount || 0), warn: true },
+      { label: 'Neto a Cobrar', value: fmtMoney(cert.net_amount), grand: true }
+    ]) +
+    (cert.notes ? '<div class="notes-box"><strong>Notas:</strong> ' + escapeHtml(cert.notes) + '</div>' : '') +
+    '<div class="sign-row">' +
+      '<div><div class="sign-line">Firma del Director de Obra</div></div>' +
+      '<div><div class="sign-line">Firma del Comitente</div></div>' +
+    '</div>';
+
+  _printDoc('Certificación ' + cert.number, html);
 }
 
 function exportCertificates() {

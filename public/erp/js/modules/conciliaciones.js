@@ -1,12 +1,13 @@
 /* ===== CONCILIACIONES BANCARIAS ===== */
 
 var _concState = {
-  systemRows:     [],   // parsed rows from Lebane system export
-  bankRows:       [],   // parsed rows from Galicia FEA bank statement
-  result:         null, // { matched, onlyBank, onlySystem }
-  systemFileName: null,
-  bankFileName:   null,
-  activeTab:      'matched'
+  systemRows:        [],   // parsed rows from Lebane system export
+  bankRows:          [],   // parsed rows from Galicia FEA bank statement
+  result:            null, // { matched, onlyBank, onlySystem }
+  systemFileName:    null,
+  bankFileName:      null,
+  activeTab:         'matched',
+  selectedBankIdxs:  {}    // indices of selected "Solo en Banco" rows
 };
 
 function renderConciliaciones() {
@@ -510,12 +511,20 @@ function _concMatchedTable(matched) {
     '</table></div>';
 }
 
-/* ─── BANK ONLY TABLE ─── */
+/* ─── BANK ONLY TABLE (with checkbox selection + inline registration) ─── */
 function _concBankOnlyTable(rows) {
   var header =
-    '<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">' +
-      '<i class="fas fa-university" style="color:#f59e0b"></i>' +
-      '<strong style="font-size:13px">Solo en Banco — Sin imputar en sistema (' + rows.length + ')</strong>' +
+    '<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<i class="fas fa-university" style="color:#f59e0b"></i>' +
+        '<strong style="font-size:13px">Solo en Banco — Sin imputar en sistema (' + rows.length + ')</strong>' +
+      '</div>' +
+      (rows.length ? '<div id="conc-sel-bar" style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted)">' +
+        '<span id="conc-sel-count">0 seleccionados</span>' +
+        '<button id="conc-reg-btn" class="btn btn-sm btn-primary" style="display:none" onclick="_concRegisterSelected()">' +
+          '<i class="fas fa-plus-circle"></i> Registrar en sistema' +
+        '</button>' +
+      '</div>' : '') +
     '</div>';
 
   if (!rows.length) return header +
@@ -523,32 +532,225 @@ function _concBankOnlyTable(rows) {
 
   var total = rows.reduce(function(s, r) { return s + r.amount; }, 0);
 
-  var tRows = rows.map(function(r) {
+  var tRows = rows.map(function(r, i) {
     var typeColor = r.type === 'debit' ? '#ef4444' : '#22c55e';
     var typeLabel = r.type === 'debit' ? 'Débito' : 'Crédito';
-    return '<tr>' +
+    var isChecked = !!_concState.selectedBankIdxs[i];
+    return '<tr id="conc-bank-row-' + i + '" style="background:' + (isChecked ? '#eff6ff' : '') + '">' +
+      '<td style="padding:8px 12px;width:36px;text-align:center">' +
+        '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="_concToggleSelect(' + i + ',this.checked)" style="cursor:pointer;width:15px;height:15px">' +
+      '</td>' +
       '<td style="font-size:12px;font-weight:600">' + fmtDate(r.date) + '</td>' +
       '<td><span style="font-size:11px;font-weight:700;color:' + typeColor + '">' + typeLabel + '</span></td>' +
-      '<td style="font-weight:700;text-align:right;color:' + typeColor + '">' + fmtMoney(r.amount) + '</td>' +
+      '<td style="font-weight:700;text-align:right;color:' + typeColor + ';font-variant-numeric:tabular-nums">' + fmtMoney(r.amount) + '</td>' +
       '<td style="font-size:12px">' + escapeHtml(r.desc || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--text-muted)">' + escapeHtml(r.concepto || '—') + '</td>' +
-      '<td style="font-size:12px;text-align:right;color:var(--text-muted)">' + (r.saldo ? fmtMoney(r.saldo) : '—') + '</td>' +
+      '<td style="font-size:12px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">' + (r.saldo ? fmtMoney(r.saldo) : '—') + '</td>' +
     '</tr>';
   }).join('');
 
   return header +
     '<div class="table-wrap"><table>' +
       '<thead><tr>' +
+        '<th style="width:36px;text-align:center"><input type="checkbox" title="Seleccionar todos" onchange="_concSelectAll(this.checked)" style="cursor:pointer;width:15px;height:15px"></th>' +
         '<th>Fecha</th><th>Tipo</th><th style="text-align:right">Monto</th>' +
         '<th>Descripción</th><th>Concepto</th><th style="text-align:right">Saldo</th>' +
       '</tr></thead>' +
       '<tbody>' + tRows + '</tbody>' +
       '<tfoot><tr style="background:var(--bg);border-top:2px solid var(--border)">' +
-        '<td colspan="2" style="font-weight:700;padding:10px 12px">TOTAL</td>' +
-        '<td style="font-weight:800;text-align:right;padding:10px 12px;color:var(--primary)">' + fmtMoney(total) + '</td>' +
+        '<td colspan="3" style="font-weight:700;padding:10px 12px">TOTAL</td>' +
+        '<td style="font-weight:800;text-align:right;padding:10px 12px;color:var(--primary);font-variant-numeric:tabular-nums">' + fmtMoney(total) + '</td>' +
         '<td colspan="3"></td>' +
       '</tr></tfoot>' +
     '</table></div>';
+}
+
+function _concToggleSelect(idx, checked) {
+  _concState.selectedBankIdxs[idx] = checked;
+  var row = document.getElementById('conc-bank-row-' + idx);
+  if (row) row.style.background = checked ? '#eff6ff' : '';
+  _concUpdateSelBar();
+}
+
+function _concSelectAll(checked) {
+  var r = _concState.result;
+  if (!r) return;
+  _concState.selectedBankIdxs = {};
+  if (checked) {
+    r.onlyBank.forEach(function(_, i) { _concState.selectedBankIdxs[i] = true; });
+  }
+  // Re-render the tab to sync checkboxes
+  var el = document.getElementById('conc-tab-content');
+  if (el) el.innerHTML = _concTabContent('bank');
+}
+
+function _concUpdateSelBar() {
+  var idxs = Object.keys(_concState.selectedBankIdxs).filter(function(k) { return _concState.selectedBankIdxs[k]; });
+  var count = idxs.length;
+  var countEl = document.getElementById('conc-sel-count');
+  var btnEl   = document.getElementById('conc-reg-btn');
+  if (!countEl) return;
+  if (count === 0) {
+    countEl.textContent = '0 seleccionados';
+    if (btnEl) btnEl.style.display = 'none';
+  } else {
+    var r = _concState.result;
+    var total = idxs.reduce(function(s, k) {
+      var row = r && r.onlyBank[parseInt(k)];
+      return s + (row ? (row._grossAmount || row.amount) : 0);
+    }, 0);
+    countEl.textContent = count + ' seleccionado' + (count > 1 ? 's' : '') + ' · ' + fmtMoney(total);
+    countEl.style.color = 'var(--primary)';
+    countEl.style.fontWeight = '600';
+    if (btnEl) btnEl.style.display = 'inline-flex';
+  }
+}
+
+function _concRegisterSelected() {
+  var r = _concState.result;
+  if (!r) return;
+  var idxs = Object.keys(_concState.selectedBankIdxs).filter(function(k) { return _concState.selectedBankIdxs[k]; }).map(Number);
+  if (!idxs.length) { toast('Seleccioná al menos un movimiento', 'error'); return; }
+
+  var selectedRows = idxs.map(function(i) { return r.onlyBank[i]; }).filter(Boolean);
+  var totalAmt  = selectedRows.reduce(function(s, row) { return s + (row._grossAmount || row.amount); }, 0);
+  var autoDesc  = selectedRows.length === 1
+    ? (selectedRows[0].desc || selectedRows[0].concepto || '')
+    : selectedRows.length + ' movimientos bancarios';
+  var autoDate  = selectedRows[0].date || todayStr();
+  // If all same type use that, else 'debit'
+  var allTypes  = selectedRows.map(function(row) { return row.type; });
+  var autoType  = allTypes.every(function(t) { return t === allTypes[0]; }) ? allTypes[0] : 'debit';
+
+  var accounts = DB.getAll('bankAccounts');
+  var accOpts = accounts.map(function(a) {
+    return '<option value="' + a.id + '">' + escapeHtml(a.name) + '</option>';
+  }).join('');
+
+  var detailRows = selectedRows.map(function(row, i) {
+    var typeColor = row.type === 'debit' ? '#ef4444' : '#22c55e';
+    var typeLabel = row.type === 'debit' ? 'Débito' : 'Crédito';
+    return '<tr>' +
+      '<td style="font-size:12px">' + fmtDate(row.date) + '</td>' +
+      '<td><span style="font-size:11px;font-weight:700;color:' + typeColor + '">' + typeLabel + '</span></td>' +
+      '<td style="font-variant-numeric:tabular-nums;text-align:right;font-weight:600;color:' + typeColor + '">' + fmtMoney(row._grossAmount || row.amount) + '</td>' +
+      '<td style="font-size:11px">' + escapeHtml(row.desc || row.concepto || '—') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  openModal('Registrar Movimientos en Sistema', `
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px">
+  <i class="fas fa-info-circle" style="color:#2563eb;margin-right:6px"></i>
+  Registrá los movimientos seleccionados como movimientos bancarios en el sistema para que aparezcan en la próxima conciliación.
+</div>
+
+<div style="margin-bottom:14px">
+  <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Movimientos seleccionados</div>
+  <div class="table-wrap">
+    <table style="font-size:12px">
+      <thead><tr><th>Fecha</th><th>Tipo</th><th style="text-align:right">Monto</th><th>Descripción</th></tr></thead>
+      <tbody>${detailRows}</tbody>
+      <tfoot><tr style="background:var(--bg);font-weight:700">
+        <td colspan="2" style="padding:8px 12px">TOTAL</td>
+        <td style="padding:8px 12px;text-align:right;color:var(--primary);font-variant-numeric:tabular-nums">${fmtMoney(totalAmt)}</td>
+        <td></td>
+      </tr></tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="divider"></div>
+<div class="form-grid form-grid-2">
+  <div class="form-group full">
+    <label class="form-label">Cuenta Bancaria *</label>
+    <select class="form-control" id="conc-reg-account">
+      <option value="">Seleccionar cuenta...</option>
+      ${accOpts}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Fecha</label>
+    <input class="form-control" id="conc-reg-date" type="date" value="${autoDate}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Tipo</label>
+    <select class="form-control" id="conc-reg-type">
+      <option value="debit" ${autoType==='debit'?'selected':''}>Egreso / Débito</option>
+      <option value="credit" ${autoType==='credit'?'selected':''}>Ingreso / Crédito</option>
+    </select>
+  </div>
+  <div class="form-group full">
+    <label class="form-label">Concepto</label>
+    <input class="form-control" id="conc-reg-concept" value="${escapeHtml(autoDesc)}" placeholder="Descripción del movimiento">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Importe total</label>
+    <input class="form-control" style="font-variant-numeric:tabular-nums;font-weight:700" readonly value="${fmtMoney(totalAmt)}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Registrar como</label>
+    <select class="form-control" id="conc-reg-mode">
+      <option value="single">Un solo movimiento</option>
+      <option value="each">Un movimiento por cada ítem</option>
+    </select>
+  </div>
+</div>
+`, 'modal-lg', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-primary" onclick="_concSaveMovements()"><i class="fas fa-save"></i> Registrar</button>
+`);
+
+  // Store selected rows for saving
+  window._concPendingRows = selectedRows;
+  window._concPendingTotal = totalAmt;
+}
+
+function _concSaveMovements() {
+  var accountId = (document.getElementById('conc-reg-account') || {}).value;
+  var date      = (document.getElementById('conc-reg-date') || {}).value || todayStr();
+  var type      = (document.getElementById('conc-reg-type') || {}).value || 'debit';
+  var concept   = ((document.getElementById('conc-reg-concept') || {}).value || '').trim();
+  var mode      = (document.getElementById('conc-reg-mode') || {}).value || 'single';
+
+  if (!accountId) { toast('Seleccioná una cuenta bancaria', 'error'); return; }
+  if (!concept)   { toast('El concepto es obligatorio', 'error'); return; }
+
+  var rows = window._concPendingRows || [];
+  if (!rows.length) { closeModal(); return; }
+
+  if (mode === 'single') {
+    var total = window._concPendingTotal || rows.reduce(function(s, r) { return s + (r._grossAmount || r.amount); }, 0);
+    DB.insert('bankMovements', {
+      account_id: accountId,
+      date: date,
+      type: type,
+      amount: total,
+      concept: concept,
+      reference: 'Banco (conciliación)',
+    });
+    toast('Movimiento registrado correctamente', 'success');
+  } else {
+    rows.forEach(function(row) {
+      DB.insert('bankMovements', {
+        account_id: accountId,
+        date: row.date || date,
+        type: row.type || type,
+        amount: row._grossAmount || row.amount,
+        concept: concept + (row.desc ? ' — ' + row.desc : ''),
+        reference: 'Banco (conciliación)',
+      });
+    });
+    toast(rows.length + ' movimiento' + (rows.length > 1 ? 's' : '') + ' registrado' + (rows.length > 1 ? 's' : ''), 'success');
+  }
+
+  // Clear selection
+  _concState.selectedBankIdxs = {};
+  window._concPendingRows = [];
+  closeModal();
+
+  // Refresh the bank-only tab
+  var el = document.getElementById('conc-tab-content');
+  if (el) el.innerHTML = _concTabContent('bank');
 }
 
 /* ─── SYSTEM ONLY TABLE ─── */

@@ -59,42 +59,68 @@ function renderOrdenesPago() {
 }
 
 function buildPO2Table(orders, suppliers, projects) {
-  if (!orders.length) return `<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay órdenes de pago</p></div>`;
+  if (!orders.length) return '<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay órdenes de pago</p></div>';
 
-  const statusColor = { draft: 'badge-gray', pending: 'badge-yellow', paid: 'badge-green', cancelled: 'badge-red' };
-  const statusLabel = { draft: 'Borrador', pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
+  var ST_COLOR = {
+    draft:     { color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0', label: 'Borrador' },
+    pending:   { color: '#d97706', bg: '#fef9c3', border: '#fde68a', label: 'Pendiente' },
+    paid:      { color: '#059669', bg: '#dcfce7', border: '#86efac', label: 'Pagada' },
+    cancelled: { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5', label: 'Cancelada' },
+  };
 
-  const allSIs = DB.getAll('supplierInvoices');
-  return `<table><thead><tr>
-    <th>N° Orden</th><th>Proveedor</th><th>Proyecto</th><th>Fecha</th><th>Factura Prov.</th><th>Concepto</th>
-    <th class="text-right">Bruto</th><th class="text-right">Retenciones</th><th class="text-right">Neto</th>
-    <th>Estado</th><th>Acciones</th>
-  </tr></thead>
-  <tbody>
-  ${orders.sort((a,b)=>b.date.localeCompare(a.date)).map(o => {
-    const sup = suppliers.find(s => s.id === o.supplier_id);
-    const proj = projects.find(p => p.id === o.project_id);
-    const si = o.supplier_invoice_id ? allSIs.find(s => s.id === o.supplier_invoice_id) : null;
-    return `<tr>
-      <td><strong>${o.number}</strong></td>
-      <td>${sup?.name || '-'}</td>
-      <td style="font-size:11px">${proj?.name || '-'}</td>
-      <td>${fmtDate(o.date)}</td>
-      <td style="font-size:11px">${si ? `<span style="color:var(--primary);font-weight:600">${si.number}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td style="font-size:12px">${o.concept}</td>
-      <td class="number-cell text-right">${fmtMoney(o.gross_amount)}</td>
-      <td class="number-cell text-right text-warning">${fmtMoney(o.total_retentions||0)}</td>
-      <td class="number-cell text-right"><strong>${fmtMoney(o.net_amount)}</strong></td>
-      <td><span class="badge ${statusColor[o.status]||'badge-gray'}">${statusLabel[o.status]||o.status}</span></td>
-      <td><div class="table-actions">
-        <button class="btn-ghost btn btn-sm" onclick="viewPaymentOrder('${o.id}')"><i class="fas fa-eye"></i></button>
-        <button class="btn-ghost btn btn-sm" onclick="openPaymentOrderForm('${o.id}')"><i class="fas fa-edit"></i></button>
-        ${o.status === 'pending' ? `<button class="btn btn-sm btn-success" onclick="markPOPaid('${o.id}')"><i class="fas fa-check"></i> Pagar</button>` : ''}
-        <button class="btn-ghost btn btn-sm danger" onclick="deletePaymentOrder('${o.id}')"><i class="fas fa-trash"></i></button>
-      </div></td>
-    </tr>`;
-  }).join('')}
-  </tbody></table>`;
+  var allSIs = DB.getAll('supplierInvoices');
+  var sorted = orders.slice().sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
+
+  var rows = sorted.map(function(o, idx) {
+    var sup  = suppliers.find(function(s) { return s.id === o.supplier_id; });
+    var proj = projects.find(function(p) { return p.id === o.project_id; });
+    var si   = o.supplier_invoice_id ? allSIs.find(function(s) { return s.id === o.supplier_invoice_id; }) : null;
+    var st   = ST_COLOR[o.status] || ST_COLOR.draft;
+    var rowBg = idx % 2 === 0 ? '#ffffff' : '#f8f9fb';
+
+    return '<tr style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;cursor:pointer"' +
+        ' onclick="viewPaymentOrder(\'' + o.id + '\')"' +
+        ' onmouseenter="this.style.background=\'#eef4ff\'" onmouseleave="this.style.background=\'' + rowBg + '\'">' +
+      '<td style="padding:10px 12px"><strong style="color:#2563eb">' + escapeHtml(o.number) + '</strong></td>' +
+      '<td style="padding:10px 12px;font-size:12px">' + escapeHtml(sup ? sup.name : '-') + '</td>' +
+      '<td style="padding:10px 12px;font-size:11px;color:#64748b">' + escapeHtml(proj ? proj.name : '-') + '</td>' +
+      '<td style="padding:10px 12px;font-size:12px;white-space:nowrap">' + fmtDate(o.date) + '</td>' +
+      '<td style="padding:10px 12px;font-size:11px">' + (si ? '<span style="color:#2563eb;font-weight:600">' + escapeHtml(si.number) + '</span>' : '<span style="color:#94a3b8">—</span>') + '</td>' +
+      '<td style="padding:10px 12px;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(o.concept || '') + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(o.gross_amount) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#d97706">' + fmtMoney(o.total_retentions||0) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums"><strong>' + fmtMoney(o.net_amount) + '</strong></td>' +
+      '<td style="padding:10px 12px">' +
+        '<span style="background:' + st.bg + ';color:' + st.color + ';border:1px solid ' + st.border + ';font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:.4px">' + st.label + '</span>' +
+      '</td>' +
+      '<td style="padding:10px 12px;white-space:nowrap" onclick="event.stopPropagation()">' +
+        '<div class="table-actions">' +
+          '<button class="btn-ghost btn btn-sm" title="Ver detalle" onclick="viewPaymentOrder(\'' + o.id + '\')"><i class="fas fa-eye"></i></button>' +
+          '<button class="btn-ghost btn btn-sm" title="PDF" onclick="printPaymentOrder(\'' + o.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
+          '<button class="btn-ghost btn btn-sm" title="Editar" onclick="openPaymentOrderForm(\'' + o.id + '\')"><i class="fas fa-edit"></i></button>' +
+          (o.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="markPOPaid(\'' + o.id + '\')"><i class="fas fa-check"></i> Pagar</button>' : '') +
+          '<button class="btn-ghost btn btn-sm danger" title="Eliminar" onclick="deletePaymentOrder(\'' + o.id + '\')"><i class="fas fa-trash"></i></button>' +
+        '</div>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+
+  return '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+    '<thead><tr style="background:#f8f9fb;border-bottom:2px solid #e2e8f0">' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">N° Orden</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proveedor</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proyecto</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Fecha</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Factura Prov.</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Concepto</th>' +
+      '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Bruto</th>' +
+      '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Retenciones</th>' +
+      '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Neto</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Estado</th>' +
+      '<th style="padding:10px 12px;font-size:11px;color:#64748b;font-weight:600">Acciones</th>' +
+    '</tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+  '</table>';
 }
 
 window._po2Filters = { q: '', status: '' };
@@ -162,7 +188,7 @@ function viewPaymentOrder(id) {
 ${o.notes ? `<div style="font-size:12px;color:var(--text-muted)"><strong>Notas:</strong> ${o.notes}</div>` : ''}
 `, 'modal-lg', `
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
-<button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+<button class="btn btn-secondary" onclick="printPaymentOrder('${o.id}')"><i class="fas fa-file-pdf"></i> PDF</button>
 ${o.status === 'pending' ? `<button class="btn btn-success" onclick="markPOPaid('${o.id}');closeModal()"><i class="fas fa-check"></i> Marcar Pagada</button>` : ''}
 `);
 }
@@ -370,6 +396,57 @@ function deletePaymentOrder(id) {
     toast('Orden eliminada', 'warning');
     renderOrdenesPago();
   });
+}
+
+function printPaymentOrder(id) {
+  var o = DB.getById('paymentOrders', id);
+  if (!o) return;
+  var sup  = DB.getById('suppliers', o.supplier_id);
+  var proj = DB.getById('projects', o.project_id);
+  var acc  = DB.getById('bankAccounts', o.account_id);
+  var si   = o.supplier_invoice_id ? DB.getById('supplierInvoices', o.supplier_invoice_id) : null;
+  var company = {};
+  try { company = DB.getAllCompanies()[0] || {}; } catch(e) {}
+
+  var ST_BADGE = { draft: 'b-gray', pending: 'b-yellow', paid: 'b-green', cancelled: 'b-red' };
+  var ST_LABEL = { draft: 'Borrador', pending: 'Pendiente', paid: 'Pagada', cancelled: 'Cancelada' };
+
+  var retRows = (o.retentions || []).map(function(r) {
+    return '<div class="trow warn"><span>' + escapeHtml(r.name) + ' (' + r.rate + '%)</span><span class="num">- ' + fmtMoney(r.amount) + '</span></div>';
+  }).join('');
+
+  var html =
+    '<div class="doc-header">' +
+      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Orden de Pago</div></div>' +
+      '<div>' +
+        '<div class="doc-num">' + escapeHtml(o.number) + '</div>' +
+        '<div class="doc-date">Fecha: ' + fmtDate(o.date) + '</div>' +
+        '<div style="margin-top:6px"><span class="badge ' + (ST_BADGE[o.status]||'b-gray') + '">' + (ST_LABEL[o.status]||o.status) + '</span></div>' +
+      '</div>' +
+    '</div>' +
+    _printInfoGrid([
+      { title: 'Beneficiario', content:
+          '<strong>' + escapeHtml(sup ? sup.name : '-') + '</strong><br>' +
+          'CUIT: ' + escapeHtml(sup ? (sup.cuit||'-') : '-') + '<br>' +
+          escapeHtml(sup && sup.address ? sup.address : '') },
+      { title: 'Datos del Pago', content:
+          'Proyecto: <strong>' + escapeHtml(proj ? proj.name : '-') + '</strong><br>' +
+          'Cuenta: ' + escapeHtml(acc ? acc.name : '-') + '<br>' +
+          (si ? 'Factura prov.: <strong>' + escapeHtml(si.number) + '</strong> — ' + fmtMoney(si.total) : ('Ref: ' + escapeHtml(o.reference_doc||'-'))) }
+    ]) +
+    '<div class="concept-box"><strong>Concepto:</strong> ' + escapeHtml(o.concept) + '</div>' +
+    _printTotals(
+      [{ label: 'Importe Bruto', value: fmtMoney(o.gross_amount) }]
+        .concat((o.retentions||[]).map(function(r) { return { label: escapeHtml(r.name) + ' (' + r.rate + '%)', value: '- ' + fmtMoney(r.amount), warn: true }; }))
+        .concat([{ label: 'Neto a Pagar', value: fmtMoney(o.net_amount), grand: true }])
+    ) +
+    (o.notes ? '<div class="notes-box"><strong>Notas:</strong> ' + escapeHtml(o.notes) + '</div>' : '') +
+    '<div class="sign-row">' +
+      '<div><div class="sign-line">Firma del Autorizante</div></div>' +
+      '<div><div class="sign-line">Firma del Beneficiario</div></div>' +
+    '</div>';
+
+  _printDoc('Orden de Pago ' + o.number, html);
 }
 
 function exportPaymentOrders() {
