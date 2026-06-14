@@ -231,6 +231,13 @@ function openInvoiceForm(id = null) {
     <small style="color:var(--text-muted)">A/B/C/M van al Libro IVA. X e Interna se excluyen.</small>
   </div>
   <div class="form-group">
+    <label class="form-label">Empresa del Grupo</label>
+    <select class="form-control" id="if-company">
+      <option value="">Sin empresa asignada</option>
+      ${(function(){ try { return DB.getAllCompanies().map(c => '<option value="'+c.id+'"'+(inv?.company_id===c.id?' selected':'')+'>'+escapeHtml(c.name)+'</option>').join(''); } catch(e){ return ''; } })()}
+    </select>
+  </div>
+  <div class="form-group">
     <label class="form-label">Origen</label>
     <select class="form-control" id="if-source" onchange="invToggleImputacion(this.value)">
       <option value="manual" ${source==='manual'?'selected':''}>Manual (sin OC ni certificado)</option>
@@ -468,9 +475,12 @@ function saveInvoice(id) {
     }
   }
 
+  const invType = document.getElementById('if-type').value;
   const data = {
     number: document.getElementById('if-num').value,
-    type: document.getElementById('if-type').value,
+    type: invType,
+    tipo_comprobante: invType,
+    company_id: document.getElementById('if-company')?.value || '',
     project_id: projectId,
     status: document.getElementById('if-status').value,
     client_name: clientName,

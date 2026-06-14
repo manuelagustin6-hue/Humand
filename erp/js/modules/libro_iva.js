@@ -14,10 +14,19 @@ const IVA_RATES_LABEL = { 21: '21%', 10.5: '10.5%', 27: '27%', 0: 'Exento/NG' };
 // =====================================================================
 // MAIN RENDER
 // =====================================================================
+function _livaCompanyOpts(selId) {
+  try {
+    return DB.getAllCompanies().map(function(c) {
+      return '<option value="' + c.id + '"' + (selId === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>';
+    }).join('');
+  } catch(e) { return ''; }
+}
+
 function renderLibroIVA() {
-  const p   = window._libroIvaPeriod;
-  const sis = _livaGetCompras(p);
-  const invs= _livaGetVentas(p);
+  const p        = window._libroIvaPeriod;
+  const coId     = window._livaCompanyFilter || '';
+  const sis      = _livaGetCompras(p, coId);
+  const invs     = _livaGetVentas(p, coId);
 
   const totC = sis.reduce((s, d) => s + d.total, 0);
   const totV = invs.reduce((s, d) => s + d.total, 0);
@@ -31,7 +40,11 @@ function renderLibroIVA() {
     <div class="page-title">Libro IVA Compras y Ventas</div>
     <div class="page-subtitle">Registros para declaración jurada AFIP — Período fiscal</div>
   </div>
-  <div class="page-actions" style="align-items:center;gap:8px">
+  <div class="page-actions" style="align-items:center;gap:8px;flex-wrap:wrap">
+    <select class="form-control" id="liva-company" style="width:200px" onchange="livaSetCompany()">
+      <option value="">Todas las empresas</option>
+      ${_livaCompanyOpts(coId)}
+    </select>
     <button class="btn btn-ghost" onclick="livaShiftPeriod(-1)"><i class="fas fa-chevron-left"></i></button>
     <select class="form-control" id="liva-month" style="width:120px" onchange="livaSetPeriod()">
       ${MONTHS_ES.map((m,i)=>`<option value="${i+1}" ${p.month===i+1?'selected':''}>${m}</option>`).join('')}
@@ -81,6 +94,11 @@ function renderLibroIVA() {
 function livaSetPeriod() {
   window._libroIvaPeriod.month = parseInt(document.getElementById('liva-month').value);
   window._libroIvaPeriod.year  = parseInt(document.getElementById('liva-year').value);
+  renderLibroIVA();
+}
+
+function livaSetCompany() {
+  window._livaCompanyFilter = document.getElementById('liva-company')?.value || '';
   renderLibroIVA();
 }
 
@@ -150,7 +168,7 @@ function _livaIsAfipDoc(tipo) {
   return LIVA_AFIP_TYPES.includes(tipo);
 }
 
-function _livaGetCompras(p) {
+function _livaGetCompras(p, companyId) {
   const suppliers = DB.getAll('suppliers');
   const supMap    = {};
   suppliers.forEach(s => { supMap[s.id] = s; });
@@ -158,7 +176,10 @@ function _livaGetCompras(p) {
   const rows = [];
 
   // Facturas proveedor — solo comprobantes AFIP (A/B/C/M o sin tipo = legacy)
-  DB.getAll('supplierInvoices').filter(si => _livaInPeriod(si.date, p) && _livaIsAfipDoc(si.tipo_comprobante)).forEach(si => {
+  DB.getAll('supplierInvoices').filter(si =>
+    _livaInPeriod(si.date, p) && _livaIsAfipDoc(si.tipo_comprobante) &&
+    (!companyId || si.company_id === companyId)
+  ).forEach(si => {
     const sup = supMap[si.supplier_id] || {};
     si._cuit = sup.cuit || sup.tax_id || '-';
     si._name = sup.name || si.supplier_name || '-';
@@ -203,16 +224,47 @@ function _livaVentasRow(doc, type) {
   };
 }
 
-function _livaGetVentas(p) {
+function _livaGetVentas(p, companyId) {
   const rows = [];
 
   // Facturas emitidas — solo comprobantes AFIP (A/B/C/M o sin tipo = legacy)
-  DB.getAll('invoices').filter(inv => _livaInPeriod(inv.date, p) && _livaIsAfipDoc(inv.tipo_comprobante || inv.type)).forEach(inv => {
+  DB.getAll('invoices').filter(inv =>
+    _livaInPeriod(inv.date, p) &&
+    _livaIsAfipDoc(inv.tipo_comprobante || inv.type) &&
+    (!companyId || inv.company_id === companyId)
+  ).forEach(inv => {
     rows.push(_livaVentasRow(inv, 'FAC'));
   });
 
   DB.getAll('notasCreditoDebito').filter(n => (n.type==='nc_emi'||n.type==='nd_emi') && _livaInPeriod(n.date, p) && n.status==='confirmed').forEach(n => {
     rows.push(_livaVentasRow(n, n.type==='nc_emi'?'NC':'ND'));
+  });
+
+  // Cobranzas de cuotas con IVA (declarables AFIP sin factura emitida aún)
+  DB.getAll('collections').filter(function(c) {
+    return c.iva_incluido && c.tipo_cobranza === 'cuota_formal' && _livaInPeriod(c.date, p) &&
+           (!companyId || c.company_id === companyId);
+  }).forEach(function(c) {
+    var rate = parseFloat(c.iva_rate) || 10.5;
+    var neto = parseFloat(c.neto) || (c.amount / (1 + rate/100));
+    var iva  = parseFloat(c.iva_amount) || (c.amount - neto);
+    rows.push({
+      date:       c.date,
+      docType:    'CUOTA',
+      number:     'CUOTA-' + (c.id||'').slice(-6).toUpperCase(),
+      cuit:       c.client_cuit || '-',
+      name:       c.client_name || '-',
+      neto21:     rate >= 20    ? neto : 0,
+      neto105:    (rate >= 10 && rate < 20) ? neto : 0,
+      neto27:     rate >= 27   ? neto : 0,
+      netoExento: 0,
+      iva21:      rate >= 20   ? iva  : 0,
+      iva105:     (rate >= 10 && rate < 20) ? iva  : 0,
+      iva27:      rate >= 27   ? iva  : 0,
+      ivaTotal:   iva,
+      total:      parseFloat(c.amount) || 0,
+      _id:        c.id,
+    });
   });
 
   return rows.sort((a,b) => a.date.localeCompare(b.date));
@@ -666,13 +718,15 @@ function _citiSyncCuit() {
 }
 
 function livaCitiExportCompras(mode) {
-  var p   = window._libroIvaPeriod;
-  var ym  = p.year + String(p.month).padStart(2, '0');
-  var supMap = {};
+  var p       = window._libroIvaPeriod;
+  var ym      = p.year + String(p.month).padStart(2, '0');
+  var citiCoId= (document.getElementById('citi-company')?.value) || (window._livaCompanyFilter || '');
+  var supMap  = {};
   try { DB.getAll('suppliers').forEach(function(s) { supMap[s.id] = s; }); } catch(e) {}
 
   var sis = DB.getAll('supplierInvoices').filter(function(si) {
-    return _livaInPeriod(si.date, p) && _livaIsAfipDoc(si.tipo_comprobante);
+    return _livaInPeriod(si.date, p) && _livaIsAfipDoc(si.tipo_comprobante) &&
+           (!citiCoId || si.company_id === citiCoId);
   });
 
   if (!sis.length) { toast('Sin comprobantes de compras AFIP para el período', 'warning'); return; }

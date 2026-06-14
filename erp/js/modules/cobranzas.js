@@ -151,39 +151,50 @@ ${Object.entries(agingBuckets).filter(([k]) => k !== 'current').map(([key, b]) =
 
 // ---- COLLECTIONS TABLE ----
 function renderCollectionsTable(collections, invoices, projects) {
-  if (!collections.length) return `<div class="empty-state"><i class="fas fa-hand-holding-dollar"></i><p>No hay cobros registrados</p></div>`;
+  if (!collections.length) return '<div class="empty-state"><i class="fas fa-hand-holding-dollar"></i><p>No hay cobros registrados</p></div>';
 
-  return `<div class="card"><div class="card-body" style="padding:0"><div class="table-wrap">
-    <table><thead><tr>
-      <th>Fecha</th><th>Factura</th><th>Proyecto</th><th>Método</th><th>Referencia</th><th class="text-right">Importe</th><th>Acciones</th>
-    </tr></thead>
-    <tbody>
-      ${collections.slice().reverse().map(c => {
-        const inv = invoices.find(i => i.id === c.invoice_id);
-        const proj = inv ? projects.find(p => p.id === inv.project_id) : null;
-        return `<tr>
-          <td>${fmtDate(c.date)}</td>
-          <td>${inv?.number || '-'}</td>
-          <td>${proj?.name || '-'}</td>
-          <td><span class="badge badge-green">${c.method}</span></td>
-          <td><span style="font-size:11px;color:var(--text-muted)">${c.reference || '-'}</span></td>
-          <td class="number-cell text-right"><strong>${fmtMoney(c.amount)}</strong></td>
-          <td>
-            <div class="table-actions">
-              <button class="btn-ghost btn btn-sm" title="Recibo PDF" onclick="printRecibo('${c.id}')"><i class="fas fa-file-pdf"></i></button>
-              <button class="btn-ghost btn btn-sm danger" onclick="deleteCollection('${c.id}')"><i class="fas fa-trash"></i></button>
-            </div>
-          </td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-    <tfoot><tr class="total-row">
-      <td colspan="5">Total Cobrado</td>
-      <td class="number-cell text-right">${fmtMoney(collections.reduce((s,c) => s+c.amount, 0))}</td>
-      <td></td>
-    </tr></tfoot>
-    </table>
-  </div></div></div>`;
+  var TIPO_LABEL = { factura: 'Factura', cuota_formal: 'Cuota c/IVA', cuota_informal: 'Cuota s/IVA' };
+  var sorted = collections.slice().reverse();
+  var totalAmt = collections.reduce(function(s,c) { return s+c.amount; }, 0);
+
+  return '<div class="card"><div class="card-body" style="padding:0"><div class="table-wrap">' +
+    '<table><thead><tr>' +
+    '<th>Fecha</th><th>Tipo</th><th>Factura / Cuota</th><th>Cliente</th><th>Proyecto</th>' +
+    '<th>Método</th><th style="text-align:right">Neto</th><th style="text-align:right">IVA</th><th style="text-align:right">Total</th><th></th>' +
+    '</tr></thead><tbody>' +
+    sorted.map(function(c) {
+      var inv     = c.invoice_id ? invoices.find(function(i) { return i.id === c.invoice_id; }) : null;
+      var projId  = c.project_id || (inv && inv.project_id) || '';
+      var proj    = projId ? projects.find(function(p) { return p.id === projId; }) : null;
+      var tipo    = c.tipo_cobranza || 'factura';
+      var tipoBadge = tipo === 'cuota_formal'
+        ? '<span class="badge badge-blue" style="font-size:10px">Cuota c/IVA</span>'
+        : tipo === 'cuota_informal'
+        ? '<span class="badge badge-gray" style="font-size:10px">Cuota s/IVA</span>'
+        : '<span class="badge badge-green" style="font-size:10px">Factura</span>';
+      var ref     = inv ? escapeHtml(inv.number) : (c.reference ? escapeHtml(c.reference) : '—');
+      var client  = c.client_name || (inv && inv.client_name) || '—';
+      var neto    = c.iva_incluido ? (c.neto || 0) : c.amount;
+      var ivaAmt  = c.iva_incluido ? (c.iva_amount || 0) : 0;
+      return '<tr>' +
+        '<td style="white-space:nowrap">' + fmtDate(c.date) + '</td>' +
+        '<td>' + tipoBadge + '</td>' +
+        '<td><strong>' + ref + '</strong></td>' +
+        '<td style="font-size:12px">' + escapeHtml(client) + '</td>' +
+        '<td style="font-size:12px">' + escapeHtml(proj ? proj.name : '—') + '</td>' +
+        '<td><span class="badge badge-gray" style="font-size:10px">' + escapeHtml(c.method || '') + '</span></td>' +
+        '<td style="text-align:right;font-size:12px">' + fmtMoney(neto) + '</td>' +
+        '<td style="text-align:right;font-size:12px;color:' + (ivaAmt > 0 ? 'var(--warning)' : 'var(--text-muted)') + '">' + (ivaAmt > 0 ? fmtMoney(ivaAmt) : '—') + '</td>' +
+        '<td style="text-align:right"><strong>' + fmtMoney(c.amount) + '</strong></td>' +
+        '<td><div class="table-actions">' +
+          '<button class="btn-ghost btn btn-sm" title="Recibo PDF" onclick="printRecibo(\'' + c.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
+          '<button class="btn-ghost btn btn-sm danger" onclick="deleteCollection(\'' + c.id + '\')"><i class="fas fa-trash"></i></button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="total-row"><td colspan="8">Total Cobrado</td>' +
+    '<td style="text-align:right"><strong>' + fmtMoney(totalAmt) + '</strong></td><td></td></tr></tfoot>' +
+    '</table></div></div></div>';
 }
 
 // ---- OPEN INVOICES ----
@@ -219,31 +230,103 @@ function renderOpenInvoices(invoices, collections, projects) {
   </div></div></div>`;
 }
 
-function openCollectionForm(invoiceId = null) {
-  const invoices = DB.getAll('invoices').filter(i => ['sent','overdue'].includes(i.status));
+function _cobrCompanyOpts(selId) {
+  try {
+    return DB.getAllCompanies().map(function(c) {
+      return '<option value="' + c.id + '"' + (selId === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>';
+    }).join('');
+  } catch(e) { return ''; }
+}
+
+function openCollectionForm(invoiceId) {
+  invoiceId = invoiceId || null;
+  const invoices = DB.getAll('invoices').filter(function(i) { return ['sent','overdue'].includes(i.status); });
   const projects = DB.getAll('projects');
+  const tipo = invoiceId ? 'factura' : 'factura';
 
   openModal('Registrar Cobro', `
 <div class="form-grid form-grid-2">
+
   <div class="form-group full">
+    <label class="form-label">Tipo de cobro</label>
+    <select class="form-control" id="cf-tipo" onchange="cobrTipoChange()">
+      <option value="factura">Cobro de factura emitida</option>
+      <option value="cuota_formal">Cuota / anticipo con IVA (declarable AFIP)</option>
+      <option value="cuota_informal">Cuota / anticipo informal (sin IVA)</option>
+    </select>
+  </div>
+
+  <!-- Sección: cobro de factura -->
+  <div id="cf-sec-factura" class="form-group full" style="margin:0">
     <label class="form-label">Factura *</label>
     <select class="form-control" id="cf-invoice" onchange="updateCollectionBalance(this.value)">
       <option value="">Seleccionar...</option>
-      ${invoices.map(i => {
-        const p = projects.find(p => p.id === i.project_id);
-        return `<option value="${i.id}" ${i.id===invoiceId?'selected':''}>${i.number} — ${i.client_name} — ${fmtMoney(i.total)}</option>`;
+      ${invoices.map(function(i) {
+        return '<option value="'+i.id+'"'+(i.id===invoiceId?' selected':'')+'>'+escapeHtml(i.number)+' — '+escapeHtml(i.client_name)+' — '+fmtMoney(i.total)+'</option>';
       }).join('')}
     </select>
+    <div id="collection-balance-info" style="margin-top:6px"></div>
   </div>
-  <div class="form-group full" id="collection-balance-info"></div>
+
+  <!-- Sección: cuota sin factura -->
+  <div id="cf-sec-cuota" style="display:none;grid-column:1/-1;display:none">
+    <div class="form-grid form-grid-2" style="margin:0">
+      <div class="form-group">
+        <label class="form-label">Razón Social / Comprador *</label>
+        <input class="form-control" id="cf-client" placeholder="Nombre del comprador">
+      </div>
+      <div class="form-group">
+        <label class="form-label">CUIT Comprador</label>
+        <input class="form-control" id="cf-cuit" placeholder="20-12345678-9">
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Proyecto</label>
+        <select class="form-control" id="cf-project-cuota">
+          <option value="">Sin proyecto</option>
+          ${projects.map(function(p) { return '<option value="'+p.id+'">'+escapeHtml(p.name)+'</option>'; }).join('')}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empresa del grupo -->
   <div class="form-group">
-    <label class="form-label">Importe Cobrado *</label>
-    <input class="form-control" id="cf-amount" type="number" min="0" placeholder="0">
+    <label class="form-label">Empresa del Grupo</label>
+    <select class="form-control" id="cf-company">
+      <option value="">Sin empresa asignada</option>
+      ${_cobrCompanyOpts('')}
+    </select>
+  </div>
+
+  <!-- IVA (solo para cuota_formal) -->
+  <div class="form-group" id="cf-iva-field" style="display:none">
+    <label class="form-label">Alícuota IVA</label>
+    <select class="form-control" id="cf-iva-rate" onchange="cobrIvaCalc()">
+      <option value="10.5">10,5% (Vivienda)</option>
+      <option value="21" >21% (Comercial)</option>
+      <option value="27" >27%</option>
+    </select>
+  </div>
+
+  <!-- Importe -->
+  <div class="form-group">
+    <label class="form-label">Importe Cobrado * <span id="cf-iva-label" style="font-size:11px;color:var(--primary)"></span></label>
+    <input class="form-control" id="cf-amount" type="number" min="0" step="0.01" placeholder="0" oninput="cobrIvaCalc()">
   </div>
   <div class="form-group">
     <label class="form-label">Fecha del Cobro</label>
     <input class="form-control" id="cf-date" type="date" value="${todayStr()}">
   </div>
+
+  <!-- Desglose IVA (visible solo cuota formal) -->
+  <div class="form-group full" id="cf-iva-preview" style="display:none">
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;font-size:12px;display:flex;gap:24px;flex-wrap:wrap">
+      <span>Neto gravado: <strong id="cf-iva-neto">—</strong></span>
+      <span>IVA: <strong id="cf-iva-amt">—</strong></span>
+      <span style="color:var(--primary)">→ Declarable en IVA Ventas del período</span>
+    </div>
+  </div>
+
   <div class="form-group">
     <label class="form-label">Método de Pago</label>
     <select class="form-control" id="cf-method">
@@ -267,7 +350,41 @@ function openCollectionForm(invoiceId = null) {
 <button class="btn btn-success" onclick="saveCollection()"><i class="fas fa-save"></i> Registrar Cobro</button>
 `);
 
-  if (invoiceId) setTimeout(() => updateCollectionBalance(invoiceId), 50);
+  if (invoiceId) setTimeout(function() { updateCollectionBalance(invoiceId); }, 50);
+}
+
+function cobrTipoChange() {
+  var tipo = document.getElementById('cf-tipo')?.value || 'factura';
+  var secFac  = document.getElementById('cf-sec-factura');
+  var secCuota= document.getElementById('cf-sec-cuota');
+  var ivaField= document.getElementById('cf-iva-field');
+  var ivaPrev = document.getElementById('cf-iva-preview');
+  var ivaLabel= document.getElementById('cf-iva-label');
+
+  var esFact  = tipo === 'factura';
+  var esFormal= tipo === 'cuota_formal';
+
+  if (secFac)   secFac.style.display   = esFact    ? '' : 'none';
+  if (secCuota) secCuota.style.display = !esFact   ? '' : 'none';
+  if (ivaField) ivaField.style.display = esFormal  ? '' : 'none';
+  if (ivaPrev)  ivaPrev.style.display  = esFormal  ? '' : 'none';
+  if (ivaLabel) ivaLabel.textContent   = esFormal  ? '(IVA incluido)' : '';
+  cobrIvaCalc();
+}
+
+function cobrIvaCalc() {
+  var tipo  = document.getElementById('cf-tipo')?.value || 'factura';
+  if (tipo !== 'cuota_formal') return;
+  var total = parseFloat(document.getElementById('cf-amount')?.value) || 0;
+  var rate  = parseFloat(document.getElementById('cf-iva-rate')?.value) || 10.5;
+  var neto  = total / (1 + rate / 100);
+  var ivaAmt= total - neto;
+  var elN = document.getElementById('cf-iva-neto');
+  var elI = document.getElementById('cf-iva-amt');
+  if (elN) elN.textContent = fmtMoney(neto);
+  if (elI) elI.textContent = fmtMoney(ivaAmt);
+  var ivaPrev = document.getElementById('cf-iva-preview');
+  if (ivaPrev) ivaPrev.style.display = total > 0 ? '' : 'none';
 }
 
 function updateCollectionBalance(invoiceId) {
@@ -289,29 +406,61 @@ function updateCollectionBalance(invoiceId) {
 }
 
 function saveCollection() {
-  const invoiceId = document.getElementById('cf-invoice').value;
-  const amount = parseFloat(document.getElementById('cf-amount').value);
-  if (!invoiceId || !amount) { toast('Factura e importe son obligatorios', 'error'); return; }
+  var tipo      = document.getElementById('cf-tipo')?.value || 'factura';
+  var amount    = parseFloat(document.getElementById('cf-amount')?.value);
+  var companyId = document.getElementById('cf-company')?.value || '';
+  var date      = document.getElementById('cf-date')?.value;
+  var method    = document.getElementById('cf-method')?.value;
+  var reference = document.getElementById('cf-ref')?.value.trim() || '';
+  var notes     = document.getElementById('cf-notes')?.value.trim() || '';
 
-  const inv = DB.getById('invoices', invoiceId);
+  if (!amount || amount <= 0) { toast('El importe es obligatorio', 'error'); return; }
 
-  DB.insert('collections', {
-    invoice_id: invoiceId,
-    project_id: inv?.project_id || '',
-    amount,
-    date: document.getElementById('cf-date').value,
-    method: document.getElementById('cf-method').value,
-    reference: document.getElementById('cf-ref').value.trim(),
-    notes: document.getElementById('cf-notes').value.trim(),
-  });
+  var data = { amount, date, method, reference, notes, company_id: companyId, tipo_cobranza: tipo };
 
-  // Check if fully paid
-  const allCollected = DB.getAll('collections').filter(c => c.invoice_id === invoiceId).reduce((s,c) => s+c.amount, 0);
-  if (inv && allCollected >= inv.total) {
-    DB.update('invoices', invoiceId, { status: 'paid' });
-    toast('¡Factura cobrada en su totalidad!', 'success');
+  if (tipo === 'factura') {
+    var invoiceId = document.getElementById('cf-invoice')?.value;
+    if (!invoiceId) { toast('Seleccioná una factura', 'error'); return; }
+    var inv = DB.getById('invoices', invoiceId);
+    data.invoice_id = invoiceId;
+    data.project_id = inv?.project_id || '';
+    data.client_name = inv?.client_name || '';
+    data.client_cuit = inv?.client_cuit || '';
+    data.iva_incluido = false;
+
+    DB.insert('collections', data);
+
+    var allCollected = DB.getAll('collections').filter(function(c) { return c.invoice_id === invoiceId; }).reduce(function(s,c){ return s+c.amount; }, 0);
+    if (inv && allCollected >= inv.total) {
+      DB.update('invoices', invoiceId, { status: 'paid' });
+      toast('¡Factura cobrada en su totalidad!', 'success');
+    } else {
+      toast('Cobro registrado', 'success');
+    }
+
   } else {
-    toast('Cobro registrado', 'success');
+    // Cuota sin factura (formal o informal)
+    var clientName  = document.getElementById('cf-client')?.value.trim() || '';
+    var clientCuit  = document.getElementById('cf-cuit')?.value.trim() || '';
+    var projectId   = document.getElementById('cf-project-cuota')?.value || '';
+    if (!clientName) { toast('La razón social del comprador es obligatoria', 'error'); return; }
+
+    var ivaFormal = tipo === 'cuota_formal';
+    var ivaRate   = ivaFormal ? (parseFloat(document.getElementById('cf-iva-rate')?.value) || 10.5) : 0;
+    var neto      = ivaFormal ? amount / (1 + ivaRate / 100) : amount;
+    var ivaAmt    = ivaFormal ? amount - neto : 0;
+
+    data.invoice_id   = '';
+    data.project_id   = projectId;
+    data.client_name  = clientName;
+    data.client_cuit  = clientCuit;
+    data.iva_incluido = ivaFormal;
+    data.iva_rate     = ivaRate;
+    data.neto         = Math.round(neto * 100) / 100;
+    data.iva_amount   = Math.round(ivaAmt * 100) / 100;
+
+    DB.insert('collections', data);
+    toast('Cuota registrada', 'success');
   }
 
   closeModal();
@@ -337,6 +486,17 @@ function printRecibo(id) {
   var MET = { transfer: 'Transferencia Bancaria', check: 'Cheque', cash: 'Efectivo', other: 'Otro' };
   var recNum = 'REC-' + (col.date || '').replace(/-/g,'') + '-' + (col.id || '').slice(-4).toUpperCase();
 
+  var isCuota = col.tipo_cobranza && col.tipo_cobranza !== 'factura';
+  var clientName = col.client_name || (inv ? inv.client_name : '-');
+  var clientCuit = col.client_cuit || (inv ? inv.client_cuit : '-');
+
+  var totalsRows = [];
+  if (col.iva_incluido && col.iva_amount > 0) {
+    totalsRows.push({ label: 'Neto gravado', value: fmtMoney(col.neto || 0) });
+    totalsRows.push({ label: 'IVA ' + (col.iva_rate || '') + '%', value: fmtMoney(col.iva_amount) });
+  }
+  totalsRows.push({ label: 'Total Cobrado', value: fmtMoney(col.amount), grand: true });
+
   var html =
     '<div class="doc-header">' +
       '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Recibo de Cobro</div></div>' +
@@ -347,18 +507,20 @@ function printRecibo(id) {
       '</div>' +
     '</div>' +
     _printInfoGrid([
-      { title: 'Factura de Referencia', content:
-          'N°: <strong>' + escapeHtml(inv ? inv.number : '-') + '</strong><br>' +
-          'Total factura: <strong>' + fmtMoney(inv ? inv.total : 0) + '</strong><br>' +
-          'Proyecto: ' + escapeHtml(proj ? proj.name : '-') + '<br>' +
-          (inv ? 'Cliente: <strong>' + escapeHtml(inv.client_name || '-') + '</strong>' : '') },
-      { title: 'Datos del Cobro', content:
+      { title: isCuota ? 'Cuota / Anticipo' : 'Factura de Referencia', content:
+          (isCuota
+            ? 'Tipo: <strong>' + (col.tipo_cobranza === 'cuota_formal' ? 'Cuota con IVA (AFIP)' : 'Cuota informal') + '</strong><br>'
+            : 'N° Factura: <strong>' + escapeHtml(inv ? inv.number : '-') + '</strong><br>' +
+              'Total factura: ' + fmtMoney(inv ? inv.total : 0) + '<br>') +
+          'Proyecto: ' + escapeHtml(proj ? proj.name : '-') },
+      { title: 'Datos del Cobrador / Pagador', content:
+          'Empresa: <strong>' + escapeHtml(company.name || '-') + '</strong><br>' +
+          'Cliente: <strong>' + escapeHtml(clientName) + '</strong><br>' +
+          (clientCuit ? 'CUIT: ' + escapeHtml(clientCuit) + '<br>' : '') +
           'Método: <strong>' + (MET[col.method] || escapeHtml(col.method || '-')) + '</strong><br>' +
           'Referencia: ' + escapeHtml(col.reference || '-') }
     ]) +
-    _printTotals([
-      { label: 'Importe Cobrado', value: fmtMoney(col.amount), grand: true }
-    ]) +
+    _printTotals(totalsRows) +
     (col.notes ? '<div class="notes-box"><strong>Notas:</strong> ' + escapeHtml(col.notes) + '</div>' : '') +
     '<div class="sign-row">' +
       '<div><div class="sign-line">Firma del Pagador</div></div>' +
