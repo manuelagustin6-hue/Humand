@@ -77,6 +77,7 @@ const MODULES = {
   conta_plan:      { title: 'Plan de Cuentas',               icon: 'fa-sitemap',                render: renderContaPlan },
   conta_mayores:   { title: 'Libro Mayor',                   icon: 'fa-book',                   render: renderContaMayores },
   libro_iva:       { title: 'Libro IVA Compras / Ventas',   icon: 'fa-receipt',                render: renderLibroIVA },
+  tax_planning:    { title: 'Tax Planning',                 icon: 'fa-calculator',             render: renderTaxPlanning },
 
   // RRHH
   rrhh:            { title: 'RRHH — Empleados y Liquidaciones', icon: 'fa-hard-hat',              render: renderRRHH },
