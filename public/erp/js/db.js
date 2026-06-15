@@ -409,6 +409,7 @@ const DB = {
     db[collection].push(item);
     this.save(db);
     if (_SUPA.online) _SUPA.upsert(this._companyId, collection, item);
+    if (collection !== 'auditLog' && typeof window.auditLog === 'function') window.auditLog('create', collection, item.id, item);
     return item;
   },
 
@@ -419,14 +420,17 @@ const DB = {
     db[collection][idx] = Object.assign({}, db[collection][idx], updates, { updated_at: now() });
     this.save(db);
     if (_SUPA.online) _SUPA.upsert(this._companyId, collection, db[collection][idx]);
+    if (collection !== 'auditLog' && typeof window.auditLog === 'function') window.auditLog('update', collection, id, updates);
     return db[collection][idx];
   },
 
   remove(collection, id) {
     var db = this.get();
+    var removed = (db[collection] || []).find(function(x) { return x.id === id; }) || null;
     db[collection] = (db[collection] || []).filter(function(x) { return x.id !== id; });
     this.save(db);
     if (_SUPA.online) _SUPA.del(this._companyId, collection, id);
+    if (collection !== 'auditLog' && typeof window.auditLog === 'function') window.auditLog('delete', collection, id, removed);
   },
 
   // ---- BACKUP / RESTORE ----

@@ -95,6 +95,7 @@ const MODULES = {
   asientos:        { title: 'Asientos Automaticos',          icon: 'fa-magic',                  render: renderAsientos },
   aprobaciones:    { title: 'Aprobaciones',                  icon: 'fa-check-double',           render: renderAprobaciones },
   reportes:        { title: 'Reportes',                      icon: 'fa-chart-bar',              render: renderReportes },
+  audit_log:       { title: 'Registro de Auditoría',         icon: 'fa-history',                render: renderAuditLog },
   usuarios:        { title: 'Usuarios',                      icon: 'fa-users',                  render: renderUsuarios },
   ajustes:         { title: 'Ajustes del Sistema',           icon: 'fa-cog',                    render: renderAjustes },
 };
