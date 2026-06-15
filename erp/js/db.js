@@ -3,14 +3,72 @@ var _SUPA = {
   URL: 'https://yljmcqqncljpwxwdmovw.supabase.co',
   KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsam1jcXFuY2xqcHd4d2Rtb3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDI0MDksImV4cCI6MjA5NjQxODQwOX0.sjCH01CjOz6ncpFR7zYQhcv_ZooAsUfcMM-InpfRjLU',
   online: false,
+  session: null,
+  client: null,
   _realtimeTimer: null,
 
+  _getClient: function() {
+    if (!this.client && window.supabase) {
+      this.client = window.supabase.createClient(this.URL, this.KEY, {
+        auth: { autoRefreshToken: true, persistSession: true, storageKey: 'erp_supa_auth' }
+      });
+    }
+    return this.client;
+  },
+
   hdrs: function(extra) {
+    var token = (this.session && this.session.access_token) ? this.session.access_token : this.KEY;
     return Object.assign({
       'apikey': this.KEY,
-      'Authorization': 'Bearer ' + this.KEY,
+      'Authorization': 'Bearer ' + token,
       'Content-Type': 'application/json'
     }, extra || {});
+  },
+
+  // Auth: sign in with email/password → returns {data, error}
+  signIn: async function(email, password) {
+    var c = this._getClient();
+    if (!c) return { error: { message: 'Supabase no disponible' }, data: null };
+    try {
+      var result = await c.auth.signInWithPassword({ email: email, password: password });
+      if (!result.error && result.data && result.data.session) this.session = result.data.session;
+      return result;
+    } catch(e) { return { error: { message: e.message }, data: null }; }
+  },
+
+  // Auth: sign out
+  signOut: async function() {
+    try { var c = this._getClient(); if (c) await c.auth.signOut(); } catch(e) {}
+    this.session = null;
+  },
+
+  // Auth: restore existing session from Supabase storage
+  getSession: async function() {
+    try {
+      var c = this._getClient();
+      if (!c) return null;
+      var res = await c.auth.getSession();
+      if (res.data && res.data.session) { this.session = res.data.session; return res.data.session; }
+    } catch(e) {}
+    return null;
+  },
+
+  // Auth: update password of the currently logged-in user
+  updatePassword: async function(newPassword) {
+    try {
+      var c = this._getClient();
+      if (!c || !this.session) return { error: { message: 'No autenticado con Supabase' } };
+      return await c.auth.updateUser({ password: newPassword });
+    } catch(e) { return { error: { message: e.message } }; }
+  },
+
+  // Auth: create a new Supabase Auth user (used when admin adds a user in the app)
+  signUp: async function(email, password, metadata) {
+    try {
+      var c = this._getClient();
+      if (!c) return { error: { message: 'Supabase no disponible' } };
+      return await c.auth.signUp({ email: email, password: password, options: { data: metadata || {} } });
+    } catch(e) { return { error: { message: e.message } }; }
   },
 
   // Pull ALL records for a company → returns { collection: [records] }
@@ -76,12 +134,12 @@ var _SUPA = {
     }
   },
 
-  // Subscribe to real-time changes using Supabase JS client
+  // Subscribe to real-time changes using the shared Supabase client
   subscribe: function(companyId, onEvent) {
-    if (!window.supabase) { console.warn('[Supa] SDK not loaded, realtime disabled'); return; }
+    var c = this._getClient();
+    if (!c) { console.warn('[Supa] SDK not loaded, realtime disabled'); return; }
     try {
-      var client = window.supabase.createClient(this.URL, this.KEY);
-      client.channel('erp-' + companyId)
+      c.channel('erp-' + companyId)
         .on('postgres_changes', {
           event: '*', schema: 'public', table: 'erp_data',
           filter: 'company_id=eq.' + companyId
