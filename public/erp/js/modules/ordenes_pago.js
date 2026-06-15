@@ -98,6 +98,7 @@ function buildPO2Table(orders, suppliers, projects) {
           '<button class="btn-ghost btn btn-sm" title="Ver detalle" onclick="viewPaymentOrder(\'' + o.id + '\')"><i class="fas fa-eye"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="PDF" onclick="printPaymentOrder(\'' + o.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="Editar" onclick="openPaymentOrderForm(\'' + o.id + '\')"><i class="fas fa-edit"></i></button>' +
+          attBadge(o).replace('{col}','paymentOrders').replace('{id}', o.id) +
           (o.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="markPOPaid(\'' + o.id + '\')"><i class="fas fa-check"></i> Pagar</button>' : '') +
           '<button class="btn-ghost btn btn-sm danger" title="Eliminar" onclick="deletePaymentOrder(\'' + o.id + '\')"><i class="fas fa-trash"></i></button>' +
         '</div>' +
