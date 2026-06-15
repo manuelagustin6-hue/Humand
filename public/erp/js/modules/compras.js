@@ -1070,7 +1070,7 @@ function buildSITable(sis, suppliers, projects, pos) {
   return '<table><thead><tr>' +
     '<th>N° Factura</th><th>Origen</th><th>Proveedor</th><th>Proyecto</th><th>Fecha</th><th>Vencimiento</th>' +
     '<th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>' +
-    '<th>Estado</th><th>Acciones</th>' +
+    '<th>Estado</th><th style="text-align:center" title="Comprobantes adjuntos"><i class="fas fa-paperclip"></i></th><th>Acciones</th>' +
   '</tr></thead><tbody>' +
   sis.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).map(function(si) {
     var sup  = suppliers.find(function(s) { return s.id === si.supplier_id; });
@@ -1094,9 +1094,9 @@ function buildSITable(sis, suppliers, projects, pos) {
       '<td class="number-cell text-right">' + fmtMoney(si.tax) + '</td>' +
       '<td class="number-cell text-right"><strong>' + fmtMoney(si.total) + '</strong></td>' +
       '<td><span class="badge ' + (statusColor[si.status] || 'badge-gray') + '">' + (statusLabel[si.status] || si.status) + '</span></td>' +
+      '<td style="text-align:center">' + attBadge(si).replace('{col}','supplierInvoices').replace('{id}', si.id) + '</td>' +
       '<td><div class="table-actions">' +
         '<button class="btn-ghost btn btn-sm" onclick="openSIForm(\'' + si.id + '\')"><i class="fas fa-edit"></i></button>' +
-        attBadge(si).replace('{col}','supplierInvoices').replace('{id}', si.id) +
         (si.status === 'pending' ? '<button class="btn btn-sm btn-primary" onclick="createOPFromSI(\'' + si.id + '\')" title="Crear Orden de Pago"><i class="fas fa-file-invoice"></i> OP</button>' : '') +
         '<button class="btn-ghost btn btn-sm danger" onclick="deleteSI(\'' + si.id + '\')"><i class="fas fa-trash"></i></button>' +
       '</div></td>' +

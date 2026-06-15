@@ -93,12 +93,14 @@ function buildPO2Table(orders, suppliers, projects) {
       '<td style="padding:10px 12px">' +
         '<span style="background:' + st.bg + ';color:' + st.color + ';border:1px solid ' + st.border + ';font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:.4px">' + st.label + '</span>' +
       '</td>' +
+      '<td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()">' +
+        attBadge(o).replace('{col}','paymentOrders').replace('{id}', o.id) +
+      '</td>' +
       '<td style="padding:10px 12px;white-space:nowrap" onclick="event.stopPropagation()">' +
         '<div class="table-actions">' +
           '<button class="btn-ghost btn btn-sm" title="Ver detalle" onclick="viewPaymentOrder(\'' + o.id + '\')"><i class="fas fa-eye"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="PDF" onclick="printPaymentOrder(\'' + o.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="Editar" onclick="openPaymentOrderForm(\'' + o.id + '\')"><i class="fas fa-edit"></i></button>' +
-          attBadge(o).replace('{col}','paymentOrders').replace('{id}', o.id) +
           (o.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="markPOPaid(\'' + o.id + '\')"><i class="fas fa-check"></i> Pagar</button>' : '') +
           '<button class="btn-ghost btn btn-sm danger" title="Eliminar" onclick="deletePaymentOrder(\'' + o.id + '\')"><i class="fas fa-trash"></i></button>' +
         '</div>' +
@@ -118,6 +120,7 @@ function buildPO2Table(orders, suppliers, projects) {
       '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Retenciones</th>' +
       '<th style="padding:10px 12px;text-align:right;font-size:11px;color:#64748b;font-weight:600">Neto</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Estado</th>' +
+      '<th style="padding:10px 12px;text-align:center;font-size:11px;color:#64748b;font-weight:600" title="Comprobantes adjuntos"><i class="fas fa-paperclip"></i></th>' +
       '<th style="padding:10px 12px;font-size:11px;color:#64748b;font-weight:600">Acciones</th>' +
     '</tr></thead>' +
     '<tbody>' + rows + '</tbody>' +
