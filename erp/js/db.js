@@ -53,6 +53,35 @@ var _SUPA = {
     return null;
   },
 
+  // Storage: upload file to comprobantes bucket
+  uploadFile: async function(collection, recordId, file) {
+    var c = this._getClient();
+    if (!c) return { error: { message: 'Supabase no disponible' } };
+    var safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, '_');
+    var path = DB._companyId + '/' + collection + '/' + recordId + '/' + Date.now() + '_' + safeName;
+    try {
+      var res = await c.storage.from('comprobantes').upload(path, file, { upsert: true });
+      return { data: res.data, error: res.error, path: path };
+    } catch(e) { return { error: { message: e.message } }; }
+  },
+
+  // Storage: get signed URL (valid 1 hour)
+  getFileUrl: async function(path) {
+    var c = this._getClient();
+    if (!c) return null;
+    try {
+      var res = await c.storage.from('comprobantes').createSignedUrl(path, 3600);
+      return (res.data && res.data.signedUrl) || null;
+    } catch(e) { return null; }
+  },
+
+  // Storage: delete file
+  deleteFile: async function(path) {
+    var c = this._getClient();
+    if (!c) return;
+    try { await c.storage.from('comprobantes').remove([path]); } catch(e) {}
+  },
+
   // Auth: update password of the currently logged-in user
   updatePassword: async function(newPassword) {
     try {
