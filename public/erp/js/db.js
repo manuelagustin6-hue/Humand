@@ -124,7 +124,7 @@ var _SUPA = {
     return out;
   },
 
-  // Upsert a single record (fire-and-forget)
+  // Upsert a single record (fire-and-forget, but logs failures)
   upsert: function(companyId, collection, record) {
     fetch(this.URL + '/rest/v1/erp_data', {
       method: 'POST',
@@ -134,7 +134,13 @@ var _SUPA = {
         record_id: record.id, data: record,
         deleted: false, updated_at: new Date().toISOString()
       })
-    }).catch(function(e) { console.warn('[Supa] upsert:', e.message); });
+    }).then(function(res) {
+      if (!res.ok) {
+        res.text().then(function(body) {
+          console.warn('[Supa] upsert failed ' + res.status + ' (' + collection + '):', body);
+        });
+      }
+    }).catch(function(e) { console.warn('[Supa] upsert network error:', e.message); });
   },
 
   // Delete a single record (fire-and-forget)
@@ -311,22 +317,48 @@ const DB = {
         var remoteData = await _SUPA.pull(cid);
         var isEmpty = Object.keys(remoteData).length === 0;
 
+        // Read what's already in localStorage (may contain records not yet synced)
+        var localRaw = localStorage.getItem(self.KEY);
+        var localData = localRaw ? JSON.parse(localRaw) : null;
+
         if (isEmpty) {
-          // First time: seed Supabase in background — don't block startup
-          var localRaw = localStorage.getItem(self.KEY);
-          var localData = localRaw ? JSON.parse(localRaw) : self.seed();
-          remoteData = localData;
-          // Fire-and-forget push so app starts immediately
+          // First time or Supabase is empty — use local as source of truth
+          remoteData = localData || self.seed();
+          // Push to Supabase in background
           (async function() {
-            for (var col in localData) {
-              if (Array.isArray(localData[col]) && localData[col].length) {
-                try { await _SUPA.pushCollection(cid, col, localData[col]); } catch(e) {}
+            for (var col in remoteData) {
+              if (Array.isArray(remoteData[col]) && remoteData[col].length) {
+                try { await _SUPA.pushCollection(cid, col, remoteData[col]); } catch(e) {}
               }
             }
           })().catch(function() {});
+        } else if (localData) {
+          // MERGE: Supabase wins on conflicts; keep local-only records (failed upserts)
+          // and re-push them so they eventually sync.
+          var toPush = {};
+          Object.keys(localData).forEach(function(col) {
+            if (!Array.isArray(localData[col])) return;
+            var remoteArr = remoteData[col] || [];
+            var remoteIds = {};
+            remoteArr.forEach(function(r) { if (r.id) remoteIds[r.id] = true; });
+            var localOnly = localData[col].filter(function(r) { return r.id && !remoteIds[r.id]; });
+            if (localOnly.length) {
+              remoteData[col] = remoteArr.concat(localOnly);
+              toPush[col] = localOnly;
+              console.log('[DB] Re-syncing ' + localOnly.length + ' local-only record(s) in ' + col);
+            }
+          });
+          // Re-push orphaned local records to Supabase in background
+          if (Object.keys(toPush).length) {
+            (function(pending) {
+              Object.keys(pending).forEach(function(col) {
+                _SUPA.pushCollection(cid, col, pending[col]).catch(function() {});
+              });
+            })(toPush);
+          }
         }
 
-        // Save Supabase data to localStorage (authoritative source)
+        // Persist the merged result
         localStorage.setItem(self.KEY, JSON.stringify(remoteData));
         _SUPA.online = true;
 

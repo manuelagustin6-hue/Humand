@@ -98,7 +98,7 @@ function projectTypeBadge(type) {
 
 // ---- MODAL ----
 function openModal(title, bodyHtml, size = '', footerHtml = '') {
-  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-title').innerHTML = title;
   document.getElementById('modal-body').innerHTML = bodyHtml;
   document.getElementById('modal-footer').innerHTML = footerHtml;
   const box = document.getElementById('modal-box');
