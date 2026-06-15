@@ -699,12 +699,28 @@ function doLogin() {
   _SUPA.signIn(email, password).then(function(result) {
     if (!result.error && result.data && result.data.session) {
       _afterSupaLogin(result.data.session, email);
+    } else if (result.error) {
+      // Supabase returned an auth error — check if user exists locally before deciding
+      var localExists = _loginScanCompanyIds().some(function(cid) {
+        DB.setCompany(cid);
+        return (DB.getAll('users') || []).some(function(u) { return (u.email||'').toLowerCase() === email && u.active; });
+      });
+      _btnBusy(false);
+      if (localExists) {
+        // User exists locally → try local auth (user not yet migrated to Supabase Auth)
+        _doLoginLocal(email, password);
+      } else {
+        // User only in Supabase Auth → show the actual Supabase error
+        _loginError(result.error.message === 'Invalid login credentials'
+          ? 'Email o contraseña incorrectos'
+          : result.error.message);
+      }
     } else {
-      // Supabase user not yet migrated → fall back to local auth
       _btnBusy(false);
       _doLoginLocal(email, password);
     }
   }).catch(function() {
+    // Network error → try local auth
     _btnBusy(false);
     _doLoginLocal(email, password);
   });
