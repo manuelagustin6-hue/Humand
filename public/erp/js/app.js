@@ -373,7 +373,35 @@ function _initApp() {
   populateCompanySelector();
   populateProjectSelector();
 
-  // Check for an existing session
+  // Check Supabase Auth session first (takes priority — JWT is already verified)
+  if (_SUPA.session) {
+    var supaEmail = ((_SUPA.session.user && _SUPA.session.user.email) || '').toLowerCase();
+    var supaDbUser = DB.getAll('users').find(function(u) { return (u.email||'').toLowerCase() === supaEmail && u.active; });
+    if (!supaDbUser) {
+      var suMeta = (_SUPA.session.user && _SUPA.session.user.user_metadata) || {};
+      supaDbUser = {
+        id: _SUPA.session.user.id,
+        name: suMeta.name || supaEmail.split('@')[0],
+        email: supaEmail,
+        role: suMeta.role || 'viewer',
+        active: true,
+      };
+    }
+    window.APP_STATE.currentUser = supaDbUser;
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('login-screen').style.display = 'none';
+    updateSidebarUserInfo();
+    applyPermissionsToSidebar();
+    if (typeof populateProjectSelector === 'function') populateProjectSelector();
+    var savedModule0 = null;
+    try { savedModule0 = localStorage.getItem('erp_active_module'); } catch(e) {}
+    navigate(savedModule0 && MODULES[savedModule0] ? savedModule0 : 'dashboard');
+    setTimeout(syncExchangeRates, 1500);
+    setTimeout(checkDataHealth, 3000);
+    return;
+  }
+
+  // Fallback: check local session token
   var user = (typeof sessionCurrentUser === 'function') ? sessionCurrentUser() : null;
   if (user) {
     window.APP_STATE.currentUser = user;
@@ -424,7 +452,17 @@ document.addEventListener('DOMContentLoaded', function() {
   var loader = document.getElementById('boot-loader');
   if (loader) loader.style.display = 'flex';
 
-  DB.load().then(function(online) {
+  // Restore Supabase Auth session before loading data (so JWT is available for RLS)
+  _SUPA.getSession().then(function(session) {
+    if (session) {
+      var meta = (session.user && session.user.user_metadata) || {};
+      var savedCo = '';
+      try { savedCo = localStorage.getItem('erp_active_company') || ''; } catch(e) {}
+      var companyId = meta.company_id || savedCo || 'comp-001';
+      DB.setCompany(companyId);
+    }
+    return DB.load();
+  }).then(function(online) {
     if (loader) loader.style.display = 'none';
     var badge = document.getElementById('sync-status');
     if (badge) {

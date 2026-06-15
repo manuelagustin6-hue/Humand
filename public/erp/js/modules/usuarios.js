@@ -347,8 +347,27 @@ function saveUser(id) {
     data.password = null;
   }
 
-  if (id) { DB.update('users', id, data); toast('Usuario actualizado', 'success'); }
-  else { DB.insert('users', { ...data, last_login: null }); toast('Usuario creado', 'success'); }
+  if (id) {
+    DB.update('users', id, data);
+    toast('Usuario actualizado', 'success');
+  } else {
+    var newUser = DB.insert('users', { ...data, last_login: null });
+    // Also create in Supabase Auth so the user can log in with proper JWT
+    if (pin && _SUPA.online) {
+      var co = DB._companyId;
+      _SUPA.signUp(email, pin, { company_id: co, role: data.role, name: data.name })
+        .then(function(res) {
+          if (res.error) {
+            // Non-fatal: user exists in DB, can still use local auth fallback
+            console.warn('[Auth] signUp:', res.error.message);
+          } else {
+            toast('Usuario creado y cuenta Supabase configurada', 'success');
+          }
+        }).catch(function() {});
+    } else {
+      toast('Usuario creado (conectá a Supabase para activar auth segura)', 'info');
+    }
+  }
   closeModal();
   renderUsuarios();
 }
@@ -664,13 +683,66 @@ function _loginEnsureUsers(companyId) {
 function doLogin() {
   var email    = ((document.getElementById('login-email')    || {}).value || '').trim().toLowerCase();
   var password = ((document.getElementById('login-password') || {}).value || '');
-
   if (!email) { _loginError('Ingresá tu email'); return; }
 
+  var btn = document.querySelector('#login-screen button[onclick="doLogin()"]');
+  function _btnBusy(busy) {
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.innerHTML = busy
+      ? '<i class="fas fa-spinner fa-spin"></i> Verificando…'
+      : '<i class="fas fa-sign-in-alt"></i> Ingresar';
+  }
+  _btnBusy(true);
+
+  // Try Supabase Auth first
+  _SUPA.signIn(email, password).then(function(result) {
+    if (!result.error && result.data && result.data.session) {
+      _afterSupaLogin(result.data.session, email);
+    } else {
+      // Supabase user not yet migrated → fall back to local auth
+      _btnBusy(false);
+      _doLoginLocal(email, password);
+    }
+  }).catch(function() {
+    _btnBusy(false);
+    _doLoginLocal(email, password);
+  });
+}
+
+// Called after a successful Supabase signIn
+function _afterSupaLogin(session, email) {
+  var meta = (session.user && session.user.user_metadata) || {};
+  var companyId = meta.company_id || window.APP_STATE.activeCompany || 'comp-001';
+  DB.setCompany(companyId);
+  window.APP_STATE.activeCompany = companyId;
+  try { localStorage.setItem('erp_active_company', companyId); } catch(e) {}
+
+  // Reload data with JWT so RLS filters correctly
+  DB.load().then(function() {
+    var dbUser = DB.getAll('users').find(function(u) { return (u.email||'').toLowerCase() === email && u.active; });
+    if (!dbUser) {
+      dbUser = {
+        id: session.user.id,
+        name: meta.name || email.split('@')[0],
+        email: email,
+        role: meta.role || 'viewer',
+        active: true,
+        created_at: session.user.created_at || new Date().toISOString(),
+      };
+    }
+    window.APP_STATE.currentUser = dbUser;
+    var remEl = document.getElementById('login-remember');
+    completeLogin(dbUser.id, !!(remEl && remEl.checked));
+  });
+}
+
+// Local auth fallback (used when user is not yet in Supabase Auth)
+function _doLoginLocal(email, password) {
   var companyIds = _loginScanCompanyIds();
   var foundUser = null;
   var foundCompanyId = null;
-  var allEmails = []; // collect for debug
+  var allEmails = [];
 
   for (var i = 0; i < companyIds.length; i++) {
     var users = _loginEnsureUsers(companyIds[i]);
@@ -699,16 +771,24 @@ function doLogin() {
 
   window.APP_STATE.activeCompany = foundCompanyId;
   try { localStorage.setItem('erp_active_company', foundCompanyId); } catch(e) {}
-
   var remEl = document.getElementById('login-remember');
   completeLogin(foundUser.id, !!(remEl && remEl.checked));
 }
 
 function completeLogin(uid, remember) {
   sessionSet(uid, remember);
-  var user = DB.getById('users', uid);
-  window.APP_STATE.currentUser = user;
-  DB.update('users', uid, { last_login: new Date().toISOString() });
+  // Prefer user already set in APP_STATE (e.g. from Supabase metadata) over DB lookup
+  var dbUser = DB.getById('users', uid);
+  if (dbUser) {
+    window.APP_STATE.currentUser = dbUser;
+    try { DB.update('users', uid, { last_login: new Date().toISOString() }); } catch(e) {}
+  }
+  var user = window.APP_STATE.currentUser;
+  if (!user) { showLoginScreen(); return; }
+
+  // Reset login button (in case it was busy)
+  var btn = document.querySelector('#login-screen button[onclick="doLogin()"]');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Ingresar'; }
 
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
@@ -728,6 +808,7 @@ function completeLogin(uid, remember) {
 }
 
 function doLogout() {
+  _SUPA.signOut().catch(function() {});
   sessionClear();
   showLoginScreen();
 }
@@ -786,9 +867,15 @@ function saveProfile() {
     if (pwNew !== pwConfirm) { toast('Las contraseñas nuevas no coinciden', 'error'); return; }
     if (pwNew.length < 6) { toast('La contraseña debe tener al menos 6 caracteres', 'error'); return; }
     try { update.password = btoa(pwNew); } catch(e) { update.password = pwNew; }
+    // Also update in Supabase Auth (if authenticated via JWT)
+    if (_SUPA.session) {
+      _SUPA.updatePassword(pwNew).then(function(res) {
+        if (res && res.error) console.warn('[Auth] updatePassword:', res.error.message);
+      }).catch(function() {});
+    }
   }
   DB.update('users', user.id, update);
-  var updated = DB.getById('users', user.id);
+  var updated = DB.getById('users', user.id) || window.APP_STATE.currentUser;
   window.APP_STATE.currentUser = updated;
   updateSidebarUserInfo();
   toast('Perfil actualizado correctamente', 'success');
