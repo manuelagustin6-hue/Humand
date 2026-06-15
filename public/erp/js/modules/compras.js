@@ -1098,7 +1098,6 @@ function buildSITable(sis, suppliers, projects, pos) {
         '<button class="btn-ghost btn btn-sm" onclick="openSIForm(\'' + si.id + '\')"><i class="fas fa-edit"></i></button>' +
         attBadge(si).replace('{col}','supplierInvoices').replace('{id}', si.id) +
         (si.status === 'pending' ? '<button class="btn btn-sm btn-primary" onclick="createOPFromSI(\'' + si.id + '\')" title="Crear Orden de Pago"><i class="fas fa-file-invoice"></i> OP</button>' : '') +
-        (si.status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="markSIPaid(\'' + si.id + '\')"><i class="fas fa-check"></i> Pagar</button>' : '') +
         '<button class="btn-ghost btn btn-sm danger" onclick="deleteSI(\'' + si.id + '\')"><i class="fas fa-trash"></i></button>' +
       '</div></td>' +
     '</tr>';
@@ -1134,6 +1133,7 @@ function createOPFromSI(siId) {
 
 function openSIForm(id, prefillPoId, prefillCertId) {
   id = id || null; prefillPoId = prefillPoId || null; prefillCertId = prefillCertId || null;
+  window._siPendingFiles = [];   // reset pending uploads on each open
   const si        = id ? DB.getById('supplierInvoices', id) : null;
   // Build set of PO ids that already have a SI (excluding the current SI being edited)
   const invoicedPoIds = new Set(
@@ -1306,11 +1306,62 @@ function openSIForm(id, prefillPoId, prefillCertId) {
     '</div>' +
 
     '<div class="form-group" style="margin-top:16px"><label class="form-label">Notas</label>' +
-      '<textarea class="form-control" id="si-notes" rows="2">' + ((si && si.notes) || '') + '</textarea></div>',
+      '<textarea class="form-control" id="si-notes" rows="2">' + ((si && si.notes) || '') + '</textarea></div>' +
+
+    // ── Adjuntos ──
+    '<div class="form-group" style="margin-top:16px">' +
+      '<label class="form-label"><i class="fas fa-paperclip" style="margin-right:6px"></i>Comprobantes adjuntos</label>' +
+      // Existing attachments (when editing)
+      (si && (si.attachments||[]).length ?
+        '<div style="margin-bottom:8px;font-size:12px;padding:6px 10px;background:#f8fafc;border-radius:6px">' +
+          '<i class="fas fa-check-circle" style="color:var(--success)"></i> ' +
+          (si.attachments.length) + ' comprobante(s) ya adjunto(s). ' +
+          '<a href="#" onclick="event.preventDefault();closeModal();setTimeout(function(){openAttachmentsModal(\'supplierInvoices\',\'' + si.id + '\')},100)">Ver / gestionar</a>' +
+        '</div>' : '') +
+      // Pending files preview
+      '<div id="si-att-pending"></div>' +
+      // Drop zone / file picker
+      '<label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1.5px dashed var(--border);border-radius:6px;font-size:13px;color:var(--text-secondary)">' +
+        '<i class="fas fa-paperclip"></i> Adjuntar comprobante' +
+        '<input type="file" id="si-att-input" accept=".pdf,.jpg,.jpeg,.png,.xml" multiple style="display:none" onchange="siAttPreview()">' +
+      '</label>' +
+      '<span style="font-size:11px;color:var(--text-muted);margin-left:10px">PDF, imagen o XML — máx. 15 MB c/u</span>' +
+    '</div>',
+
   'modal-lg',
     '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
     '<button class="btn btn-primary" onclick="saveSI(\'' + (id || '') + '\')"><i class="fas fa-save"></i> Guardar</button>'
   );
+}
+
+// ── Attachment helpers for the SI form ──────────────────────
+function siAttPreview() {
+  var input = document.getElementById('si-att-input');
+  var files = Array.from(input ? input.files : []);
+  window._siPendingFiles = (window._siPendingFiles || []).concat(
+    files.filter(function(f) { return f.size <= 15*1024*1024; })
+  );
+  var oversize = files.filter(function(f) { return f.size > 15*1024*1024; });
+  if (oversize.length) toast('Archivos ignorados por superar 15 MB: ' + oversize.map(function(f){return f.name;}).join(', '), 'warning');
+  _siAttRenderPending();
+}
+function siAttRemove(idx) {
+  (window._siPendingFiles || []).splice(idx, 1);
+  _siAttRenderPending();
+}
+function _siAttRenderPending() {
+  var el = document.getElementById('si-att-pending');
+  if (!el) return;
+  var files = window._siPendingFiles || [];
+  if (!files.length) { el.innerHTML = ''; return; }
+  el.innerHTML = files.map(function(f, i) {
+    return '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:#f0f9ff;border-radius:4px;margin-bottom:4px;font-size:12px">' +
+      '<i class="fas fa-paperclip" style="color:var(--primary)"></i>' +
+      '<span style="flex:1">' + escapeHtml(f.name) + '</span>' +
+      '<span style="color:var(--text-muted)">' + _attSize(f.size) + '</span>' +
+      '<button class="btn-ghost btn btn-sm" onclick="siAttRemove(' + i + ')" title="Quitar"><i class="fas fa-times"></i></button>' +
+    '</div>';
+  }).join('');
 }
 
 function prefillSIFromPO(poId) {
@@ -1472,10 +1523,33 @@ function saveSI(id) {
     autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, jeTaxes, data.date, data.number);
   }
 
+  // Upload pending files async (after save so we have the record ID)
+  var pendingFiles = (window._siPendingFiles || []).slice();
+  window._siPendingFiles = [];
   window._siImpLines = [];
   window._siTaxLines = [];
   closeModal();
   _refreshCurrentComprasView();
+
+  if (pendingFiles.length && _SUPA.session) {
+    (async function() {
+      var record = DB.getById('supplierInvoices', savedId) || {};
+      var atts = JSON.parse(JSON.stringify(record.attachments || []));
+      var ok = 0;
+      for (var _f = 0; _f < pendingFiles.length; _f++) {
+        var res = await _SUPA.uploadFile('supplierInvoices', savedId, pendingFiles[_f]);
+        if (!res.error) {
+          atts.push({ name: pendingFiles[_f].name, path: res.path, size: pendingFiles[_f].size, uploaded_at: new Date().toISOString() });
+          ok++;
+        }
+      }
+      if (ok) {
+        DB.update('supplierInvoices', savedId, { attachments: atts });
+        toast(ok + ' comprobante(s) adjuntado(s)', 'success');
+        _refreshCurrentComprasView();
+      }
+    })();
+  }
 }
 
 function markSIPaid(id) {
