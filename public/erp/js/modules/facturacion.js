@@ -17,6 +17,7 @@ function renderFacturacion() {
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="exportInvoices()"><i class="fas fa-download"></i> Exportar</button>
+    <button class="btn btn-secondary" onclick="openAfipSettings()" title="Configurar TusFacturas.app / ARCA"><i class="fas fa-stamp"></i> Config. AFIP</button>
     <button class="btn btn-primary" onclick="openInvoiceForm()"><i class="fas fa-plus"></i> Nueva Factura</button>
   </div>
 </div>
@@ -73,7 +74,7 @@ function buildInvoiceRows(invoices, projects, collections) {
   return `<table><thead><tr>
     <th>Numero</th><th>Tipo</th><th>Origen</th><th>Proyecto</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th>
     <th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>
-    <th>Estado</th><th>Acciones</th>
+    <th>Estado</th><th style="text-align:center">CAE / ARCA</th><th>Acciones</th>
   </tr></thead>
   <tbody>
   ${invoices.map(inv => {
@@ -97,6 +98,7 @@ function buildInvoiceRows(invoices, projects, collections) {
       <td class="number-cell text-right">${fmtMoney(inv.tax)}</td>
       <td class="number-cell text-right"><strong>${fmtMoney(inv.total)}</strong></td>
       <td>${statusBadge(inv.status)}</td>
+      <td style="text-align:center">${(typeof afipCaeBadge === 'function') ? afipCaeBadge(inv) : '—'}</td>
       <td><div class="table-actions">
         <button class="btn-ghost btn btn-sm" onclick="viewInvoice('${inv.id}')"><i class="fas fa-eye"></i></button>
         <button class="btn-ghost btn btn-sm" onclick="openInvoiceForm('${inv.id}')"><i class="fas fa-edit"></i></button>
@@ -175,6 +177,7 @@ function viewInvoice(id) {
   </div>
 
   ${inv.notes ? `<div style="margin-top:12px;font-size:12px;color:var(--text-muted)"><strong>Notas:</strong> ${inv.notes}</div>` : ''}
+  ${(typeof afipCaeBlock === 'function') ? afipCaeBlock(inv) : ''}
 </div>
 
 ${imputacion.length ? `
@@ -271,8 +274,22 @@ function openInvoiceForm(id = null) {
     <input class="form-control" id="if-cuit" value="${inv?.client_cuit || ''}">
   </div>
   <div class="form-group">
+    <label class="form-label">Condición IVA Cliente</label>
+    <select class="form-control" id="if-iva-cond">
+      <option value="CF" ${(!inv?.client_iva_condition||inv?.client_iva_condition==='CF')?'selected':''}>Consumidor Final</option>
+      <option value="RI" ${inv?.client_iva_condition==='RI'?'selected':''}>Responsable Inscripto</option>
+      <option value="MO" ${inv?.client_iva_condition==='MO'?'selected':''}>Monotributista</option>
+      <option value="EX" ${inv?.client_iva_condition==='EX'?'selected':''}>Exento</option>
+      <option value="NR" ${inv?.client_iva_condition==='NR'?'selected':''}>No Responsable</option>
+    </select>
+  </div>
+  <div class="form-group">
     <label class="form-label">Domicilio Cliente</label>
     <input class="form-control" id="if-addr" value="${inv?.client_address || ''}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Email Cliente</label>
+    <input class="form-control" id="if-email" type="email" value="${inv?.client_email || ''}" placeholder="Para envío automático de factura">
   </div>
   <div class="form-group">
     <label class="form-label">Fecha Emision</label>
@@ -485,7 +502,9 @@ function saveInvoice(id) {
     status: document.getElementById('if-status').value,
     client_name: clientName,
     client_cuit: document.getElementById('if-cuit').value.trim(),
+    client_iva_condition: document.getElementById('if-iva-cond').value,
     client_address: document.getElementById('if-addr').value.trim(),
+    client_email: document.getElementById('if-email').value.trim(),
     date: document.getElementById('if-date').value,
     due_date: document.getElementById('if-due').value,
     notes: document.getElementById('if-notes').value.trim(),
