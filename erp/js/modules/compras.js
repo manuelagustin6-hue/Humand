@@ -1242,7 +1242,7 @@ function openSIForm(id, prefillPoId, prefillCertId) {
           '<option value="">Seleccionar...</option>' +
           suppliers.map(function(s) { return '<option value="' + s.id + '"' + (selectedSupplierId === s.id ? ' selected' : '') + '>' + s.name + '</option>'; }).join('') +
         '</select></div>' +
-      '<div class="form-group"><label class="form-label">Empresa del Grupo</label>' +
+      '<div class="form-group"><label class="form-label">Razón Social *</label>' +
         '<select class="form-control" id="si-company">' +
           '<option value="">Sin empresa asignada</option>' +
           (function() { try { return DB.getAllCompanies().map(function(c) { var sel = si && si.company_id === c.id ? ' selected' : ''; return '<option value="' + c.id + '"' + sel + '>' + escapeHtml(c.name) + '</option>'; }).join(''); } catch(e) { return ''; } })() +
