@@ -1264,7 +1264,7 @@ function openSIForm(id, prefillPoId, prefillCertId) {
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;align-items:end">' +
       '<div class="form-group" style="margin:0">' +
         '<label class="form-label" style="font-weight:700">Neto / Subtotal <small style="color:var(--text-muted);font-weight:400">(sin impuestos)</small></label>' +
-        '<input class="form-control" id="si-subtotal" type="number" min="0" step="0.01" value="' + defaultSubtotal + '" oninput="siRecalcFromSubtotal()" style="font-size:15px;font-weight:700">' +
+        '<input class="form-control" id="si-subtotal" type="text" inputmode="decimal" value="' + numFmt(defaultSubtotal) + '" onfocus="var n=numParse(this.value);this.value=n?n:\'\'" onblur="this.value=numFmt(numParse(this.value));siRecalcFromSubtotal()" oninput="siRecalcFromSubtotal()" style="font-size:15px;font-weight:700">' +
       '</div>' +
       '<div class="form-group" style="margin:0">' +
         '<label class="form-label">IVA</label>' +
@@ -1275,7 +1275,7 @@ function openSIForm(id, prefillPoId, prefillCertId) {
             '<option value="27"'   + (defaultIvaRate === 27   ? ' selected' : '') + '>Alicuota 27%</option>' +
             '<option value="0"'    + (defaultIvaRate === 0    ? ' selected' : '') + '>0% Exento</option>' +
           '</select>' +
-          '<input class="form-control" id="si-tax" type="number" min="0" step="0.01" value="' + Number(defaultTax).toFixed(2) + '" oninput="siRecalcTotal()" placeholder="Monto IVA $">' +
+          '<input class="form-control" id="si-tax" type="text" inputmode="decimal" value="' + numFmt(defaultTax) + '" onfocus="var n=numParse(this.value);this.value=n?n:\'\'" onblur="this.value=numFmt(numParse(this.value));siRecalcTotal()" oninput="siRecalcTotal()" placeholder="Monto IVA $">' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -1384,8 +1384,8 @@ function prefillSIFromPO(poId) {
   const taxEl  = document.getElementById('si-tax');
   const supEl  = document.getElementById('si-supplier');
   const projEl = document.getElementById('si-project');
-  if (subEl)  subEl.value  = po.subtotal || 0;
-  if (taxEl)  taxEl.value  = (po.tax || 0).toFixed ? (po.tax || 0).toFixed(2) : po.tax || 0;
+  if (subEl)  subEl.value  = numFmt(po.subtotal || 0);
+  if (taxEl)  taxEl.value  = numFmt(po.tax || 0);
   if (supEl)  supEl.value  = po.supplier_id || '';
   if (projEl) projEl.value = po.project_id || '';
   siRecalcTotal();
@@ -1437,8 +1437,8 @@ function prefillSIFromCert(certId) {
   const taxEl  = document.getElementById('si-tax');
   const supEl  = document.getElementById('si-supplier');
   const projEl = document.getElementById('si-project');
-  if (subEl)  subEl.value  = net;
-  if (taxEl)  taxEl.value  = tax.toFixed(2);
+  if (subEl)  subEl.value  = numFmt(net);
+  if (taxEl)  taxEl.value  = numFmt(tax);
   if (supEl  && contract && contract.contractor_id) supEl.value  = contract.contractor_id;
   if (projEl && cert.project_id)                    projEl.value = cert.project_id;
   siRecalcTotal();
@@ -1450,18 +1450,18 @@ function prefillSIFromCert(certId) {
 }
 
 function siRecalcFromSubtotal() {
-  var sub  = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var sub  = numParse(document.getElementById('si-subtotal').value);
   var rate = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
   var taxEl = document.getElementById('si-tax');
-  if (taxEl) taxEl.value = (Math.round(sub * rate) / 100).toFixed(2);
+  if (taxEl && document.activeElement !== taxEl) taxEl.value = numFmt(Math.round(sub * rate) / 100);
   siRecalcTotal();
 }
 
 function siRecalcFromRate() {
-  var sub  = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var sub  = numParse(document.getElementById('si-subtotal').value);
   var rate = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
   var taxEl = document.getElementById('si-tax');
-  if (taxEl) taxEl.value = (Math.round(sub * rate) / 100).toFixed(2);
+  if (taxEl) taxEl.value = numFmt(Math.round(sub * rate) / 100);
   siRecalcTotal();
 }
 
@@ -1477,9 +1477,9 @@ function recalcSI() { siRecalcFromSubtotal(); }
 function saveSI(id) {
   const supplierId = document.getElementById('si-supplier').value;
   if (!supplierId) { toast('El proveedor es obligatorio', 'error'); return; }
-  var sub       = parseFloat(document.getElementById('si-subtotal').value) || 0;
+  var sub       = numParse(document.getElementById('si-subtotal').value);
   var ivaRate   = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
-  var taxRaw    = parseFloat(document.getElementById('si-tax').value);
+  var taxRaw    = numParse(document.getElementById('si-tax').value);
   var tax       = isNaN(taxRaw) ? Math.round(sub * ivaRate) / 100 : taxRaw;
   var taxes     = (window._siTaxLines || []).filter(Boolean).filter(function(t) { return t.amount > 0; });
   var percIva   = taxes.filter(function(t) { return t.type === 'perc_iva'; }).reduce(function(s, t) { return s + t.amount; }, 0);
@@ -1696,8 +1696,8 @@ function siUpdateTaxLineAmount(i, val) {
 
 function buildSiTaxSummaryHtml(opts) {
   opts = opts || {};
-  var sub      = (opts.sub      !== undefined) ? opts.sub      : (parseFloat((document.getElementById('si-subtotal') || {}).value) || 0);
-  var iva      = (opts.iva      !== undefined) ? opts.iva      : (parseFloat((document.getElementById('si-tax')      || {}).value) || 0);
+  var sub      = (opts.sub      !== undefined) ? opts.sub      : numParse((document.getElementById('si-subtotal') || {}).value);
+  var iva      = (opts.iva      !== undefined) ? opts.iva      : numParse((document.getElementById('si-tax')      || {}).value);
   var ivaRate  = (opts.ivaRate  !== undefined) ? opts.ivaRate  : (parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21);
   var taxLines = (opts.taxLines !== undefined) ? opts.taxLines : ((window._siTaxLines || []).filter(Boolean).filter(function(t) { return t.amount > 0; }));
   var otherTaxTotal = taxLines.reduce(function(s, t) { return s + (t.amount || 0); }, 0);
