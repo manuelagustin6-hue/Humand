@@ -131,12 +131,19 @@ function viewInvoice(id) {
   const totalCollected = collections.reduce((s,c) => s+c.amount, 0);
   const imputacion = inv.imputacion || [];
 
+  const cp = (typeof getCompanyProfile === 'function') ? getCompanyProfile() : {};
+  const cpName = cp.name || 'Mi Empresa';
+  const cpCuit = cp.cuit ? 'CUIT: ' + cp.cuit : '';
+  const cpAddr = [cp.address, cp.city].filter(Boolean).join(' — ');
+  const cpIva  = cp.iva_cond ? 'IVA: ' + ({RI:'Resp. Inscripto',MO:'Monotributista',EX:'Exento',NR:'No Resp.'}[cp.iva_cond] || cp.iva_cond) : '';
+  const cpIibb = cp.iibb ? 'IIBB: ' + cp.iibb : '';
+
   openModal(`Factura ${inv.number}`, `
 <div class="invoice-preview">
   <div class="invoice-logo-row">
     <div>
-      <div style="font-size:22px;font-weight:800;color:var(--primary)">ConstructERP</div>
-      <div style="font-size:12px;color:var(--text-muted)">Sistema de Gestion</div>
+      <div style="font-size:22px;font-weight:800;color:var(--primary)">${escapeHtml(cpName)}</div>
+      <div style="font-size:12px;color:var(--text-muted)">${escapeHtml(cpCuit)}</div>
     </div>
     <div class="invoice-number-box">
       <div style="font-size:11px;color:var(--text-muted);font-weight:600">FACTURA ${inv.type}</div>
@@ -150,7 +157,7 @@ function viewInvoice(id) {
   <div class="invoice-parties">
     <div class="invoice-party-box">
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">EMISOR</div>
-      <p><strong>ConstructERP SA</strong><br>CUIT: 30-00000000-0<br>Direccion Comercial<br>${proj ? `Proyecto: ${proj.name}` : ''}</p>
+      <p><strong>${escapeHtml(cpName)}</strong>${cpCuit ? '<br>'+escapeHtml(cpCuit) : ''}${cpAddr ? '<br>'+escapeHtml(cpAddr) : ''}${cpIva ? '<br>'+escapeHtml(cpIva) : ''}${cpIibb ? '<br>'+escapeHtml(cpIibb) : ''}${proj ? '<br>Proyecto: '+escapeHtml(proj.name) : ''}</p>
     </div>
     <div class="invoice-party-box">
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">RECEPTOR</div>

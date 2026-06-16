@@ -146,11 +146,12 @@ function viewPaymentOrder(id) {
   const acc = DB.getById('bankAccounts', o.account_id);
   const si = o.supplier_invoice_id ? DB.getById('supplierInvoices', o.supplier_invoice_id) : null;
 
+  const _cp = (typeof getCompanyProfile === 'function') ? getCompanyProfile() : {};
   openModal(`Orden de Pago ${o.number}`, `
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
   <div>
-    <div style="font-size:20px;font-weight:800;color:var(--primary)">ConstructERP</div>
-    <div style="font-size:11px;color:var(--text-muted)">ORDEN DE PAGO</div>
+    <div style="font-size:20px;font-weight:800;color:var(--primary)">${escapeHtml(_cp.name || 'Mi Empresa')}</div>
+    <div style="font-size:11px;color:var(--text-muted)">${_cp.cuit ? 'CUIT: ' + escapeHtml(_cp.cuit) + ' — ' : ''}ORDEN DE PAGO</div>
   </div>
   <div style="text-align:right">
     <div style="font-size:18px;font-weight:700">${o.number}</div>
