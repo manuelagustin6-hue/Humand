@@ -33,6 +33,17 @@ function fmtNum(n) {
   return new Intl.NumberFormat('es-AR').format(n);
 }
 
+// Format/parse helpers for editable monetary inputs (es-AR: period=thousands, comma=decimal)
+function numFmt(n) {
+  if (n == null || n === '' || isNaN(+n)) return '';
+  return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(+n);
+}
+function numParse(s) {
+  if (s == null || s === '') return 0;
+  // Strip thousands (.), replace decimal (,) → (.) then parse
+  return parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0;
+}
+
 function fmtMoneyK(n) {
   if (n == null || isNaN(n)) return '$0';
   const abs = Math.abs(n), sign = n < 0 ? '-' : '';

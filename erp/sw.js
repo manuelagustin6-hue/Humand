@@ -1,12 +1,6 @@
-/* ERP Construcción — Service Worker v10 */
-const CACHE = 'erp-v10';
-const SHELL = [
-  './',
-  './index.html',
-  './css/main.css',
-  './js/db.js',
-  './js/utils.js',
-  './js/app.js',
+/* ERP Construcción — Service Worker v11 */
+const CACHE = 'erp-v11';
+const CDN_SHELL = [
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
   'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
@@ -14,7 +8,8 @@ const SHELL = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // Only pre-cache stable CDN assets; app shell fetched fresh on demand
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CDN_SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -37,13 +32,12 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   const isSameOrigin = url.origin === self.location.origin;
 
-  // Network-first for ALL same-origin requests (always fresh content)
   if (isSameOrigin) {
+    // Always bypass HTTP cache for same-origin requests so GitHub Pages CDN
+    // cache never causes stale content (index.html, JS modules, CSS).
     e.respondWith(
-      fetch(e.request).then(res => {
-        if (res.ok) {
-          caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-        }
+      fetch(e.request, { cache: 'no-store' }).then(res => {
+        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         return res;
       }).catch(() => caches.match(e.request))
     );
