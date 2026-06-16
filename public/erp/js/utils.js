@@ -275,6 +275,26 @@ function isOverdue(dueDateStr) {
   return dueDateStr && dueDateStr < todayStr();
 }
 
+// Returns { from, to } ISO date strings for a named period
+function _periodRange(period) {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  switch (period) {
+    case 'month':
+      return { from: new Date(y, m, 1).toISOString().slice(0,10), to: new Date(y, m+1, 0).toISOString().slice(0,10) };
+    case 'prev_month':
+      return { from: new Date(y, m-1, 1).toISOString().slice(0,10), to: new Date(y, m, 0).toISOString().slice(0,10) };
+    case 'quarter': {
+      const q = Math.floor(m/3);
+      return { from: new Date(y, q*3, 1).toISOString().slice(0,10), to: new Date(y, q*3+3, 0).toISOString().slice(0,10) };
+    }
+    case 'year':
+      return { from: y + '-01-01', to: y + '-12-31' };
+    default:
+      return { from: '0000-01-01', to: '9999-12-31' };
+  }
+}
+
 // ---- FORM VALIDATION ----
 function validateForm(rules) {
   for (const rule of rules) {

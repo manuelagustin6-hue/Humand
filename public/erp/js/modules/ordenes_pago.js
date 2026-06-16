@@ -45,6 +45,13 @@ function renderOrdenesPago() {
     <option value="paid">Pagada</option>
     <option value="cancelled">Cancelada</option>
   </select>
+  <select class="form-control" style="width:160px" onchange="filterPOs2(undefined, undefined, this.value)">
+    <option value="">Todo el período</option>
+    <option value="month">Este mes</option>
+    <option value="prev_month">Mes anterior</option>
+    <option value="quarter">Este trimestre</option>
+    <option value="year">Este año</option>
+  </select>
 </div>
 
 <div class="card">
@@ -127,14 +134,16 @@ function buildPO2Table(orders, suppliers, projects) {
   '</table>';
 }
 
-window._po2Filters = { q: '', status: '' };
-function filterPOs2(q, status) {
+window._po2Filters = { q: '', status: '', period: '' };
+function filterPOs2(q, status, period) {
   if (q !== undefined) window._po2Filters.q = q.toLowerCase();
   if (status !== undefined) window._po2Filters.status = status;
+  if (period !== undefined) window._po2Filters.period = period;
   let orders = DB.getAll('paymentOrders');
   const f = window._po2Filters;
-  if (f.q) orders = orders.filter(o => o.number.toLowerCase().includes(f.q) || o.concept.toLowerCase().includes(f.q));
+  if (f.q) orders = orders.filter(o => (o.number||'').toLowerCase().includes(f.q) || (o.concept||'').toLowerCase().includes(f.q) || (o.supplier_name||'').toLowerCase().includes(f.q));
   if (f.status) orders = orders.filter(o => o.status === f.status);
+  if (f.period) { const r = _periodRange(f.period); orders = orders.filter(o => o.date && o.date >= r.from && o.date <= r.to); }
   const wrap = document.getElementById('po2-table-wrap');
   if (wrap) wrap.innerHTML = buildPO2Table(orders, DB.getAll('suppliers'), DB.getAll('projects'));
 }
