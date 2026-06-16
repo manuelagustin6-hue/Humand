@@ -19,6 +19,7 @@ function renderCobranzas() {
     <div class="page-subtitle">Gestión de cobros, aging de deudores y seguimiento de pagos</div>
   </div>
   <div class="page-actions">
+    <button class="btn btn-secondary" onclick="exportCobranzas()"><i class="fas fa-download"></i> Exportar</button>
     <button class="btn btn-primary" onclick="openCollectionForm()"><i class="fas fa-plus"></i> Registrar Cobro</button>
   </div>
 </div>
@@ -311,7 +312,7 @@ function openCollectionForm(invoiceId) {
   <!-- Importe -->
   <div class="form-group">
     <label class="form-label">Importe Cobrado * <span id="cf-iva-label" style="font-size:11px;color:var(--primary)"></span></label>
-    <input class="form-control" id="cf-amount" type="number" min="0" step="0.01" placeholder="0" oninput="cobrIvaCalc()">
+    <input class="form-control" id="cf-amount" type="text" inputmode="decimal" placeholder="0,00" onfocus="var n=numParse(this.value);this.value=n?n:''" onblur="this.value=numFmt(numParse(this.value))" oninput="cobrIvaCalc()">
   </div>
   <div class="form-group">
     <label class="form-label">Fecha del Cobro</label>
@@ -375,7 +376,7 @@ function cobrTipoChange() {
 function cobrIvaCalc() {
   var tipo  = document.getElementById('cf-tipo')?.value || 'factura';
   if (tipo !== 'cuota_formal') return;
-  var total = parseFloat(document.getElementById('cf-amount')?.value) || 0;
+  var total = numParse(document.getElementById('cf-amount')?.value);
   var rate  = parseFloat(document.getElementById('cf-iva-rate')?.value) || 10.5;
   var neto  = total / (1 + rate / 100);
   var ivaAmt= total - neto;
@@ -401,13 +402,13 @@ function updateCollectionBalance(invoiceId) {
       <span>Saldo a cobrar: <strong class="text-danger">${fmtMoney(saldo)}</strong></span>
     </div>`;
     const amtEl = document.getElementById('cf-amount');
-    if (amtEl && !amtEl.value) amtEl.value = saldo;
+    if (amtEl && !numParse(amtEl.value)) amtEl.value = numFmt(saldo);
   }
 }
 
 function saveCollection() {
   var tipo      = document.getElementById('cf-tipo')?.value || 'factura';
-  var amount    = parseFloat(document.getElementById('cf-amount')?.value);
+  var amount    = numParse(document.getElementById('cf-amount')?.value);
   var companyId = document.getElementById('cf-company')?.value || '';
   var date      = document.getElementById('cf-date')?.value;
   var method    = document.getElementById('cf-method')?.value;
@@ -528,4 +529,30 @@ function printRecibo(id) {
     '</div>';
 
   _printDoc('Recibo ' + recNum, html);
+}
+
+function exportCobranzas() {
+  const invoices = DB.getAll('invoices');
+  const projects = DB.getAll('projects');
+  const collections = DB.getAll('collections');
+  const MET = { transfer:'Transferencia', check:'Cheque', cash:'Efectivo', other:'Otro' };
+  exportXLSX('cobranzas.xlsx',
+    ['Fecha','Tipo','N° Factura','Cliente','Proyecto','Método','Referencia','Neto','IVA','Total'],
+    collections.map(c => {
+      const inv  = c.invoice_id ? invoices.find(i => i.id === c.invoice_id) : null;
+      const proj = projects.find(p => p.id === (c.project_id || (inv && inv.project_id) || ''));
+      return [
+        c.date, c.tipo_cobranza || 'factura',
+        inv ? inv.number : (c.reference || ''),
+        c.client_name || (inv && inv.client_name) || '',
+        proj ? proj.name : '',
+        MET[c.method] || c.method || '',
+        c.reference || '',
+        c.iva_incluido ? (c.neto || 0) : c.amount,
+        c.iva_incluido ? (c.iva_amount || 0) : 0,
+        c.amount
+      ];
+    })
+  );
+  toast(collections.length + ' cobros exportados', 'success');
 }
