@@ -1,23 +1,92 @@
 /* ===== AJUSTES DEL SISTEMA ===== */
+
+// ── Company profile helper — used by invoice/OP/cert templates ──
+function getCompanyProfile() {
+  var g = DB.getGlobal();
+  return Object.assign({
+    name:        'Mi Empresa',
+    cuit:        '',
+    address:     '',
+    city:        '',
+    phone:       '',
+    email:       '',
+    iva_cond:    'RI',
+    iibb:        '',
+    inicio_act:  '',
+  }, g.companyProfile || {});
+}
+
 function renderAjustes() {
   document.getElementById('content').innerHTML =
     '<div class="page-header"><div>' +
     '<div class="page-title">Ajustes del Sistema</div>' +
-    '<div class="page-subtitle">Almacenamiento, respaldo de datos e integridad</div>' +
+    '<div class="page-subtitle">Perfil de empresa, almacenamiento, respaldo e integridad</div>' +
     '</div></div>' +
     '<div id="ajustes-tabs">' +
     '<div class="tabs">' +
+    '<button class="tab-btn" data-tab="tab-ajustes-empresa">Empresa</button>' +
     '<button class="tab-btn" data-tab="tab-ajustes-storage">Almacenamiento</button>' +
     '<button class="tab-btn" data-tab="tab-ajustes-backup">Respaldo</button>' +
     '<button class="tab-btn" data-tab="tab-ajustes-integrity">Integridad</button>' +
     '<button class="tab-btn" data-tab="tab-ajustes-system">Sistema</button>' +
     '</div>' +
+    '<div id="tab-ajustes-empresa" class="tab-content">' + buildEmpresaProfileTab() + '</div>' +
     '<div id="tab-ajustes-storage" class="tab-content">' + buildStorageTab() + '</div>' +
     '<div id="tab-ajustes-backup" class="tab-content">' + buildBackupTab() + '</div>' +
     '<div id="tab-ajustes-integrity" class="tab-content">' + buildIntegrityEmpty() + '</div>' +
     '<div id="tab-ajustes-system" class="tab-content">' + buildSystemTab() + '</div>' +
     '</div>';
   initTabs('ajustes-tabs');
+}
+
+// ---- EMPRESA PROFILE TAB ----
+function buildEmpresaProfileTab() {
+  var p = getCompanyProfile();
+  var ivaOpts = ['RI','MO','EX','NR'].map(function(v) {
+    var lbl = { RI:'Responsable Inscripto', MO:'Monotributista', EX:'Exento', NR:'No Responsable' }[v];
+    return '<option value="' + v + '"' + (p.iva_cond === v ? ' selected' : '') + '>' + lbl + '</option>';
+  }).join('');
+
+  return '<div class="card mb-3">' +
+    '<div class="card-header"><span class="card-title"><i class="fas fa-building text-primary"></i> Datos de la Empresa Emisora</span>' +
+    '<small style="color:var(--text-muted);font-weight:400">Estos datos aparecen en facturas, órdenes de pago y demás documentos impresos.</small></div>' +
+    '<div class="card-body">' +
+    '<div class="form-grid form-grid-2" style="gap:14px">' +
+      '<div class="form-group full"><label class="form-label">Razón Social *</label><input id="ep-name" class="form-control" value="' + escapeHtml(p.name) + '" placeholder="ej: Constructora SA"></div>' +
+      '<div class="form-group"><label class="form-label">CUIT *</label><input id="ep-cuit" class="form-control" value="' + escapeHtml(p.cuit) + '" placeholder="30-00000000-0"></div>' +
+      '<div class="form-group"><label class="form-label">Condición IVA</label><select id="ep-iva" class="form-control">' + ivaOpts + '</select></div>' +
+      '<div class="form-group full"><label class="form-label">Domicilio Comercial</label><input id="ep-address" class="form-control" value="' + escapeHtml(p.address) + '" placeholder="Calle y número"></div>' +
+      '<div class="form-group"><label class="form-label">Ciudad / Localidad</label><input id="ep-city" class="form-control" value="' + escapeHtml(p.city) + '" placeholder="ej: Buenos Aires"></div>' +
+      '<div class="form-group"><label class="form-label">Teléfono</label><input id="ep-phone" class="form-control" value="' + escapeHtml(p.phone) + '" placeholder="+54 11 0000-0000"></div>' +
+      '<div class="form-group"><label class="form-label">Email de contacto</label><input id="ep-email" class="form-control" type="email" value="' + escapeHtml(p.email) + '" placeholder="contacto@empresa.com"></div>' +
+      '<div class="form-group"><label class="form-label">N° IIBB</label><input id="ep-iibb" class="form-control" value="' + escapeHtml(p.iibb) + '" placeholder="N° Ingresos Brutos"></div>' +
+      '<div class="form-group"><label class="form-label">Inicio de Actividades</label><input id="ep-inicio" class="form-control" type="date" value="' + escapeHtml(p.inicio_act) + '"></div>' +
+    '</div>' +
+    '<div style="margin-top:16px">' +
+      '<button class="btn btn-primary" onclick="saveEmpresaProfile()"><i class="fas fa-save"></i> Guardar datos de empresa</button>' +
+    '</div>' +
+    '</div></div>';
+}
+
+function saveEmpresaProfile() {
+  var name = document.getElementById('ep-name').value.trim();
+  var cuit = document.getElementById('ep-cuit').value.trim();
+  if (!name) { toast('La razón social es obligatoria', 'error'); return; }
+  var profile = {
+    name:       name,
+    cuit:       cuit,
+    iva_cond:   document.getElementById('ep-iva').value,
+    address:    document.getElementById('ep-address').value.trim(),
+    city:       document.getElementById('ep-city').value.trim(),
+    phone:      document.getElementById('ep-phone').value.trim(),
+    email:      document.getElementById('ep-email').value.trim(),
+    iibb:       document.getElementById('ep-iibb').value.trim(),
+    inicio_act: document.getElementById('ep-inicio').value,
+  };
+  var g = DB.getGlobal();
+  g.companyProfile = profile;
+  DB.saveGlobal(g);
+  toast('Datos de empresa guardados — ya aparecen en todos los documentos', 'success');
 }
 
 // ---- STORAGE TAB ----
