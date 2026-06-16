@@ -1,6 +1,6 @@
 /* ===== INVERSIONES ===== */
 
-const INV_TYPES = [
+var INVERSION_TYPES = [
   { id: 'plazo_fijo', label: 'Plazo Fijo',          icon: 'fa-clock', color: '#2563eb' },
   { id: 'fci',        label: 'Fondo Común (FCI)',    icon: 'fa-chart-line', color: '#7c3aed' },
   { id: 'caucion',    label: 'Caución Bursátil',     icon: 'fa-gavel', color: '#0891b2' },
@@ -8,7 +8,7 @@ const INV_TYPES = [
   { id: 'accion',     label: 'Acción',               icon: 'fa-chart-bar', color: '#16a34a' },
   { id: 'otro',       label: 'Otro',                 icon: 'fa-circle-dollar-to-slot', color: '#64748b' },
 ];
-const INV_STATUS = {
+var INVERSION_STATUS = {
   activo:    { label: 'Activa',    cls: 'badge-blue' },
   vencido:   { label: 'Vencida',   cls: 'badge-red' },
   renovado:  { label: 'Renovada',  cls: 'badge-gray' },
@@ -88,7 +88,7 @@ function renderInversiones() {
   </div>
   <select class="form-control" style="width:170px" onchange="filterInversiones(undefined, this.value)">
     <option value="">Todos los tipos</option>
-    ${INV_TYPES.map(t => `<option value="${t.id}" ${window._invFiltersInv.type===t.id?'selected':''}>${t.label}</option>`).join('')}
+    ${INVERSION_TYPES.map(t => `<option value="${t.id}" ${window._invFiltersInv.type===t.id?'selected':''}>${t.label}</option>`).join('')}
   </select>
   <select class="form-control" style="width:140px" onchange="filterInversiones(undefined, undefined, this.value)">
     <option value="activo" ${window._invFiltersInv.status==='activo'?'selected':''}>Activas</option>
@@ -143,8 +143,8 @@ function _buildInvTable(items) {
   </tr></thead>
   <tbody>
     ${items.map(inv => {
-      const t = INV_TYPES.find(x => x.id === inv.type) || INV_TYPES[INV_TYPES.length-1];
-      const st = INV_STATUS[inv.status] || { label: inv.status, cls: 'badge-gray' };
+      const t = INVERSION_TYPES.find(x => x.id === inv.type) || INVERSION_TYPES[INVERSION_TYPES.length-1];
+      const st = INVERSION_STATUS[inv.status] || { label: inv.status, cls: 'badge-gray' };
       const expReturn = _invExpReturn(inv);
       const days = _invDaysLeft(inv, today);
       const daysCell = inv.status === 'activo'
@@ -208,7 +208,7 @@ function openInvForm(id) {
   <div class="form-group">
     <label class="form-label">Tipo *</label>
     <select class="form-control" id="inv-type">
-      ${INV_TYPES.map(t => `<option value="${t.id}" ${(inv?.type||'plazo_fijo')===t.id?'selected':''}>${t.label}</option>`).join('')}
+      ${INVERSION_TYPES.map(t => `<option value="${t.id}" ${(inv?.type||'plazo_fijo')===t.id?'selected':''}>${t.label}</option>`).join('')}
     </select>
   </div>
   <div class="form-group">
@@ -265,7 +265,7 @@ function openInvForm(id) {
   <div class="form-group">
     <label class="form-label">Estado</label>
     <select class="form-control" id="inv-status">
-      ${Object.entries(INV_STATUS).map(([k,v]) => `<option value="${k}" ${(inv?.status||'activo')===k?'selected':''}>${v.label}</option>`).join('')}
+      ${Object.entries(INVERSION_STATUS).map(([k,v]) => `<option value="${k}" ${(inv?.status||'activo')===k?'selected':''}>${v.label}</option>`).join('')}
     </select>
   </div>
 </div>
@@ -403,7 +403,7 @@ function exportInversiones() {
   exportXLSX('inversiones.xlsx',
     ['Tipo','Entidad','Descripción','Moneda','Capital','TNA %','Rendim. Esperado','Inicio','Vencimiento','Estado','Empresa','Notas'],
     items.map(inv => [
-      INV_TYPES.find(t=>t.id===inv.type)?.label || inv.type,
+      INVERSION_TYPES.find(t=>t.id===inv.type)?.label || inv.type,
       inv.entity || '',
       inv.description || '',
       inv.currency || 'ARS',
@@ -411,7 +411,7 @@ function exportInversiones() {
       inv.rate || 0,
       _invExpReturn(inv),
       inv.start_date, inv.maturity_date,
-      INV_STATUS[inv.status]?.label || inv.status,
+      INVERSION_STATUS[inv.status]?.label || inv.status,
       companies.find(c=>c.id===inv.company_id)?.name || '',
       inv.notes || ''
     ])
