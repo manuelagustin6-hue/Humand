@@ -33,6 +33,16 @@ function fmtNum(n) {
   return new Intl.NumberFormat('es-AR').format(n);
 }
 
+function fmtMoneyK(n) {
+  if (n == null || isNaN(n)) return '$0';
+  const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+  const fmt = (v, d) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: d }).format(v);
+  if (abs >= 1e9) return sign + '$ ' + fmt(abs / 1e9, 1) + 'B';
+  if (abs >= 1e6) return sign + '$ ' + fmt(abs / 1e6, 1) + 'M';
+  if (abs >= 1e3) return sign + '$ ' + fmt(Math.round(abs / 1e3), 0) + 'K';
+  return sign + '$ ' + Math.round(abs);
+}
+
 function fmtDate(d) {
   if (!d) return '-';
   const dt = new Date(d + 'T00:00:00');
