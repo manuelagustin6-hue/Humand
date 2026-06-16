@@ -475,6 +475,47 @@ function _initApp() {
   }
 }
 
+// ---- PASSWORD RECOVERY ----
+function doSetRecoveryPassword() {
+  var pw1 = (document.getElementById('recovery-pw1') || {}).value || '';
+  var pw2 = (document.getElementById('recovery-pw2') || {}).value || '';
+  var errEl = document.getElementById('recovery-error');
+  if (!pw1 || pw1.length < 6) { if (errEl) errEl.textContent = 'La contraseña debe tener al menos 6 caracteres'; return; }
+  if (pw1 !== pw2) { if (errEl) errEl.textContent = 'Las contraseñas no coinciden'; return; }
+  if (errEl) errEl.textContent = '';
+  var btn = document.querySelector('#recovery-screen .btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…'; }
+  // getSession() should already have the recovery session from the URL hash
+  _SUPA.getSession().then(function(session) {
+    if (!session) {
+      if (errEl) errEl.textContent = 'Sesión expirada — pedí un nuevo enlace de recuperación.';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Guardar contraseña'; }
+      return;
+    }
+    return _SUPA.updatePassword(pw1).then(function(res) {
+      if (res && res.error) {
+        if (errEl) errEl.textContent = res.error.message || 'Error al actualizar la contraseña';
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Guardar contraseña'; }
+      } else {
+        // Success — clear hash and go to login
+        try { window.history.replaceState(null, '', window.location.pathname); } catch(e) {}
+        document.getElementById('recovery-screen').style.display = 'none';
+        // Show login with success message
+        var loader = document.getElementById('boot-loader');
+        if (loader) loader.style.display = 'flex';
+        _SUPA.getSession().then(function() { return DB.load(); }).then(function() {
+          if (loader) loader.style.display = 'none';
+          _initApp();
+        });
+        setTimeout(function() { toast('Contraseña actualizada correctamente. Podés ingresar ahora.', 'success'); }, 500);
+      }
+    });
+  }).catch(function() {
+    if (errEl) errEl.textContent = 'Error de conexión — intentá nuevamente.';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Guardar contraseña'; }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   // Force hard-reload if the browser is running a stale cached version
   var storedVer = '';
@@ -503,6 +544,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
+
+  // Check for password recovery token in URL hash BEFORE normal flow
+  var _hash = window.location.hash || '';
+  if (_hash.indexOf('type=recovery') !== -1 || _hash.indexOf('type=signup') !== -1) {
+    // Supabase JS v2 automatically picks up the session from the hash via getSession()
+    if (loader) loader.style.display = 'none';
+    document.getElementById('recovery-screen').style.display = 'flex';
+    // getSession() will parse the hash and set _SUPA.session
+    _SUPA.getSession().catch(function() {});
+    return;
+  }
 
   // Show boot loader while we connect to Supabase
   var loader = document.getElementById('boot-loader');
