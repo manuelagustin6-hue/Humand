@@ -751,11 +751,24 @@ function printRetencion(paymentOrderId) {
 }
 
 function exportPaymentOrders() {
-  const orders = DB.getAll('paymentOrders');
   const suppliers = DB.getAll('suppliers');
+  let orders = DB.getAll('paymentOrders');
+  const f = window._po2Filters || {};
+  if (f.q) orders = orders.filter(o => { const sup = suppliers.find(s=>s.id===o.supplier_id); return (o.number||'').toLowerCase().includes(f.q) || (sup && sup.name.toLowerCase().includes(f.q)) || (o.concept||'').toLowerCase().includes(f.q); });
+  if (f.status) orders = orders.filter(o => o.status === f.status);
+  if (f.period) { const r = _periodRange(f.period); orders = orders.filter(o => o.date && o.date >= r.from && o.date <= r.to); }
   const projects = DB.getAll('projects');
+  const ST = { draft:'Borrador', pending:'Pendiente', paid:'Pagada', cancelled:'Anulada' };
   exportXLSX('ordenes_de_pago.xlsx',
-    ['Número','Proveedor','Proyecto','Fecha','Concepto','Bruto','Retenciones','Neto','Estado'],
-    orders.map(o => [o.number, suppliers.find(s=>s.id===o.supplier_id)?.name||'', projects.find(p=>p.id===o.project_id)?.name||'', o.date, o.concept, o.gross_amount, o.total_retentions||0, o.net_amount, o.status])
+    ['Número','Proveedor','Proyecto','Fecha','Concepto','Bruto','Retenciones','Neto a Pagar','Estado'],
+    orders.map(o => [
+      o.number,
+      suppliers.find(s=>s.id===o.supplier_id)?.name || '',
+      projects.find(p=>p.id===o.project_id)?.name || '',
+      o.date, o.concept || '',
+      o.gross_amount || 0, o.total_retentions || 0, o.net_amount || 0,
+      ST[o.status] || o.status
+    ])
   );
+  toast(orders.length + ' órdenes exportadas', 'success');
 }
