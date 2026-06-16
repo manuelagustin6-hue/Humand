@@ -351,21 +351,31 @@ function saveUser(id) {
     DB.update('users', id, data);
     toast('Usuario actualizado', 'success');
   } else {
-    var newUser = DB.insert('users', { ...data, last_login: null });
-    // Also create in Supabase Auth so the user can log in with proper JWT
+    DB.insert('users', { ...data, last_login: null });
+    // Register in Supabase Auth for cross-device login
     if (pin && _SUPA.online) {
       var co = DB._companyId;
       _SUPA.signUp(email, pin, { company_id: co, role: data.role, name: data.name })
         .then(function(res) {
           if (res.error) {
-            // Non-fatal: user exists in DB, can still use local auth fallback
-            console.warn('[Auth] signUp:', res.error.message);
+            var msg = (res.error.message || '').toLowerCase();
+            if (msg.indexOf('already registered') !== -1 || msg.indexOf('user_already_exists') !== -1) {
+              toast('Usuario creado. Ya existe en Supabase Auth — puede ingresar desde cualquier dispositivo.', 'success');
+            } else {
+              toast('Usuario creado. Supabase Auth: ' + res.error.message, 'warning');
+            }
+          } else if (res.data && res.data.session) {
+            // Email confirmation disabled — user can sign in immediately
+            toast('Usuario creado y activado. Puede ingresar desde cualquier dispositivo.', 'success');
           } else {
-            toast('Usuario creado y cuenta Supabase configurada', 'success');
+            // Email confirmation required — session is null
+            toast('Usuario creado. Se envió un email de confirmación a ' + email + ' — debe hacer clic en el enlace antes de poder ingresar desde otro dispositivo.', 'info');
           }
-        }).catch(function() {});
+        }).catch(function() {
+          toast('Usuario creado (sin conexión a Supabase — solo disponible en este dispositivo por ahora).', 'warning');
+        });
     } else {
-      toast('Usuario creado (conectá a Supabase para activar auth segura)', 'info');
+      toast('Usuario creado. Para acceso multi-dispositivo, activá Supabase en Ajustes.', 'info');
     }
   }
   closeModal();
@@ -698,31 +708,40 @@ function doLogin() {
   // Try Supabase Auth first
   _SUPA.signIn(email, password).then(function(result) {
     if (!result.error && result.data && result.data.session) {
+      // Full Supabase Auth session — reload data with JWT
       _afterSupaLogin(result.data.session, email);
+
     } else if (result.error) {
-      // Supabase returned an auth error — check if user exists locally before deciding
+      var errMsg = (result.error.message || '').toLowerCase();
+      // Email not yet confirmed in Supabase Auth
+      if (errMsg.indexOf('not confirmed') !== -1 || errMsg.indexOf('email_not_confirmed') !== -1) {
+        _btnBusy(false);
+        _loginError('Confirmá tu email: revisá tu casilla de correo y hacé clic en el enlace de activación que te enviamos.');
+        return;
+      }
+      // Check if user exists in localStorage (not yet migrated to Supabase Auth)
       var localExists = _loginScanCompanyIds().some(function(cid) {
         DB.setCompany(cid);
         return (DB.getAll('users') || []).some(function(u) { return (u.email||'').toLowerCase() === email && u.active; });
       });
       _btnBusy(false);
       if (localExists) {
-        // User exists locally → try local auth (user not yet migrated to Supabase Auth)
-        _doLoginLocal(email, password);
+        _doLoginLocal(email, password, false);
       } else {
-        // User only in Supabase Auth → show the actual Supabase error
-        _loginError(result.error.message === 'Invalid login credentials'
+        _loginError(errMsg.indexOf('invalid login credentials') !== -1
           ? 'Email o contraseña incorrectos'
-          : result.error.message);
+          : (result.error.message || 'Error de autenticación'));
       }
+
     } else {
+      // No error AND no session = email pending confirmation
       _btnBusy(false);
-      _doLoginLocal(email, password);
+      _loginError('Confirmá tu email: revisá tu casilla de correo y hacé clic en el enlace de activación que te enviamos.');
     }
   }).catch(function() {
-    // Network error → try local auth
+    // Network error: Supabase unreachable
     _btnBusy(false);
-    _doLoginLocal(email, password);
+    _doLoginLocal(email, password, true /* supaUnavailable */);
   });
 }
 
@@ -754,7 +773,7 @@ function _afterSupaLogin(session, email) {
 }
 
 // Local auth fallback (used when user is not yet in Supabase Auth)
-function _doLoginLocal(email, password) {
+function _doLoginLocal(email, password, supaUnavailable) {
   var companyIds = _loginScanCompanyIds();
   var foundUser = null;
   var foundCompanyId = null;
@@ -769,7 +788,11 @@ function _doLoginLocal(email, password) {
 
   if (!foundUser) {
     DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
-    _loginError('Email no encontrado. Probá con: ' + (allEmails.length ? allEmails.slice(0,3).join(', ') : 'ningún usuario activo aún'));
+    if (supaUnavailable) {
+      _loginError('No se pudo conectar al servidor. En una computadora nueva necesitás internet para la primera sesión — revisá tu conexión e intentá nuevamente.');
+    } else {
+      _loginError('Email no encontrado. Probá con: ' + (allEmails.length ? allEmails.slice(0,3).join(', ') : 'ningún usuario activo aún'));
+    }
     return;
   }
 
