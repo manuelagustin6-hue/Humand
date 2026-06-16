@@ -367,8 +367,8 @@ function invItemRow(it, i) {
     <input class="form-control" style="font-size:12px" placeholder="Descripcion" value="${it.description||''}" oninput="updateInvItem(${i},'description',this.value)">
     <input class="form-control" style="font-size:12px" value="${it.unit||'Global'}" oninput="updateInvItem(${i},'unit',this.value)">
     <input class="form-control" style="font-size:12px" type="number" min="0" step="0.01" value="${it.quantity||1}" oninput="updateInvItem(${i},'quantity',+this.value)">
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${it.unit_price||0}" oninput="updateInvItem(${i},'unit_price',+this.value)">
-    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly id="ivi-total-${i}" value="${it.total||0}">
+    <input class="form-control" style="font-size:12px" type="text" inputmode="decimal" value="${numFmt(it.unit_price||0)}" onfocus="var n=numParse(this.value);this.value=n?n:''" onblur="this.value=numFmt(numParse(this.value))" oninput="updateInvItem(${i},'unit_price',numParse(this.value))">
+    <input class="form-control" style="font-size:12px;background:#f8fafc" readonly id="ivi-total-${i}" value="${numFmt(it.total||0)}">
     <button class="btn-ghost btn danger" onclick="removeInvItem(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }
@@ -389,7 +389,7 @@ function updateInvItem(i, field, val) {
   window._invItems[i][field] = val;
   window._invItems[i].total = (window._invItems[i].quantity||0) * (window._invItems[i].unit_price||0);
   const el = document.getElementById(`ivi-total-${i}`);
-  if (el) el.value = window._invItems[i].total;
+  if (el) el.value = numFmt(window._invItems[i].total);
   document.getElementById('inv-totals').innerHTML = calcInvTotalsHtml(window._invItems.filter(Boolean));
   const impEl = document.getElementById('imp-totals');
   if (impEl) impEl.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
@@ -423,7 +423,7 @@ function invImpRow(line, i) {
   return `<div id="imp-row-${i}" style="display:grid;grid-template-columns:3fr 2fr 130px 36px;gap:6px;margin-bottom:6px;align-items:center">
     <select class="form-control" style="font-size:12px" onchange="impOnRubroChange(${i},this)">${rHtml}</select>
     <div id="imp-acct-${i}" style="font-size:11px;color:var(--text-muted);padding:2px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--bg);border-radius:var(--radius-sm);min-height:32px;display:flex;align-items:center">${acctText}</div>
-    <input class="form-control" style="font-size:12px" type="number" min="0" value="${line.amount||0}" oninput="impUpdateField(${i},'amount',+this.value)">
+    <input class="form-control" style="font-size:12px" type="text" inputmode="decimal" value="${numFmt(line.amount||0)}" onfocus="var n=numParse(this.value);this.value=n?n:''" onblur="this.value=numFmt(numParse(this.value))" oninput="impUpdateField(${i},'amount',numParse(this.value))">
     <button class="btn-ghost btn danger" onclick="removeImpLine(${i})"><i class="fas fa-times"></i></button>
   </div>`;
 }

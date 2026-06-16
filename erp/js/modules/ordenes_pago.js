@@ -236,7 +236,7 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
         '<select class="form-control" style="font-size:12px" name="pm-type" onchange="_pmRowTypeChange(this)">' +
         MET.map(function(x) { return '<option value="' + x[0] + '"' + (m.type===x[0]?' selected':'') + '>' + x[1] + '</option>'; }).join('') +
         '</select>' +
-        '<input class="form-control" style="font-size:12px" type="number" name="pm-amount" placeholder="Importe" value="' + (m.amount||'') + '">' +
+        '<input class="form-control" style="font-size:12px" type="text" inputmode="decimal" name="pm-amount" placeholder="0,00" value="' + (m.amount ? numFmt(m.amount) : '') + '" onfocus="var n=numParse(this.value);this.value=n?n:\'\'" onblur="this.value=numFmt(numParse(this.value))">' +
         '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="' + refPlaceholder + '" value="' + escapeHtml(m.reference||'') + '">' +
         '<input class="form-control" style="font-size:12px" type="date" name="pm-date" title="' + datePlaceholder + '" value="' + (m.date||'') + '">' +
         '<button type="button" onclick="this.closest(\'.pm-row\').remove()" style="background:#fee2e2;border:none;border-radius:6px;cursor:pointer;width:32px;height:32px;color:#991b1b;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0">×</button>' +
@@ -296,7 +296,7 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
   </div>
   <div class="form-group">
     <label class="form-label">Importe Bruto *</label>
-    <input class="form-control" id="op-gross" type="number" min="0" value="${o?.gross_amount || ''}" oninput="recalcPORetentions()">
+    <input class="form-control" id="op-gross" type="text" inputmode="decimal" value="${o?.gross_amount ? numFmt(o.gross_amount) : ''}" onfocus="var n=numParse(this.value);this.value=n?n:''" onblur="this.value=numFmt(numParse(this.value));recalcPORetentions()" oninput="recalcPORetentions()">
   </div>
 </div>
 <div class="divider"></div>
@@ -362,9 +362,9 @@ function prefillPOFromInvoiceCB() {
     var projEl = document.getElementById('op-project');
     var firstSI = DB.getById('supplierInvoices', checked[0].value);
     if (!firstSI) return;
-    if (grossEl && !grossEl.value) {
+    if (grossEl && !numParse(grossEl.value)) {
       var total = checked.reduce(function(s, cb) { var si = DB.getById('supplierInvoices', cb.value); return s + (si ? (si.total||0) : 0); }, 0);
-      grossEl.value = total;
+      grossEl.value = numFmt(total);
       recalcPORetentions();
     }
     if (conceptEl && !conceptEl.value) {
@@ -386,7 +386,7 @@ function addPOMethodRow(type, amount, reference, date) {
     '<select class="form-control" style="font-size:12px" name="pm-type" onchange="_pmRowTypeChange(this)">' +
     MET.map(function(x) { return '<option value="' + x[0] + '"' + (t===x[0]?' selected':'') + '>' + x[1] + '</option>'; }).join('') +
     '</select>' +
-    '<input class="form-control" style="font-size:12px" type="number" name="pm-amount" placeholder="Importe" value="' + (amount||'') + '">' +
+    '<input class="form-control" style="font-size:12px" type="text" inputmode="decimal" name="pm-amount" placeholder="0,00" value="' + (amount ? numFmt(amount) : '') + '" onfocus="var n=numParse(this.value);this.value=n?n:\'\'" onblur="this.value=numFmt(numParse(this.value))">' +
     '<input class="form-control" style="font-size:12px" type="text" name="pm-ref" placeholder="' + (t==='check'?'N° cheque / banco':'CBU / alias / referencia') + '" value="' + escapeHtml(reference||'') + '">' +
     '<input class="form-control" style="font-size:12px" type="date" name="pm-date" title="' + (t==='check'?'Fecha cheque':'Fecha acreditación') + '" value="' + (date||'') + '">' +
     '<button type="button" onclick="this.closest(\'.pm-row\').remove()" style="background:#fee2e2;border:none;border-radius:6px;cursor:pointer;width:32px;height:32px;color:#991b1b;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0">×</button>';
@@ -404,7 +404,7 @@ function _pmRowTypeChange(sel) {
 }
 
 function recalcPORetentions() {
-  const gross = parseFloat(document.getElementById('op-gross')?.value) || 0;
+  const gross = numParse(document.getElementById('op-gross')?.value);
   const selected = Array.from(document.querySelectorAll('#op-retentions input[type="checkbox"]:checked'));
   const retentions = selected.map(cb => ({
     retention_id: cb.value,
@@ -425,7 +425,7 @@ function calcPOTotalsHtml(gross, retentions) {
 function savePaymentOrder(id) {
   const supplierId = document.getElementById('op-supplier').value;
   const concept = document.getElementById('op-concept').value.trim();
-  const gross = parseFloat(document.getElementById('op-gross').value);
+  const gross = numParse(document.getElementById('op-gross').value);
   if (!supplierId || !concept || !gross) { toast('Proveedor, concepto e importe son obligatorios', 'error'); return; }
 
   const selected = Array.from(document.querySelectorAll('#op-retentions input[type="checkbox"]:checked'));
@@ -448,7 +448,7 @@ function savePaymentOrder(id) {
   const pmRows = Array.from(document.querySelectorAll('#op-methods .pm-row'));
   const paymentMethods = pmRows.map(function(row) {
     var type = row.querySelector('[name="pm-type"]')?.value || 'transfer';
-    var amount = parseFloat(row.querySelector('[name="pm-amount"]')?.value) || 0;
+    var amount = numParse(row.querySelector('[name="pm-amount"]')?.value);
     var ref = (row.querySelector('[name="pm-ref"]')?.value || '').trim();
     var date = (row.querySelector('[name="pm-date"]')?.value || '').trim();
     return amount > 0 ? { type: type, amount: amount, reference: ref, date: date } : null;
