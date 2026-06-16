@@ -155,15 +155,23 @@ function empNewCompany() {
       '</div>' +
       '<div class="form-group">' +
         '<label>Direccion</label>' +
-        '<input type="text" id="emp-address" class="form-control" placeholder="Av. Corrientes 1200, CABA">' +
+        '<input type="text" id="emp-address" class="form-control" placeholder="Av. Corrientes 1200">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label>Ciudad / Localidad</label>' +
+        '<input type="text" id="emp-city" class="form-control" placeholder="Ej: Buenos Aires">' +
       '</div>' +
       '<div class="form-group">' +
         '<label>Telefono</label>' +
         '<input type="text" id="emp-phone" class="form-control" placeholder="011-4444-5555">' +
       '</div>' +
-      '<div class="form-group" style="grid-column:1/-1;">' +
+      '<div class="form-group">' +
         '<label>Email</label>' +
         '<input type="email" id="emp-email" class="form-control" placeholder="info@empresa.com">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label>N° IIBB</label>' +
+        '<input type="text" id="emp-iibb" class="form-control" placeholder="N° Ingresos Brutos">' +
       '</div>' +
       '<div class="form-group" style="grid-column:1/-1;">' +
         '<div id="emp-tax-hint" style="background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--primary);display:none;">' +
@@ -208,8 +216,10 @@ function empSaveNewCompany() {
     taxId: (document.getElementById('emp-taxId') || {}).value || '',
     taxRegime: (document.getElementById('emp-taxRegime') || {}).value || '',
     address: (document.getElementById('emp-address') || {}).value || '',
+    city: (document.getElementById('emp-city') || {}).value || '',
     phone: (document.getElementById('emp-phone') || {}).value || '',
     email: (document.getElementById('emp-email') || {}).value || '',
+    iibb: (document.getElementById('emp-iibb') || {}).value || '',
     active: true,
     created_at: now(),
   };
@@ -278,12 +288,20 @@ function empEditCompany(id) {
         '<input type="text" id="emp-address" class="form-control" value="' + (c.address || '') + '">' +
       '</div>' +
       '<div class="form-group">' +
+        '<label>Ciudad / Localidad</label>' +
+        '<input type="text" id="emp-city" class="form-control" value="' + (c.city || '') + '">' +
+      '</div>' +
+      '<div class="form-group">' +
         '<label>Telefono</label>' +
         '<input type="text" id="emp-phone" class="form-control" value="' + (c.phone || '') + '">' +
       '</div>' +
-      '<div class="form-group" style="grid-column:1/-1;">' +
+      '<div class="form-group">' +
         '<label>Email</label>' +
         '<input type="email" id="emp-email" class="form-control" value="' + (c.email || '') + '">' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label>N° IIBB</label>' +
+        '<input type="text" id="emp-iibb" class="form-control" value="' + (c.iibb || '') + '">' +
       '</div>' +
       '<div class="form-group" style="grid-column:1/-1;">' +
         '<div id="emp-tax-hint" style="background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--primary);display:none;">' +
@@ -316,8 +334,10 @@ function empUpdateCompany() {
     taxId: (document.getElementById('emp-taxId') || {}).value || '',
     taxRegime: (document.getElementById('emp-taxRegime') || {}).value || '',
     address: (document.getElementById('emp-address') || {}).value || '',
+    city: (document.getElementById('emp-city') || {}).value || '',
     phone: (document.getElementById('emp-phone') || {}).value || '',
     email: (document.getElementById('emp-email') || {}).value || '',
+    iibb: (document.getElementById('emp-iibb') || {}).value || '',
   };
 
   DB.saveCompanyRecord(updates);
