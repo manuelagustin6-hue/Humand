@@ -94,6 +94,7 @@ const MODULES = {
   empresas:        { title: 'Empresas',                      icon: 'fa-city',                   render: renderEmpresas },
   asientos:        { title: 'Asientos Automaticos',          icon: 'fa-magic',                  render: renderAsientos },
   aprobaciones:    { title: 'Aprobaciones',                  icon: 'fa-check-double',           render: renderAprobaciones },
+  vencimientos:    { title: 'Vencimientos Fiscales',         icon: 'fa-calendar-exclamation',   render: renderVencimientos },
   reportes:        { title: 'Reportes',                      icon: 'fa-chart-bar',              render: renderReportes },
   audit_log:       { title: 'Registro de Auditoría',         icon: 'fa-history',                render: renderAuditLog },
   usuarios:        { title: 'Usuarios',                      icon: 'fa-users',                  render: renderUsuarios },
@@ -249,18 +250,26 @@ function updateSidebarUserInfo() {
 // ---- NOTIFICATION BADGE & PANEL ----
 function updateNotifBadge() {
   try {
-    var ais = DB.getAll('approvalInstances');
-    var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
-    var count = ais.filter(function(ai) {
-      if (ai.status !== 'pending') return false;
-      var step = ai.steps && ai.steps[ai.current_step_index];
-      if (!step || step.status !== 'pending') return false;
-      if (!currentUser) return false;
-      return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
-    }).length;
+    var count = _countPendingApprovals() + _countFiscalAlerts();
     var badge = document.getElementById('notif-badge');
     if (badge) { badge.textContent = count > 9 ? '9+' : String(count); badge.style.display = count > 0 ? '' : 'none'; }
   } catch(e) {}
+}
+
+function _countPendingApprovals() {
+  var ais = DB.getAll('approvalInstances');
+  var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!currentUser) return 0;
+  return ais.filter(function(ai) {
+    if (ai.status !== 'pending') return false;
+    var step = ai.steps && ai.steps[ai.current_step_index];
+    if (!step || step.status !== 'pending') return false;
+    return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+  }).length;
+}
+
+function _countFiscalAlerts() {
+  try { return (typeof getFiscalAlerts === 'function') ? getFiscalAlerts().length : 0; } catch(e) { return 0; }
 }
 
 function toggleNotifPanel() {
@@ -292,37 +301,69 @@ function dismissNotifPanel() {
 }
 
 function buildNotifPanel() {
-  var ais = DB.getAll('approvalInstances');
-  var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
-  var docLabels = { purchase_order:'OC', supplier_invoice:'Factura Prov.', payment_order:'Orden de Pago', invoice:'Factura' };
-  var docCollections = { purchase_order:'purchaseOrders', supplier_invoice:'supplierInvoices', payment_order:'paymentOrders', invoice:'invoices' };
-  var items = ais.filter(function(ai) {
-    if (ai.status !== 'pending') return false;
-    var step = ai.steps && ai.steps[ai.current_step_index];
-    if (!step || step.status !== 'pending') return false;
-    if (!currentUser) return false;
-    return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
-  });
+  var totalAprov = _countPendingApprovals();
+  var fiscalAlerts = (typeof getFiscalAlerts === 'function') ? getFiscalAlerts() : [];
+  var totalCount   = totalAprov + fiscalAlerts.length;
+
   var header = '<div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center">' +
     '<span><i class="fas fa-bell text-warning" style="margin-right:6px"></i>Notificaciones</span>' +
-    (items.length ? '<span class="badge badge-red" style="font-size:10px">' + items.length + '</span>' : '') +
+    (totalCount ? '<span class="badge badge-red" style="font-size:10px">' + totalCount + '</span>' : '') +
     '</div>';
-  if (!items.length) {
-    return header + '<div style="padding:24px 16px;text-align:center;color:var(--text-muted);font-size:13px"><i class="fas fa-check-circle" style="color:var(--success);font-size:22px;display:block;margin-bottom:8px"></i>Sin aprobaciones pendientes</div>';
-  }
-  var rows = items.map(function(ai) {
-    var step = ai.steps[ai.current_step_index];
-    var stepName = (step && step.name) ? step.name : ('Paso ' + (ai.current_step_index + 1));
-    var typeLabel = docLabels[ai.doc_type] || ai.doc_type;
-    var coll = docCollections[ai.doc_type];
-    var doc = coll ? DB.getById(coll, ai.doc_id) : null;
-    var docNum = doc ? (doc.number || ai.doc_id) : ai.doc_id;
-    return '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--primary-muted)\'" onmouseout="this.style.background=\'\'">' +
-      '<div style="font-size:12px;font-weight:600"><i class="fas fa-clock text-warning" style="margin-right:6px"></i>' + typeLabel + ': ' + docNum + '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Paso: ' + stepName + '</div>' +
+
+  var sections = '';
+
+  // ── Fiscal alerts ──
+  if (fiscalAlerts.length) {
+    sections += '<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Vencimientos Fiscales</div>';
+    sections += fiscalAlerts.map(function(fc) {
+      var badge = (typeof fiscalAlertBadge === 'function') ? fiscalAlertBadge(fc) : { label: fc.due_date, color: '#6b7280', bg: '#f9fafb' };
+      var typCfg = (window.FISCAL_TYPE_CFG && window.FISCAL_TYPE_CFG[fc.type]) || { label: fc.type || '', color: '#6b7280', icon: 'fa-calendar-alt' };
+      return '<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">' +
+        '<i class="fas ' + typCfg.icon + '" style="color:' + typCfg.color + ';width:16px;text-align:center"></i>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onclick="dismissNotifPanel();navigate(\'vencimientos\')" style="cursor:pointer">' + escapeHtml(fc.name) + '</div>' +
+          '<div style="font-size:11px;color:' + badge.color + ';font-weight:600">' + badge.label + ' — ' + fmtDate(fc.due_date) + '</div>' +
+        '</div>' +
+        '<button class="btn btn-sm" style="color:#10b981;padding:2px 6px;flex-shrink:0" onclick="dismissFiscalAlert(\'' + fc.id + '\')" title="Marcar cumplido"><i class="fas fa-check"></i></button>' +
       '</div>';
-  }).join('');
-  return header + rows + '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:8px 16px;text-align:center;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600">Ver todas las aprobaciones →</div>';
+    }).join('');
+    sections += '<div onclick="dismissNotifPanel();navigate(\'vencimientos\')" style="padding:6px 16px;text-align:center;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600;border-bottom:1px solid var(--border)">Ver calendario fiscal →</div>';
+  }
+
+  // ── Pending approvals ──
+  if (totalAprov) {
+    var ais = DB.getAll('approvalInstances');
+    var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+    var docLabels = { purchase_order:'OC', supplier_invoice:'Factura Prov.', payment_order:'Orden de Pago', invoice:'Factura' };
+    var docCollections = { purchase_order:'purchaseOrders', supplier_invoice:'supplierInvoices', payment_order:'paymentOrders', invoice:'invoices' };
+    var items = ais.filter(function(ai) {
+      if (ai.status !== 'pending') return false;
+      var step = ai.steps && ai.steps[ai.current_step_index];
+      if (!step || step.status !== 'pending') return false;
+      if (!currentUser) return false;
+      return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+    });
+    sections += '<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Aprobaciones Pendientes</div>';
+    sections += items.map(function(ai) {
+      var step = ai.steps[ai.current_step_index];
+      var stepName = (step && step.name) ? step.name : ('Paso ' + (ai.current_step_index + 1));
+      var typeLabel = docLabels[ai.doc_type] || ai.doc_type;
+      var coll = docCollections[ai.doc_type];
+      var doc = coll ? DB.getById(coll, ai.doc_id) : null;
+      var docNum = doc ? (doc.number || ai.doc_id) : ai.doc_id;
+      return '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--primary-muted)\'" onmouseout="this.style.background=\'\'">' +
+        '<div style="font-size:12px;font-weight:600"><i class="fas fa-clock text-warning" style="margin-right:6px"></i>' + typeLabel + ': ' + docNum + '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Paso: ' + stepName + '</div>' +
+        '</div>';
+    }).join('');
+    sections += '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:6px 16px;text-align:center;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600">Ver todas las aprobaciones →</div>';
+  }
+
+  if (!totalCount) {
+    sections = '<div style="padding:24px 16px;text-align:center;color:var(--text-muted);font-size:13px"><i class="fas fa-check-circle" style="color:var(--success);font-size:22px;display:block;margin-bottom:8px"></i>Todo al día — sin alertas pendientes</div>';
+  }
+
+  return header + sections;
 }
 
 // ---- COMPANY SELECTOR (kept for backward compat; topbar selector removed) ----
