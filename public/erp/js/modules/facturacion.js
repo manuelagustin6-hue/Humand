@@ -562,10 +562,24 @@ function deleteInvoice(id) {
 }
 
 function exportInvoices() {
-  const invs = DB.getAll('invoices');
+  let invs = DB.getAll('invoices');
+  const f = window._invFilters || {};
+  if (f.q) invs = invs.filter(i => (i.number||'').toLowerCase().includes(f.q) || (i.client_name||'').toLowerCase().includes(f.q));
+  if (f.status) invs = invs.filter(i => i.status === f.status);
+  if (f.project) invs = invs.filter(i => i.project_id === f.project);
+  if (f.period) { const r = _periodRange(f.period); invs = invs.filter(i => i.date && i.date >= r.from && i.date <= r.to); }
   const projects = DB.getAll('projects');
+  const ST = { draft:'Borrador', sent:'Enviada', paid:'Cobrada', overdue:'Vencida', cancelled:'Anulada' };
   exportXLSX('facturas.xlsx',
-    ['Numero','Tipo','Origen','Proyecto','Cliente','CUIT','Fecha','Vencimiento','Subtotal','IVA','Total','Estado'],
-    invs.map(i => [i.number, i.type, i.source||'manual', projects.find(p=>p.id===i.project_id)?.name||'', i.client_name, i.client_cuit, i.date, i.due_date, i.subtotal, i.tax, i.total, i.status])
+    ['N° Factura','Tipo','Proyecto','Cliente','CUIT','Fecha','Vencimiento','Subtotal','IVA','Total','Estado'],
+    invs.map(i => [
+      i.number, i.type || '',
+      projects.find(p=>p.id===i.project_id)?.name || '',
+      i.client_name || '', i.client_cuit || '',
+      i.date, i.due_date,
+      i.subtotal || 0, i.tax || 0, i.total || 0,
+      ST[i.status] || i.status
+    ])
   );
+  toast(invs.length + ' facturas exportadas', 'success');
 }

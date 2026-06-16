@@ -1751,18 +1751,28 @@ function calcSiImpTotalsHtml(lines, netoOverride) {
 }
 
 function exportSIs() {
-  const sis = DB.getAll('supplierInvoices');
   const suppliers = DB.getAll('suppliers');
+  let sis = DB.getAll('supplierInvoices');
+  const f = window._siFilters || {};
+  if (f.q) sis = sis.filter(si => { const sup = suppliers.find(s=>s.id===si.supplier_id); return (si.number||'').toLowerCase().includes(f.q) || (sup && sup.name.toLowerCase().includes(f.q)); });
+  if (f.status) sis = sis.filter(si => si.status === f.status);
+  if (f.period) { const r = _periodRange(f.period); sis = sis.filter(si => si.date && si.date >= r.from && si.date <= r.to); }
   const projects = DB.getAll('projects');
   const pos = DB.getAll('purchaseOrders');
+  const companies = DB.getAllCompanies();
+  const ST = { pending:'Pendiente', paid:'Pagada', cancelled:'Anulada' };
   exportXLSX('facturas_proveedores.xlsx',
-    ['N° Factura', 'OC Origen', 'Proveedor', 'Proyecto', 'Fecha', 'Vencimiento', 'Subtotal', 'IVA', 'Total', 'Estado'],
+    ['N° Factura','Tipo Comp.','OC Origen','Proveedor','Proyecto','Razón Social','Fecha','Vencimiento','Subtotal','IVA','Total','Estado'],
     sis.map(si => [
-      si.number,
+      si.number, si.tipo_comprobante || '',
       pos.find(p=>p.id===si.po_id)?.number || '',
       suppliers.find(s=>s.id===si.supplier_id)?.name || '',
       projects.find(p=>p.id===si.project_id)?.name || '',
-      si.date, si.due_date, si.subtotal, si.tax, si.total, si.status,
+      companies.find(c=>c.id===si.company_id)?.name || '',
+      si.date, si.due_date,
+      si.subtotal || 0, si.tax || 0, si.total || 0,
+      ST[si.status] || si.status
     ])
   );
+  toast(sis.length + ' facturas exportadas', 'success');
 }
