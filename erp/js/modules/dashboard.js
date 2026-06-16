@@ -10,6 +10,401 @@ function renderDashboard() {
   const actualCosts   = DB.getAll('actualCosts');
   const lics          = DB.getAll('licitaciones');
   const partes        = DB.getAll('partesDiarios');
+  const bankAccounts  = DB.getAll('bankAccounts');
+  const treasuryTx    = DB.getAll('treasuryTx');
+  const paymentOrders = DB.getAll('paymentOrders');
+  const fiscalCal     = DB.getAll('fiscalCalendar');
+
+  const today = todayStr();
+  const thisMonth = today.slice(0, 7);
+  const currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+
+  // ── Obra KPIs ──
+  const totalBudget      = projects.reduce((s, p) => s + (p.budget || 0), 0);
+  const activeProjects   = projects.filter(p => p.status === 'active').length;
+  const totalBilled      = invoices.reduce((s, i) => s + (i.total || 0), 0);
+  const totalCollected   = collections.reduce((s, c) => s + (c.amount || 0), 0);
+  const pendingCollection = totalBilled - totalCollected;
+  const totalPOs         = pos.reduce((s, p) => s + (p.total || 0), 0);
+  const overdueInvoices  = invoices.filter(i => i.status === 'overdue').length;
+  const tasksInProgress  = tasks.filter(t => t.status === 'in_progress').length;
+  const totalActual      = actualCosts.reduce((s, a) => s + (a.amount || 0), 0);
+  const grossMargin      = totalBilled - totalActual;
+  const marginPct        = totalBilled > 0 ? (grossMargin / totalBilled * 100) : 0;
+
+  // ── Tesorería KPIs ──
+  function _accBalance(acc) {
+    const txs = treasuryTx.filter(t => t.account_id === acc.id);
+    const income  = txs.filter(t => t.type === 'income' || t.type === 'ingreso').reduce((s,t) => s+(t.amount||0),0);
+    const expense = txs.filter(t => t.type === 'expense'|| t.type === 'egreso').reduce((s,t) => s+(t.amount||0),0);
+    return (acc.initial_balance||0) + income - expense;
+  }
+  const accWithBal = bankAccounts.map(a => ({ ...a, bal: _accBalance(a) }));
+  const totalARS = accWithBal.filter(a => (a.currency||'ARS')==='ARS').reduce((s,a)=>s+a.bal,0);
+  const totalUSD = accWithBal.filter(a => a.currency==='USD').reduce((s,a)=>s+a.bal,0);
+  const poThisMonth = paymentOrders.filter(po => po.date && po.date.startsWith(thisMonth));
+  const paidThisMonth = poThisMonth.reduce((s,po) => s+(po.total||0),0);
+  const pendingPO = paymentOrders.filter(po => po.status === 'pending').reduce((s,po)=>s+(po.total||0),0);
+
+  // ── Vencimientos próximos (≤7 días) ──
+  const in7 = new Date(); in7.setDate(in7.getDate()+7);
+  const in7str = in7.toISOString().slice(0,10);
+  const upcomingFiscal = fiscalCal.filter(f => !f.dismissed && !f.done && f.due_date >= today && f.due_date <= in7str)
+    .sort((a,b)=>a.due_date.localeCompare(b.due_date));
+  const overdueFiscal = fiscalCal.filter(f => !f.dismissed && !f.done && f.due_date < today)
+    .sort((a,b)=>a.due_date.localeCompare(b.due_date));
+
+  // ── Cuentas a cobrar por cliente ──
+  const byClient = {};
+  invoices.filter(i => i.status !== 'paid').forEach(i => {
+    const k = i.client_name || 'Sin cliente';
+    if (!byClient[k]) byClient[k] = { name: k, billed: 0, collected: 0 };
+    byClient[k].billed += (i.total||0);
+  });
+  collections.forEach(c => {
+    const inv = invoices.find(i => i.id === c.invoice_id);
+    const k = (inv && inv.client_name) ? inv.client_name : null;
+    if (k && byClient[k]) byClient[k].collected += (c.amount||0);
+  });
+  const clientBalances = Object.values(byClient)
+    .map(c => ({ ...c, pending: c.billed - c.collected }))
+    .filter(c => c.pending > 0)
+    .sort((a,b) => b.pending - a.pending);
+
+  // ── Aprobaciones genéricas pendientes ──
+  const pendingApprovals = approvalInsts.filter(function(ai) {
+    if (ai.status !== 'pending') return false;
+    const step = ai.steps && ai.steps[ai.current_step_index];
+    if (!step || step.status !== 'pending') return false;
+    if (!currentUser) return true;
+    return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+  }).length;
+
+  // ── Licitaciones KPIs ──
+  const licActivas      = lics.filter(l => l.status === 'active').length;
+  const licCerradas     = lics.filter(l => l.status === 'closed').length;
+  const licEnRevision   = lics.filter(l => l.status === 'en_revision').length;
+  const licAdjudicadas  = lics.filter(l => l.status === 'awarded').length;
+
+  const licPendingMine = lics.filter(function(lic) {
+    if (lic.status !== 'closed') return false;
+    if (!lic.winner_cot_id) return false;
+    const steps = ['jefe_compras', 'gerencia', 'direccion'];
+    const approvals = lic.approvals || [];
+    for (var i = 0; i < steps.length; i++) {
+      const key = steps[i];
+      const done = approvals.find(function(a) { return a.key === key; });
+      if (!done) {
+        if (!currentUser) return false;
+        const assigned = lic.approvers && lic.approvers[key];
+        if (assigned) {
+          const ids = assigned.userIds || (assigned.userId ? [assigned.userId] : []);
+          return ids.length === 0 || ids.indexOf(currentUser.id) !== -1;
+        }
+        const cfg = (typeof _licGetAprobConfig === 'function') ? _licGetAprobConfig() : {};
+        const cfgIds = (cfg[key] && cfg[key].user_ids) ? cfg[key].user_ids : [];
+        return cfgIds.length === 0 || cfgIds.indexOf(currentUser.id) !== -1;
+      }
+      if (!done.approved) break;
+    }
+    return false;
+  }).length;
+
+  // ── Partes Diarios ──
+  const partesHoy = partes.filter(p => p.date === today);
+  const workersHoy = partesHoy.reduce((s, p) => s + (p.personal || []).reduce((ss, per) => ss + (per.cantidad || 0), 0), 0);
+
+  document.getElementById('content').innerHTML = `
+<div class="page-header">
+  <div>
+    <div class="page-title">Dashboard</div>
+    <div class="page-subtitle">Resumen ejecutivo del portafolio de obras</div>
+  </div>
+  <div class="page-actions">
+    <span style="font-size:12px;color:var(--text-muted)"><i class="fas fa-clock"></i> ${fmtDatetime(new Date().toISOString())}</span>
+    <button class="btn btn-secondary btn-sm" onclick="renderDashboard()"><i class="fas fa-sync-alt"></i> Actualizar</button>
+  </div>
+</div>
+
+<!-- OBRA KPIs -->
+<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:8px">
+  <i class="fas fa-building"></i> Obras y Financiero
+</div>
+<div class="stats-grid">
+  <div class="stat-card" onclick="navigate('projects')" style="cursor:pointer">
+    <div class="stat-icon blue"><i class="fas fa-building"></i></div>
+    <div>
+      <div class="stat-value">${projects.length}</div>
+      <div class="stat-label">Proyectos Totales</div>
+      <div class="stat-delta up"><i class="fas fa-circle"></i> ${activeProjects} activos</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon green"><i class="fas fa-dollar-sign"></i></div>
+    <div>
+      <div class="stat-value">${fmtMoney(totalBudget)}</div>
+      <div class="stat-label">Presupuesto Total</div>
+      <div class="stat-delta up"><i class="fas fa-arrow-up"></i> Portafolio activo</div>
+    </div>
+  </div>
+  <div class="stat-card" onclick="navigate('facturacion')" style="cursor:pointer">
+    <div class="stat-icon cyan"><i class="fas fa-file-invoice-dollar"></i></div>
+    <div>
+      <div class="stat-value">${fmtMoney(totalBilled)}</div>
+      <div class="stat-label">Facturado Total</div>
+      <div class="stat-delta ${overdueInvoices > 0 ? 'down' : 'up'}">
+        ${overdueInvoices > 0 ? `<i class="fas fa-exclamation-circle"></i> ${overdueInvoices} vencidas` : '<i class="fas fa-check-circle"></i> Al día'}
+      </div>
+    </div>
+  </div>
+  <div class="stat-card" onclick="navigate('cobranzas')" style="cursor:pointer">
+    <div class="stat-icon ${pendingCollection > 0 ? 'yellow' : 'green'}"><i class="fas fa-hand-holding-dollar"></i></div>
+    <div>
+      <div class="stat-value">${fmtMoney(pendingCollection)}</div>
+      <div class="stat-label">Pendiente de Cobro</div>
+      <div class="stat-delta ${pendingCollection > 0 ? 'down' : 'up'}">
+        ${pendingCollection > 0 ? `<i class="fas fa-clock"></i> ${fmtMoney(totalCollected)} cobrado` : '<i class="fas fa-check-circle"></i> Todo cobrado'}
+      </div>
+    </div>
+  </div>
+  <div class="stat-card" onclick="navigate('compras')" style="cursor:pointer">
+    <div class="stat-icon yellow"><i class="fas fa-shopping-cart"></i></div>
+    <div>
+      <div class="stat-value">${fmtMoney(totalPOs)}</div>
+      <div class="stat-label">Órdenes de Compra</div>
+      <div class="stat-delta up"><i class="fas fa-file"></i> ${pos.length} OC emitidas</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon ${marginPct >= 15 ? 'green' : marginPct >= 0 ? 'yellow' : 'red'}"><i class="fas fa-percentage"></i></div>
+    <div>
+      <div class="stat-value ${marginPct >= 0 ? 'text-success' : 'text-danger'}">${fmtPct(marginPct)}</div>
+      <div class="stat-label">Margen Bruto</div>
+      <div class="stat-delta ${marginPct >= 0 ? 'up' : 'down'}">${fmtMoney(grossMargin)}</div>
+    </div>
+  </div>
+  <div class="stat-card" onclick="navigate('aprobaciones')" style="cursor:pointer">
+    <div class="stat-icon ${pendingApprovals > 0 ? 'red' : 'green'}"><i class="fas fa-check-double"></i></div>
+    <div>
+      <div class="stat-value">${pendingApprovals}</div>
+      <div class="stat-label">Aprobaciones Pendientes</div>
+      <div class="stat-delta ${pendingApprovals > 0 ? 'down' : 'up'}">
+        ${pendingApprovals > 0 ? '<i class="fas fa-clock"></i> Requieren atención' : '<i class="fas fa-check-circle"></i> Al día'}
+      </div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon blue"><i class="fas fa-tasks"></i></div>
+    <div>
+      <div class="stat-value">${tasksInProgress}</div>
+      <div class="stat-label">Tareas en Ejecución</div>
+      <div class="stat-delta up"><i class="fas fa-stream"></i> ${tasks.filter(t=>t.status==='completed').length} completadas</div>
+    </div>
+  </div>
+</div>
+
+<!-- TESORERÍA KPIs -->
+<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin:16px 0 8px">
+  <i class="fas fa-landmark"></i> Tesorería
+</div>
+<div class="stats-grid">
+  <div class="stat-card" onclick="navigate('cuentas_banco')" style="cursor:pointer">
+    <div class="stat-icon green"><i class="fas fa-dollar-sign"></i></div>
+    <div>
+      <div class="stat-value">${fmtMoney(totalARS)}</div>
+      <div class="stat-label">Saldo Total ARS</div>
+      <div class="stat-delta up"><i class="fas fa-university"></i> ${accWithBal.filter(a=>(a.currency||'ARS')==='ARS').length} cuenta(s)</div>
+    </div>
+  </div>
+  ${totalUSD > 0 ? `<div class="stat-card" onclick="navigate('cuentas_banco')" style="cursor:pointer">
+    <div class="stat-icon cyan"><i class="fas fa-dollar-sign"></i></div>
+    <div>
+      <div class="stat-value">US$ ${fmtNum(Math.round(totalUSD))}</div>
+      <div class="stat-label">Saldo Total USD</div>
+      <div class="stat-delta up"><i class="fas fa-university"></i> ${accWithBal.filter(a=>a.currency==='USD').length} cuenta(s)</div>
+    </div>
+  </div>` : ''}
+  <div class="stat-card" onclick="navigate('ordenes_pago')" style="cursor:pointer">
+    <div class="stat-icon red"><i class="fas fa-file-invoice"></i></div>
+    <div>
+      <div class="stat-value">${fmtMoney(paidThisMonth)}</div>
+      <div class="stat-label">Pagado Este Mes</div>
+      <div class="stat-delta down"><i class="fas fa-calendar"></i> ${poThisMonth.length} órdenes de pago</div>
+    </div>
+  </div>
+  <div class="stat-card" onclick="navigate('ordenes_pago')" style="cursor:pointer">
+    <div class="stat-icon ${pendingPO > 0 ? 'yellow' : 'green'}"><i class="fas fa-hourglass-half"></i></div>
+    <div>
+      <div class="stat-value">${fmtMoney(pendingPO)}</div>
+      <div class="stat-label">Órdenes de Pago Pendientes</div>
+      <div class="stat-delta ${pendingPO > 0 ? 'down' : 'up'}">
+        ${pendingPO > 0 ? `<i class="fas fa-clock"></i> ${paymentOrders.filter(po=>po.status==='pending').length} sin aprobar` : '<i class="fas fa-check-circle"></i> Al día'}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTS + CUENTAS A COBRAR + VENCIMIENTOS -->
+<div class="grid-3 mb-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-chart-line text-primary"></i> Facturación vs Cobros</span>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrap"><canvas id="chart-cashflow"></canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-users text-primary"></i> Cuentas a Cobrar</span>
+      <button class="btn btn-sm btn-secondary" onclick="navigate('cuentas_cli')"><i class="fas fa-arrow-right"></i></button>
+    </div>
+    <div class="card-body" style="padding:0">
+      ${clientBalances.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Cliente</th><th class="number-cell">Facturado</th><th class="number-cell">Pendiente</th></tr></thead>
+        <tbody>${clientBalances.slice(0,6).map(c=>`<tr>
+          <td style="font-size:12px;font-weight:600">${escapeHtml(c.name)}</td>
+          <td class="number-cell" style="font-size:12px">${fmtMoney(c.billed)}</td>
+          <td class="number-cell" style="font-size:12px;color:var(--danger);font-weight:700">${fmtMoney(c.pending)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<div class="empty-state" style="padding:24px"><i class="fas fa-check-circle" style="color:var(--success);opacity:1"></i><p>Sin saldos pendientes</p></div>'}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-calendar-exclamation text-warning"></i> Vencimientos Fiscales</span>
+      <button class="btn btn-sm btn-secondary" onclick="navigate('vencimientos')"><i class="fas fa-arrow-right"></i></button>
+    </div>
+    <div class="card-body" style="padding:0">
+      ${(overdueFiscal.length + upcomingFiscal.length) === 0
+        ? '<div class="empty-state" style="padding:24px"><i class="fas fa-check-circle" style="color:var(--success);opacity:1"></i><p>Sin vencimientos próximos</p></div>'
+        : `<div style="padding:4px 0">
+          ${overdueFiscal.map(f=>`<div style="display:flex;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer" onclick="navigate('vencimientos')">
+            <i class="fas fa-exclamation-circle text-danger" style="flex-shrink:0"></i>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</div>
+              <div style="font-size:11px;color:var(--danger)">Vencido: ${fmtDate(f.due_date)}</div>
+            </div>
+          </div>`).join('')}
+          ${upcomingFiscal.map(f=>{
+            const days = Math.round((new Date(f.due_date)-new Date(today))/(86400000));
+            const color = days<=1?'var(--danger)':days<=3?'var(--warning)':'var(--text-muted)';
+            return `<div style="display:flex;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer" onclick="navigate('vencimientos')">
+              <i class="fas fa-clock" style="color:${color};flex-shrink:0"></i>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</div>
+                <div style="font-size:11px;color:${color}">${days===0?'Hoy':days===1?'Mañana':'En '+days+' días'} — ${fmtDate(f.due_date)}</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`}
+    </div>
+  </div>
+</div>
+
+<!-- CUENTAS BANCARIAS + ALERTAS -->
+<div class="grid-2" style="margin-top:0">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-landmark text-primary"></i> Cuentas Bancarias y Cajas</span>
+      <button class="btn btn-sm btn-secondary" onclick="navigate('cuentas_banco')"><i class="fas fa-arrow-right"></i> Ver todas</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      ${bankAccounts.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Cuenta</th><th>Banco</th><th>Moneda</th><th class="number-cell">Saldo</th></tr></thead>
+        <tbody>${accWithBal.map(a=>`<tr>
+          <td style="font-size:12px;font-weight:600">${escapeHtml(a.name||a.bank)}</td>
+          <td style="font-size:12px;color:var(--text-muted)">${escapeHtml(a.bank||'')}</td>
+          <td><span style="font-size:11px;font-weight:600">${a.currency||'ARS'}</span></td>
+          <td class="number-cell" style="font-weight:700;color:${a.bal>=0?'var(--success)':'var(--danger)'}">${a.currency==='USD'?'US$ '+fmtNum(Math.round(a.bal)):fmtMoney(a.bal)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+      : '<div class="empty-state" style="padding:30px"><i class="fas fa-landmark"></i><p>Sin cuentas registradas</p><button class="btn btn-primary btn-sm" onclick="navigate(\'cuentas_banco\')">Agregar cuenta</button></div>'}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-bell text-warning"></i> Alertas y Pendientes</span>
+    </div>
+    <div class="card-body" style="padding:0">
+      ${buildAlerts(invoices, pos, tasks, lics)}
+    </div>
+  </div>
+</div>
+
+<!-- ESTADO DE OBRAS + LICITACIONES -->
+<div class="grid-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-building text-primary"></i> Estado de Obras</span>
+      <button class="btn btn-sm btn-secondary" onclick="navigate('projects')"><i class="fas fa-arrow-right"></i> Ver todos</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Proyecto</th><th>Avance</th><th>Estado</th><th>Presupuesto</th></tr></thead>
+          <tbody>
+            ${projects.length ? projects.map(p => {
+              const ptasks = DB.getAll('ganttTasks').filter(t => t.project_id === p.id);
+              const avg = ptasks.length ? Math.round(ptasks.reduce((s,t) => s + (t.progress||0), 0) / ptasks.length) : 0;
+              return `<tr>
+                <td><strong>${escapeHtml(p.name)}</strong><br><span class="text-muted" style="font-size:11px">${escapeHtml(p.client || '')}</span></td>
+                <td style="min-width:100px">
+                  <div class="progress-bar"><div class="progress-fill" style="width:${avg}%"></div></div>
+                  <span style="font-size:11px;color:var(--text-muted)">${avg}%</span>
+                </td>
+                <td>${statusBadge(p.status)}</td>
+                <td class="number-cell">${fmtMoney(p.budget)}</td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">Sin proyectos</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-gavel text-primary"></i> Licitaciones Activas</span>
+      <button class="btn btn-sm btn-secondary" onclick="navigate('licitaciones')"><i class="fas fa-arrow-right"></i> Ver todas</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      ${_dashLicitacionesTable(lics)}
+    </div>
+  </div>
+</div>
+
+<!-- FACTURAS RECIENTES -->
+<div class="card mt-3">
+  <div class="card-header">
+    <span class="card-title"><i class="fas fa-history text-primary"></i> Facturas Recientes</span>
+    <button class="btn btn-sm btn-secondary" onclick="navigate('facturacion')"><i class="fas fa-arrow-right"></i> Ver todas</button>
+  </div>
+  <div class="card-body" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Número</th><th>Proyecto</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Vencimiento</th></tr></thead>
+        <tbody>
+          ${invoices.slice(-5).reverse().map(inv => {
+            const proj = DB.getById('projects', inv.project_id);
+            return `<tr>
+              <td class="nowrap"><strong>${escapeHtml(inv.number)}</strong></td>
+              <td>${proj ? escapeHtml(proj.name) : '-'}</td>
+              <td>${escapeHtml(inv.client_name || '')}</td>
+              <td class="number-cell">${fmtMoney(inv.total)}</td>
+              <td>${statusBadge(inv.status)}</td>
+              <td class="${isOverdue(inv.due_date) && inv.status !== 'paid' ? 'text-danger fw-bold' : ''}">${fmtDate(inv.due_date)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+  `;
+
+  renderCashflowChart(invoices, collections);
+  renderBudgetChart(projects, actualCosts);
+}
 
   const today = todayStr();
   const currentUser = window.APP_STATE && window.APP_STATE.currentUser;

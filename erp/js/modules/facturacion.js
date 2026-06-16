@@ -54,6 +54,13 @@ function renderFacturacion() {
     <option value="">Todos los proyectos</option>
     ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
   </select>
+  <select class="form-control" style="width:160px" onchange="filterInvoices(undefined, undefined, undefined, this.value)">
+    <option value="">Todo el período</option>
+    <option value="month">Este mes</option>
+    <option value="prev_month">Mes anterior</option>
+    <option value="quarter">Este trimestre</option>
+    <option value="year">Este año</option>
+  </select>
 </div>
 
 <div class="card">
@@ -110,16 +117,18 @@ function buildInvoiceRows(invoices, projects, collections) {
   </tbody></table>`;
 }
 
-window._invFilters = { q: '', status: '', project: '' };
-function filterInvoices(q, status, project) {
+window._invFilters = { q: '', status: '', project: '', period: '' };
+function filterInvoices(q, status, project, period) {
   if (q !== undefined) window._invFilters.q = q.toLowerCase();
   if (status !== undefined) window._invFilters.status = status;
   if (project !== undefined) window._invFilters.project = project;
+  if (period !== undefined) window._invFilters.period = period;
   let invs = DB.getAll('invoices');
   const f = window._invFilters;
-  if (f.q) invs = invs.filter(i => i.number.toLowerCase().includes(f.q) || i.client_name.toLowerCase().includes(f.q));
+  if (f.q) invs = invs.filter(i => (i.number||'').toLowerCase().includes(f.q) || (i.client_name||'').toLowerCase().includes(f.q));
   if (f.status) invs = invs.filter(i => i.status === f.status);
   if (f.project) invs = invs.filter(i => i.project_id === f.project);
+  if (f.period) { const r = _periodRange(f.period); invs = invs.filter(i => i.date && i.date >= r.from && i.date <= r.to); }
   const wrap = document.getElementById('inv-table-wrap');
   if (wrap) wrap.innerHTML = buildInvoiceRows(invs, DB.getAll('projects'), DB.getAll('collections'));
 }

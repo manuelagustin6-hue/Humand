@@ -1049,6 +1049,13 @@ function renderSupplierInvoicesTab() {
     <option value="pending">Pendiente de pago</option>
     <option value="paid">Pagada</option>
   </select>
+  <select class="form-control" style="width:160px" onchange="filterSIs(undefined, undefined, this.value)">
+    <option value="">Todo el período</option>
+    <option value="month">Este mes</option>
+    <option value="prev_month">Mes anterior</option>
+    <option value="quarter">Este trimestre</option>
+    <option value="year">Este año</option>
+  </select>
   <button class="btn btn-secondary" onclick="exportSIs()"><i class="fas fa-download"></i> Exportar</button>
   <button class="btn btn-primary" onclick="openSIForm()"><i class="fas fa-plus"></i> Nueva Factura</button>
 </div>
@@ -1104,18 +1111,20 @@ function buildSITable(sis, suppliers, projects, pos) {
   }).join('') + '</tbody></table>';
 }
 
-window._siFilters = { q: '', status: '' };
-function filterSIs(q, status) {
+window._siFilters = { q: '', status: '', period: '' };
+function filterSIs(q, status, period) {
   if (q !== undefined) window._siFilters.q = q.toLowerCase();
   if (status !== undefined) window._siFilters.status = status;
+  if (period !== undefined) window._siFilters.period = period;
   let sis = DB.getAll('supplierInvoices');
   const suppliers = DB.getAll('suppliers');
   const f = window._siFilters;
   if (f.q) sis = sis.filter(si => {
     const sup = suppliers.find(s => s.id === si.supplier_id);
-    return si.number.toLowerCase().includes(f.q) || (sup && sup.name.toLowerCase().includes(f.q));
+    return (si.number||'').toLowerCase().includes(f.q) || (sup && sup.name.toLowerCase().includes(f.q));
   });
   if (f.status) sis = sis.filter(si => si.status === f.status);
+  if (f.period) { const r = _periodRange(f.period); sis = sis.filter(si => si.date && si.date >= r.from && si.date <= r.to); }
   const wrap = document.getElementById('si-table-wrap');
   if (wrap) wrap.innerHTML = buildSITable(sis, suppliers, DB.getAll('projects'), DB.getAll('purchaseOrders'));
 }
