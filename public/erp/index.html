@@ -40,6 +40,33 @@
     Conectando con el servidor…
   </div>
 </div>
+<!-- ===== PASSWORD RECOVERY SCREEN ===== -->
+<div id="recovery-screen" style="position:fixed;inset:0;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px">
+  <div style="background:#ffffff;border-radius:20px;padding:40px 36px;width:420px;max-width:100%;box-shadow:0 24px 64px rgba(0,0,0,.45)">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:0 8px 20px rgba(37,99,235,.35)">
+        <i class="fas fa-key" style="font-size:26px;color:#fff"></i>
+      </div>
+      <div style="font-size:20px;font-weight:700;color:#0f172a">Nueva contraseña</div>
+      <div style="font-size:13px;color:#64748b;margin-top:4px">Ingresá tu nueva contraseña para continuar</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Nueva contraseña</label>
+      <input id="recovery-pw1" type="password" class="form-control" placeholder="Mínimo 6 caracteres"
+             onkeydown="if(event.key==='Enter')document.getElementById('recovery-pw2').focus()">
+    </div>
+    <div style="margin-bottom:6px">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Repetir contraseña</label>
+      <input id="recovery-pw2" type="password" class="form-control" placeholder="••••••••"
+             onkeydown="if(event.key==='Enter')doSetRecoveryPassword()">
+    </div>
+    <div id="recovery-error" style="color:#ef4444;font-size:12px;min-height:20px;margin-bottom:10px"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px" onclick="doSetRecoveryPassword()">
+      <i class="fas fa-check"></i> Guardar contraseña
+    </button>
+  </div>
+</div>
+
 <!-- ===== LOGIN SCREEN ===== -->
 <div id="login-screen" style="position:fixed;inset:0;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px">
   <div style="background:#ffffff;border-radius:20px;padding:40px 36px;width:420px;max-width:100%;box-shadow:0 24px 64px rgba(0,0,0,.45)">
@@ -583,7 +610,7 @@
 <script src="js/modules/rrhh.js?v=1"></script>
 <script src="js/modules/licitaciones.js?v=11"></script>
 <script src="js/modules/conciliaciones.js?v=4"></script>
-<script src="js/app.js?v=37"></script>
+<script src="js/app.js?v=38"></script>
 
 <!-- Mobile FAB nav button — shows only on mobile when sidebar is closed -->
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">
