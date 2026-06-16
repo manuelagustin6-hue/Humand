@@ -67,6 +67,7 @@ const MODULES = {
   tesoreria:       { title: 'Operaciones',                   icon: 'fa-arrows-left-right',      render: renderTesoreria },
   cheques:         { title: 'Cheques',                       icon: 'fa-money-check',            render: renderCheques },
   conciliaciones:  { title: 'Conciliaciones Bancarias',      icon: 'fa-balance-scale',          render: renderConciliaciones },
+  inversiones:     { title: 'Inversiones',                   icon: 'fa-chart-line',             render: renderInversiones },
 
   // Contabilidad
   contabilidad:    { title: 'Contabilidad',                  icon: 'fa-book-open',              render: renderContabilidad },
