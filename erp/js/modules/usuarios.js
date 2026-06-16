@@ -747,6 +747,10 @@ function doLogin() {
 
 // Called after a successful Supabase signIn
 function _afterSupaLogin(session, email) {
+  // CRITICAL: set _SUPA.session so all subsequent DB operations use the JWT
+  // Without this, upserts fire with the anon key → RLS rejects them → data lost on refresh
+  _SUPA.session = session;
+
   var meta = (session.user && session.user.user_metadata) || {};
   var companyId = meta.company_id || window.APP_STATE.activeCompany || 'comp-001';
   DB.setCompany(companyId);
