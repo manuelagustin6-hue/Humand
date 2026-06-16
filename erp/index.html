@@ -453,8 +453,19 @@
       </ul>
     </nav>
 
+    <!-- Company switcher -->
+    <div id="company-switcher-wrap" style="padding:8px 12px 4px">
+      <div style="font-size:9px;font-weight:700;color:#64748b;letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px">Empresa activa</div>
+      <div style="position:relative">
+        <select id="company-switcher" onchange="setActiveCompany(this.value)"
+          style="width:100%;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:7px 28px 7px 10px;font-size:12px;font-weight:600;cursor:pointer;appearance:none;-webkit-appearance:none;outline:none">
+        </select>
+        <i class="fas fa-chevron-down" style="position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:9px;color:#64748b;pointer-events:none"></i>
+      </div>
+    </div>
+
     <!-- Sync status indicator -->
-    <div style="padding:6px 16px 2px;text-align:center">
+    <div style="padding:2px 16px 2px;text-align:center">
       <span id="sync-status" style="font-size:10px;color:#64748b;font-weight:500;letter-spacing:.3px">○ Conectando…</span>
     </div>
 
@@ -549,7 +560,7 @@
 <script src="js/modules/ordenes_pago.js?v=17"></script>
 <script src="js/modules/retenciones.js?v=9"></script>
 <script src="js/modules/indices.js?v=7"></script>
-<script src="js/modules/empresas.js?v=2"></script>
+<script src="js/modules/empresas.js?v=3"></script>
 <script src="js/modules/asientos.js?v=5"></script>
 <script src="js/modules/aprobaciones.js?v=5"></script>
 <script src="js/modules/contratos.js?v=9"></script>
@@ -557,7 +568,7 @@
 <script src="js/modules/parte_diario.js?v=1"></script>
 <script src="js/modules/reportes.js?v=6"></script>
 <script src="js/modules/usuarios.js?v=21"></script>
-<script src="js/modules/ajustes.js?v=9"></script>
+<script src="js/modules/ajustes.js?v=10"></script>
 <script src="js/modules/nuevos.js?v=7"></script>
 <script src="js/modules/cuentas.js?v=5"></script>
 <script src="js/modules/bancos.js?v=1"></script>
@@ -572,7 +583,7 @@
 <script src="js/modules/rrhh.js?v=1"></script>
 <script src="js/modules/licitaciones.js?v=11"></script>
 <script src="js/modules/conciliaciones.js?v=4"></script>
-<script src="js/app.js?v=36"></script>
+<script src="js/app.js?v=37"></script>
 
 <!-- Mobile FAB nav button — shows only on mobile when sidebar is closed -->
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">

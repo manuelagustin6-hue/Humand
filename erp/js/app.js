@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-12-v6';
+var APP_VERSION = '2026-06-16-v7';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -366,11 +366,24 @@ function buildNotifPanel() {
   return header + sections;
 }
 
-// ---- COMPANY SELECTOR (kept for backward compat; topbar selector removed) ----
-function populateCompanySelector() {}
+// ---- COMPANY SELECTOR ----
+function populateCompanySelector() {
+  var sel = document.getElementById('company-switcher');
+  if (!sel) return;
+  var companies = DB.getAllCompanies();
+  var activeId  = window.APP_STATE.activeCompany || 'comp-001';
+  var flags = { AR: '🇦🇷', UY: '🇺🇾', US: '🇺🇸', CL: '🇨🇱', BR: '🇧🇷' };
+  sel.innerHTML = companies.map(function(c) {
+    var flag = flags[c.country] || '🏢';
+    var label = flag + ' ' + (c.legalName || c.name);
+    return '<option value="' + c.id + '"' + (c.id === activeId ? ' selected' : '') + '>' + label + '</option>';
+  }).join('');
+  // Hide the widget if there's only one company
+  var wrap = document.getElementById('company-switcher-wrap');
+  if (wrap) wrap.style.display = companies.length <= 1 ? 'none' : '';
+}
 
 function setActiveCompany(id) {
-  // id === '' means "Todas las empresas" (consolidated view)
   if (id !== '') {
     var companies = DB.getAllCompanies();
     var company = companies.find(function(c) { return c.id === id; });
@@ -379,6 +392,7 @@ function setActiveCompany(id) {
   }
   window.APP_STATE.activeCompany = id;
   localStorage.setItem('erp_active_company', id);
+  populateCompanySelector();
   populateProjectSelector();
   if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
 }
