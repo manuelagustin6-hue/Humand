@@ -373,14 +373,15 @@ function populateCompanySelector() {
   var companies = DB.getAllCompanies();
   var activeId  = window.APP_STATE.activeCompany || 'comp-001';
   var flags = { AR: '🇦🇷', UY: '🇺🇾', US: '🇺🇸', CL: '🇨🇱', BR: '🇧🇷' };
-  sel.innerHTML = companies.map(function(c) {
+  var allOption = '<option value=""' + (activeId === '' ? ' selected' : '') + '>🌐 Todas las empresas</option>';
+  sel.innerHTML = allOption + companies.map(function(c) {
     var flag = flags[c.country] || '🏢';
     var label = flag + ' ' + (c.legalName || c.name);
     return '<option value="' + c.id + '"' + (c.id === activeId ? ' selected' : '') + '>' + label + '</option>';
   }).join('');
-  // Hide the widget if there's only one company
+  // Always show the widget (needed for switching)
   var wrap = document.getElementById('company-switcher-wrap');
-  if (wrap) wrap.style.display = companies.length <= 1 ? 'none' : '';
+  if (wrap) wrap.style.display = '';
 }
 
 function setActiveCompany(id) {
