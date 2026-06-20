@@ -774,7 +774,13 @@ const DB = {
 
   // ---- RESET ----
   resetToSeed() {
-    this.save(this.seed());
+    var data = this.seed();
+    this.save(data);
+    // Push seed to Supabase so it doesn't come back stale on next pull
+    this._pushAllToSupabase(data);
+    // Clear any pending writes (they were for data that no longer exists)
+    try { localStorage.removeItem(this.PENDING_KEY); localStorage.removeItem(this.PENDING_DEL_KEY); } catch(e) {}
+    _updateSyncBadge();
   },
 
   // ---- MULTI-COMPANY METHODS ----
@@ -782,7 +788,10 @@ const DB = {
     this._companyId = id;
     var existing = localStorage.getItem(this.KEY);
     if (!existing) {
-      this.init();
+      // New company: seed locally and push to Supabase
+      var data = this.seed();
+      this.save(data);
+      if (_SUPA.online) this._pushAllToSupabase(data);
     }
   },
 
