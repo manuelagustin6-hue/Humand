@@ -417,11 +417,20 @@ function setActiveCompany(id) {
     if (!company) return;
     DB.setCompany(id);
   }
-  window.APP_STATE.activeCompany = id;
-  localStorage.setItem('erp_active_company', id);
+  window.APP_STATE.activeCompany = id || DB._companyId;
+  try { localStorage.setItem('erp_active_company', id); } catch(e) {}
   populateCompanySelector();
   populateProjectSelector();
-  if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
+
+  // Re-pull data for the new company from Supabase so we get fresh data, not stale localStorage
+  if (_SUPA.online && id) {
+    DB.load().then(function() {
+      _updateSyncBadge();
+      if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
+    });
+  } else {
+    if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
+  }
 }
 
 // ---- DATA HEALTH CHECK ----
