@@ -124,8 +124,8 @@ var _SUPA = {
     return out;
   },
 
-  // Upsert a single record (fire-and-forget, but logs failures)
-  upsert: function(companyId, collection, record) {
+  // Upsert a single record. Calls onFail() if the request fails so the caller can queue a retry.
+  upsert: function(companyId, collection, record, onFail) {
     fetch(this.URL + '/rest/v1/erp_data', {
       method: 'POST',
       headers: this.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
@@ -138,9 +138,13 @@ var _SUPA = {
       if (!res.ok) {
         res.text().then(function(body) {
           console.warn('[Supa] upsert failed ' + res.status + ' (' + collection + '):', body);
+          if (onFail) onFail();
         });
       }
-    }).catch(function(e) { console.warn('[Supa] upsert network error:', e.message); });
+    }).catch(function(e) {
+      console.warn('[Supa] upsert network error:', e.message);
+      if (onFail) onFail();
+    });
   },
 
   // Delete a single record (fire-and-forget)
@@ -187,7 +191,8 @@ var _SUPA = {
 /* ===== DATABASE LAYER (localStorage + Supabase) ===== */
 const DB = {
   _companyId: 'comp-001',
-  GLOBAL_KEY: 'erp_global_v1',
+  GLOBAL_KEY:  'erp_global_v1',
+  PENDING_KEY: 'erp_pending_writes',
 
   get KEY() { return 'erp_company_' + (this._companyId || 'comp-001') + '_v1'; },
 
@@ -242,15 +247,21 @@ const DB = {
         : 'Error al guardar datos: ' + e.message;
       if (typeof toast === 'function') toast(msg, 'error');
     }
-    // Supabase: push ALL collections (used by bulk imports / full-object saves)
-    if (_SUPA.online) {
-      var cid = this._companyId;
-      Object.keys(data).forEach(function(col) {
-        if (Array.isArray(data[col]) && data[col].length) {
-          _SUPA.pushCollection(cid, col, data[col]).catch(function() {});
-        }
-      });
-    }
+    // NOTE: Supabase sync is handled per-record in insert/update/remove.
+    // Bulk push only happens explicitly via _pushAllToSupabase() (used in importData).
+  },
+
+  // Bulk-push every collection to Supabase (only called after a full import)
+  _pushAllToSupabase: function(data) {
+    if (!_SUPA.online) return;
+    var cid = this._companyId;
+    Object.keys(data).forEach(function(col) {
+      if (Array.isArray(data[col]) && data[col].length) {
+        _SUPA.pushCollection(cid, col, data[col]).catch(function(e) {
+          console.warn('[DB] pushAll failed for', col, e);
+        });
+      }
+    });
   },
 
   checkSnapshot() {
@@ -362,8 +373,12 @@ const DB = {
         localStorage.setItem(self.KEY, JSON.stringify(remoteData));
         _SUPA.online = true;
 
-        console.log('[DB] Supabase conectado ✓ (' + Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0) + ' registros)');
+        var totalRecords = Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0);
+        console.log('[DB] Supabase conectado ✓ (' + totalRecords + ' registros)');
         _SUPA.subscribe(cid, function(payload) { DB._onRealtimeChange(payload); });
+
+        // Retry any writes that failed during offline periods
+        setTimeout(function() { self.flushPending(); }, 500);
         return true;
       } catch(e) {
         console.warn('[DB] Supabase no disponible, usando localStorage:', e.message);
@@ -440,7 +455,12 @@ const DB = {
     var item = Object.assign({}, record, { id: record.id || uuid(), created_at: now() });
     db[collection].push(item);
     this.save(db);
-    if (_SUPA.online) _SUPA.upsert(this._companyId, collection, item);
+    var self = this;
+    if (_SUPA.online) {
+      _SUPA.upsert(this._companyId, collection, item, function() { self._addPending(collection, item); });
+    } else {
+      this._addPending(collection, item);
+    }
     if (collection !== 'auditLog' && typeof window.auditLog === 'function') window.auditLog('create', collection, item.id, item);
     return item;
   },
@@ -451,9 +471,15 @@ const DB = {
     if (idx === -1) return null;
     db[collection][idx] = Object.assign({}, db[collection][idx], updates, { updated_at: now() });
     this.save(db);
-    if (_SUPA.online) _SUPA.upsert(this._companyId, collection, db[collection][idx]);
+    var updated = db[collection][idx];
+    var self = this;
+    if (_SUPA.online) {
+      _SUPA.upsert(this._companyId, collection, updated, function() { self._addPending(collection, updated); });
+    } else {
+      this._addPending(collection, updated);
+    }
     if (collection !== 'auditLog' && typeof window.auditLog === 'function') window.auditLog('update', collection, id, updates);
-    return db[collection][idx];
+    return updated;
   },
 
   remove(collection, id) {
@@ -461,8 +487,96 @@ const DB = {
     var removed = (db[collection] || []).find(function(x) { return x.id === id; }) || null;
     db[collection] = (db[collection] || []).filter(function(x) { return x.id !== id; });
     this.save(db);
-    if (_SUPA.online) _SUPA.del(this._companyId, collection, id);
+    if (_SUPA.online) {
+      _SUPA.del(this._companyId, collection, id);
+    }
+    // Remove any pending upsert for this record (it was deleted)
+    this._removePending(collection, id);
     if (collection !== 'auditLog' && typeof window.auditLog === 'function') window.auditLog('delete', collection, id, removed);
+  },
+
+  // ---- PENDING WRITE QUEUE ----
+  // Records that failed to sync to Supabase are queued here and retried on reconnect.
+
+  _addPending: function(collection, record) {
+    try {
+      var pending = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]');
+      // Replace existing entry for the same record (latest state wins)
+      pending = pending.filter(function(p) { return !(p.col === collection && p.rec && p.rec.id === record.id); });
+      pending.push({ col: collection, rec: record });
+      if (pending.length > 1000) pending = pending.slice(-1000);
+      localStorage.setItem(this.PENDING_KEY, JSON.stringify(pending));
+    } catch(e) {}
+    _updateSyncBadge();
+  },
+
+  _removePending: function(collection, recordId) {
+    try {
+      var pending = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]');
+      pending = pending.filter(function(p) { return !(p.col === collection && p.rec && p.rec.id === recordId); });
+      localStorage.setItem(this.PENDING_KEY, JSON.stringify(pending));
+    } catch(e) {}
+    _updateSyncBadge();
+  },
+
+  getPendingCount: function() {
+    try { return JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]').length; } catch(e) { return 0; }
+  },
+
+  // Retry all pending writes. Called automatically after a successful pull.
+  flushPending: function() {
+    if (!_SUPA.online) return 0;
+    var pending;
+    try { pending = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]'); } catch(e) { return 0; }
+    if (!pending.length) return 0;
+    var self = this;
+    var cid  = this._companyId;
+    var count = pending.length;
+    // Clear the queue — failed items will be re-added via onFail
+    try { localStorage.removeItem(this.PENDING_KEY); } catch(e) {}
+    _updateSyncBadge();
+    pending.forEach(function(p) {
+      _SUPA.upsert(cid, p.col, p.rec, function() { self._addPending(p.col, p.rec); });
+    });
+    if (count > 0) console.log('[DB] Flushing ' + count + ' pending write(s)');
+    return count;
+  },
+
+  // Force a fresh pull from Supabase (user-triggered or after reconnect)
+  forcePull: async function() {
+    if (!_SUPA.online) {
+      if (typeof toast === 'function') toast('Sin conexión con Supabase', 'warning');
+      return false;
+    }
+    try {
+      var remoteData = await _SUPA.pull(this._companyId);
+      if (Object.keys(remoteData).length === 0) {
+        if (typeof toast === 'function') toast('No se encontraron datos en el servidor', 'info');
+        return false;
+      }
+      // Merge: remote wins on conflicts; keep local-only records
+      var localRaw  = localStorage.getItem(this.KEY);
+      var localData = localRaw ? JSON.parse(localRaw) : {};
+      Object.keys(localData).forEach(function(col) {
+        if (!Array.isArray(localData[col])) return;
+        var remoteArr = remoteData[col] || [];
+        var remoteIds = {};
+        remoteArr.forEach(function(r) { if (r.id) remoteIds[r.id] = true; });
+        var localOnly = localData[col].filter(function(r) { return r.id && !remoteIds[r.id]; });
+        if (localOnly.length) remoteData[col] = remoteArr.concat(localOnly);
+      });
+      localStorage.setItem(this.KEY, JSON.stringify(remoteData));
+      this.flushPending();
+      if (typeof toast === 'function') toast('Sincronización completa', 'success');
+      // Re-render current module
+      var mod = window.MODULES && window.APP_STATE && window.MODULES[window.APP_STATE.currentModule];
+      if (mod && typeof mod.render === 'function') { try { mod.render(); } catch(e) {} }
+      return true;
+    } catch(e) {
+      console.warn('[DB] forcePull error:', e);
+      if (typeof toast === 'function') toast('Error al sincronizar: ' + e.message, 'error');
+      return false;
+    }
   },
 
   // ---- BACKUP / RESTORE ----
@@ -485,6 +599,11 @@ const DB = {
       if (!Array.isArray(data.projects)) throw new Error('Coleccion "projects" faltante o invalida');
       if (!Array.isArray(data.suppliers)) throw new Error('Coleccion "suppliers" faltante o invalida');
       this.save(data);
+      // After a full import, push everything to Supabase
+      this._pushAllToSupabase(data);
+      // Clear the pending queue since we just pushed everything
+      try { localStorage.removeItem(this.PENDING_KEY); } catch(e) {}
+      _updateSyncBadge();
       return { ok: true };
     } catch(e) {
       return { ok: false, error: e.message };

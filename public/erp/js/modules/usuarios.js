@@ -759,6 +759,7 @@ function _afterSupaLogin(session, email) {
 
   // Reload data with JWT so RLS filters correctly
   DB.load().then(function() {
+    if (typeof _updateSyncBadge === 'function') _updateSyncBadge();
     var dbUser = DB.getAll('users').find(function(u) { return (u.email||'').toLowerCase() === email && u.active; });
     if (!dbUser) {
       dbUser = {
