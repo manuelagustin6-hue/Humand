@@ -166,6 +166,30 @@ function updateMobileNav(module) {
   });
 }
 
+// ---- SYNC BADGE (shows pending writes count) ----
+function _updateSyncBadge() {
+  var badge = document.getElementById('sync-status');
+  if (!badge) return;
+  var pending = (typeof DB !== 'undefined' && typeof DB.getPendingCount === 'function') ? DB.getPendingCount() : 0;
+  if (!_SUPA.online) {
+    badge.textContent = pending > 0 ? '○ Sin conexión (' + pending + ' pend.)' : '○ Sin conexión';
+    badge.style.color = '#f59e0b';
+    badge.title = 'Sin conexión a Supabase — ' + (pending > 0 ? pending + ' cambio(s) pendiente(s) de sincronizar' : 'datos guardados solo en este dispositivo');
+  } else if (pending > 0) {
+    badge.textContent = '⚠ ' + pending + ' pend.';
+    badge.style.color = '#f59e0b';
+    badge.title = pending + ' cambio(s) pendiente(s) de sincronizar con Supabase — hacé clic para reintentar';
+    badge.style.cursor = 'pointer';
+    badge.onclick = function() { DB.forcePull(); };
+  } else {
+    badge.textContent = '● En línea';
+    badge.style.color = '#22c55e';
+    badge.title = 'Sincronizado con Supabase — hacé clic para forzar sincronización';
+    badge.style.cursor = 'pointer';
+    badge.onclick = function() { DB.forcePull(); };
+  }
+}
+
 // ---- EXCHANGE RATE SYNC ----
 function syncExchangeRates() {
   var today = (new Date()).toISOString().split('T')[0];
@@ -575,14 +599,7 @@ document.addEventListener('DOMContentLoaded', function() {
     return DB.load();
   }).then(function(online) {
     if (loader) loader.style.display = 'none';
-    var badge = document.getElementById('sync-status');
-    if (badge) {
-      badge.textContent = online ? '● En línea' : '○ Sin conexión';
-      badge.style.color  = online ? '#22c55e'    : '#f59e0b';
-      badge.title = online
-        ? 'Sincronizado con Supabase — múltiples usuarios activos'
-        : 'Sin conexión a Supabase — datos guardados solo en este dispositivo';
-    }
+    _updateSyncBadge();
     _initApp();
   });
 });
