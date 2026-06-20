@@ -130,6 +130,10 @@ async function attOpen(path) {
 // ── Delete ───────────────────────────────────────────────────
 async function attDelete(collection, recordId, idx) {
   if (!confirm('¿Eliminar este comprobante?')) return;
+  if (!_SUPA.session) {
+    toast('No hay sesión activa. Iniciá sesión para eliminar comprobantes del servidor.', 'error');
+    return;
+  }
   var record = DB.getById(collection, recordId);
   var atts = JSON.parse(JSON.stringify((record && record.attachments) || []));
   var att = atts[idx];
