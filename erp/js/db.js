@@ -12,6 +12,17 @@ var _SUPA = {
       this.client = window.supabase.createClient(this.URL, this.KEY, {
         auth: { autoRefreshToken: true, persistSession: true, storageKey: 'erp_supa_auth' }
       });
+      // Keep _SUPA.session in sync when Supabase silently refreshes the JWT.
+      // Without this, hdrs() uses a stale access_token after ~1 hour and all writes fail with 401.
+      var self = this;
+      this.client.auth.onAuthStateChange(function(event, session) {
+        if (session) {
+          self.session = session;
+        } else if (event === 'SIGNED_OUT') {
+          self.session = null;
+          self.online = false;
+        }
+      });
     }
     return this.client;
   },
@@ -173,17 +184,24 @@ var _SUPA = {
     }
   },
 
-  // Subscribe to real-time changes using the shared Supabase client
+  // Subscribe to real-time changes. Unsubscribes any previous channel first to avoid leaks.
+  _activeChannel: null,
   subscribe: function(companyId, onEvent) {
     var c = this._getClient();
     if (!c) { console.warn('[Supa] SDK not loaded, realtime disabled'); return; }
+    // Unsubscribe from the previous channel before creating a new one
+    if (this._activeChannel) {
+      try { c.removeChannel(this._activeChannel); } catch(e) {}
+      this._activeChannel = null;
+    }
     try {
-      c.channel('erp-' + companyId)
+      var ch = c.channel('erp-' + companyId)
         .on('postgres_changes', {
           event: '*', schema: 'public', table: 'erp_data',
           filter: 'company_id=eq.' + companyId
         }, onEvent)
         .subscribe(function(status) { console.log('[Supa] realtime:', status); });
+      this._activeChannel = ch;
     } catch(e) { console.warn('[Supa] subscribe error:', e.message); }
   }
 };
@@ -191,8 +209,9 @@ var _SUPA = {
 /* ===== DATABASE LAYER (localStorage + Supabase) ===== */
 const DB = {
   _companyId: 'comp-001',
-  GLOBAL_KEY:  'erp_global_v1',
-  PENDING_KEY: 'erp_pending_writes',
+  GLOBAL_KEY:    'erp_global_v1',
+  PENDING_KEY:   'erp_pending_writes',   // upsert queue (namespaced with company_id per entry)
+  PENDING_DEL_KEY: 'erp_pending_deletes', // delete queue
 
   get KEY() { return 'erp_company_' + (this._companyId || 'comp-001') + '_v1'; },
 
@@ -369,7 +388,19 @@ const DB = {
           }
         }
 
-        // Persist the merged result
+        // Restore global config (_global collection) from Supabase into localStorage
+        if (remoteData._global && remoteData._global.length) {
+          var globalFromRemote = remoteData._global[0];
+          // Only overwrite local global if remote has meaningful data
+          if (globalFromRemote && (globalFromRemote.companies || globalFromRemote.currencies)) {
+            var cleanGlobal = Object.assign({}, globalFromRemote);
+            delete cleanGlobal.id;
+            try { localStorage.setItem(self.GLOBAL_KEY, JSON.stringify(cleanGlobal)); } catch(e) {}
+          }
+          delete remoteData._global; // don't store _global as a company collection
+        }
+
+        // Persist the merged company-specific data
         localStorage.setItem(self.KEY, JSON.stringify(remoteData));
         _SUPA.online = true;
 
@@ -487,23 +518,28 @@ const DB = {
     var removed = (db[collection] || []).find(function(x) { return x.id === id; }) || null;
     db[collection] = (db[collection] || []).filter(function(x) { return x.id !== id; });
     this.save(db);
+    // Remove any pending upsert for this record (superseded by the delete)
+    this._removePending(collection, id);
     if (_SUPA.online) {
       _SUPA.del(this._companyId, collection, id);
+    } else {
+      // Queue the delete for when we reconnect
+      this._addPendingDelete(collection, id);
     }
-    // Remove any pending upsert for this record (it was deleted)
-    this._removePending(collection, id);
     if (collection !== 'auditLog' && typeof window.auditLog === 'function') window.auditLog('delete', collection, id, removed);
   },
 
   // ---- PENDING WRITE QUEUE ----
-  // Records that failed to sync to Supabase are queued here and retried on reconnect.
+  // Upserts and deletes that failed (or happened offline) are queued here and retried on reconnect.
+  // Each entry is namespaced with company_id so flushing never applies a write to the wrong company.
 
   _addPending: function(collection, record) {
+    var cid = this._companyId;
     try {
       var pending = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]');
-      // Replace existing entry for the same record (latest state wins)
-      pending = pending.filter(function(p) { return !(p.col === collection && p.rec && p.rec.id === record.id); });
-      pending.push({ col: collection, rec: record });
+      // Replace existing entry for the same record+company (latest state wins)
+      pending = pending.filter(function(p) { return !(p.cid === cid && p.col === collection && p.rec && p.rec.id === record.id); });
+      pending.push({ cid: cid, col: collection, rec: record });
       if (pending.length > 1000) pending = pending.slice(-1000);
       localStorage.setItem(this.PENDING_KEY, JSON.stringify(pending));
     } catch(e) {}
@@ -511,34 +547,75 @@ const DB = {
   },
 
   _removePending: function(collection, recordId) {
+    var cid = this._companyId;
     try {
       var pending = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]');
-      pending = pending.filter(function(p) { return !(p.col === collection && p.rec && p.rec.id === recordId); });
+      pending = pending.filter(function(p) { return !(p.cid === cid && p.col === collection && p.rec && p.rec.id === recordId); });
       localStorage.setItem(this.PENDING_KEY, JSON.stringify(pending));
     } catch(e) {}
     _updateSyncBadge();
   },
 
-  getPendingCount: function() {
-    try { return JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]').length; } catch(e) { return 0; }
+  _addPendingDelete: function(collection, recordId) {
+    var cid = this._companyId;
+    try {
+      var pending = JSON.parse(localStorage.getItem(this.PENDING_DEL_KEY) || '[]');
+      // Deduplicate
+      pending = pending.filter(function(p) { return !(p.cid === cid && p.col === collection && p.id === recordId); });
+      pending.push({ cid: cid, col: collection, id: recordId });
+      if (pending.length > 500) pending = pending.slice(-500);
+      localStorage.setItem(this.PENDING_DEL_KEY, JSON.stringify(pending));
+    } catch(e) {}
+    _updateSyncBadge();
   },
 
-  // Retry all pending writes. Called automatically after a successful pull.
+  getPendingCount: function() {
+    var cid = this._companyId;
+    try {
+      var writes  = JSON.parse(localStorage.getItem(this.PENDING_KEY)     || '[]').filter(function(p) { return p.cid === cid; }).length;
+      var deletes = JSON.parse(localStorage.getItem(this.PENDING_DEL_KEY) || '[]').filter(function(p) { return p.cid === cid; }).length;
+      return writes + deletes;
+    } catch(e) { return 0; }
+  },
+
+  // Retry all pending writes and deletes. Called automatically 500ms after a successful pull.
   flushPending: function() {
     if (!_SUPA.online) return 0;
-    var pending;
-    try { pending = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]'); } catch(e) { return 0; }
-    if (!pending.length) return 0;
-    var self = this;
     var cid  = this._companyId;
-    var count = pending.length;
-    // Clear the queue — failed items will be re-added via onFail
-    try { localStorage.removeItem(this.PENDING_KEY); } catch(e) {}
+    var self = this;
+    var count = 0;
+
+    // Flush pending upserts for THIS company only
+    try {
+      var allWrites  = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]');
+      var mine       = allWrites.filter(function(p) { return p.cid === cid; });
+      var others     = allWrites.filter(function(p) { return p.cid !== cid; });
+      if (mine.length) {
+        count += mine.length;
+        // Keep other companies' pending writes, clear ours (re-added on failure)
+        localStorage.setItem(this.PENDING_KEY, JSON.stringify(others));
+        mine.forEach(function(p) {
+          _SUPA.upsert(p.cid, p.col, p.rec, function() { self._addPending(p.col, p.rec); });
+        });
+      }
+    } catch(e) {}
+
+    // Flush pending deletes for THIS company only
+    try {
+      var allDels  = JSON.parse(localStorage.getItem(this.PENDING_DEL_KEY) || '[]');
+      var myDels   = allDels.filter(function(p) { return p.cid === cid; });
+      var otherDels = allDels.filter(function(p) { return p.cid !== cid; });
+      if (myDels.length) {
+        count += myDels.length;
+        localStorage.setItem(this.PENDING_DEL_KEY, JSON.stringify(otherDels));
+        myDels.forEach(function(p) {
+          _SUPA.del(p.cid, p.col, p.id);
+        });
+      }
+    } catch(e) {}
+
+    if (count > 0) console.log('[DB] Flushing ' + count + ' pending operation(s) for ' + cid);
     _updateSyncBadge();
-    pending.forEach(function(p) {
-      _SUPA.upsert(cid, p.col, p.rec, function() { self._addPending(p.col, p.rec); });
-    });
-    if (count > 0) console.log('[DB] Flushing ' + count + ' pending write(s)');
     return count;
   },
 
@@ -738,6 +815,11 @@ const DB = {
 
   saveGlobal(data) {
     localStorage.setItem(this.GLOBAL_KEY, JSON.stringify(data));
+    // Push global config to Supabase so it's available on new devices.
+    // Stored as a single record with id='global' under collection '_global'.
+    if (_SUPA.online) {
+      _SUPA.upsert(this._companyId, '_global', Object.assign({}, data, { id: 'global' }));
+    }
   },
 
   _initGlobal() {
