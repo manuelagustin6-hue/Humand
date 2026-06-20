@@ -1540,22 +1540,30 @@ function saveSI(id) {
   closeModal();
   _refreshCurrentComprasView();
 
+  if (pendingFiles.length && !_SUPA.session) {
+    toast('Factura guardada, pero los comprobantes adjuntos no se subieron porque no hay sesión activa. Adjuntalos manualmente desde la factura.', 'warning');
+  }
   if (pendingFiles.length && _SUPA.session) {
     (async function() {
       var record = DB.getById('supplierInvoices', savedId) || {};
       var atts = JSON.parse(JSON.stringify(record.attachments || []));
-      var ok = 0;
+      var ok = 0, failed = [];
       for (var _f = 0; _f < pendingFiles.length; _f++) {
         var res = await _SUPA.uploadFile('supplierInvoices', savedId, pendingFiles[_f]);
         if (!res.error) {
           atts.push({ name: pendingFiles[_f].name, path: res.path, size: pendingFiles[_f].size, uploaded_at: new Date().toISOString() });
           ok++;
+        } else {
+          failed.push(pendingFiles[_f].name);
         }
       }
       if (ok) {
         DB.update('supplierInvoices', savedId, { attachments: atts });
         toast(ok + ' comprobante(s) adjuntado(s)', 'success');
         _refreshCurrentComprasView();
+      }
+      if (failed.length) {
+        toast('No se pudieron subir: ' + failed.join(', '), 'error');
       }
     })();
   }
