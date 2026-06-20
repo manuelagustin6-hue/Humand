@@ -483,30 +483,14 @@
         winner:         false
       };
 
-      var { error } = await sb.from('erp_data').upsert({
-        company_id: COMP,
-        collection: 'lic_cotizaciones',
-        record_id:  recordId,
-        data:       cotData,
-        deleted:    false,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'company_id,collection,record_id' });
+      var { error } = await sb.rpc('submit_cotizacion', {
+        p_company_id: COMP,
+        p_record_id:  recordId,
+        p_cot_data:   cotData,
+        p_inv_id:     _inv.id
+      });
 
       if (error) throw new Error(error.message);
-
-      // Update invitation status to 'quoted'
-      var { data: invRows } = await sb.from('erp_data').select('*')
-        .eq('company_id', COMP)
-        .eq('collection', 'lic_invitaciones')
-        .eq('record_id', _inv.id);
-
-      if (invRows && invRows[0]) {
-        var updatedInvData = Object.assign({}, invRows[0].data, { status: 'quoted' });
-        await sb.from('erp_data').update({ data: updatedInvData, updated_at: new Date().toISOString() })
-          .eq('company_id', COMP)
-          .eq('collection', 'lic_invitaciones')
-          .eq('record_id', _inv.id);
-      }
 
       show('success-state');
     } catch(e) {
