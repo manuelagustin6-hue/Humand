@@ -439,17 +439,31 @@ function _initApp() {
   // Trigger global init / migration
   DB.getGlobal();
 
-  // Load previously active company or default to first
-  var savedCompany = localStorage.getItem('erp_active_company');
-  var companies = DB.getAllCompanies();
-  var activeCompanyId = 'comp-001';
+  // Determine the active company. Priority:
+  //   1. companyId already set by the boot sequence from session metadata
+  //   2. last saved choice in localStorage
+  //   3. first company in the list
+  // IMPORTANT: do NOT call DB.setCompany() with a different id than what DB.load() used —
+  // that would cause a mismatch between loaded data and the active company key.
+  var loadedCompanyId = DB._companyId; // set by boot before DB.load()
+  var savedCompany    = localStorage.getItem('erp_active_company');
+  var companies       = DB.getAllCompanies();
+  var activeCompanyId = loadedCompanyId; // default: trust what was loaded
+
   if (savedCompany && companies.find(function(c) { return c.id === savedCompany; })) {
     activeCompanyId = savedCompany;
-  } else if (companies.length > 0) {
+  } else if (companies.length > 0 && !companies.find(function(c) { return c.id === loadedCompanyId; })) {
     activeCompanyId = companies[0].id;
   }
 
-  DB.setCompany(activeCompanyId);
+  // Only call setCompany (and trigger a reload) if the company changed after load
+  if (activeCompanyId !== loadedCompanyId) {
+    DB.setCompany(activeCompanyId);
+    if (_SUPA.online) {
+      // Re-pull data for the correct company without blocking the UI
+      DB.load().catch(function() {});
+    }
+  }
   window.APP_STATE.activeCompany = activeCompanyId;
 
   // Populate selectors
