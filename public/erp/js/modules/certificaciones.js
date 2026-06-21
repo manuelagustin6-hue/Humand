@@ -3,9 +3,9 @@ function renderCertificaciones() {
   const certs = DB.getAll('certificates');
   const projects = DB.getAll('projects');
 
-  const totalCertified = certs.reduce((s,c) => s + c.subtotal, 0);
+  const totalCertified = certs.reduce((s,c) => s + (c.subtotal || 0), 0);
   const totalRetention = certs.reduce((s,c) => s + (c.retention_amount || 0), 0);
-  const totalNet = certs.reduce((s,c) => s + c.net_amount, 0);
+  const totalNet = certs.reduce((s,c) => s + (c.net_amount || 0), 0);
   const approved = certs.filter(c => c.status === 'approved').length;
 
   document.getElementById('content').innerHTML = `
@@ -137,6 +137,7 @@ function filterCerts(q, status, project) {
 
 function viewCert(id) {
   const cert = DB.getById('certificates', id);
+  if (!cert) { toast('Certificación no encontrada', 'error'); return; }
   const proj = DB.getById('projects', cert.project_id);
 
   const statusColor = { draft: '#64748b', pending: '#f59e0b', approved: '#10b981', rejected: '#ef4444' };
@@ -218,6 +219,7 @@ ${cert.status === 'pending' ? `
 }
 
 function openCertForm(id = null) {
+  window._certItems = [];
   const cert = id ? DB.getById('certificates', id) : null;
   const projects = DB.getAll('projects');
   const nextNum = `CERT-${new Date().getFullYear()}-${String(DB.getAll('certificates').length + 1).padStart(3,'0')}`;
