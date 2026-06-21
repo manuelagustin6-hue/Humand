@@ -50,7 +50,7 @@ function renderProjectCards(projects) {
   return projects.map(p => {
     const tasks = DB.getAll('ganttTasks').filter(t => t.project_id === p.id);
     const progress = tasks.length ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length) : 0;
-    const invoiced = DB.getAll('invoices').filter(i => i.project_id === p.id).reduce((s, i) => s + i.total, 0);
+    const invoiced = DB.getAll('invoices').filter(i => i.project_id === p.id).reduce((s, i) => s + (i.total || 0), 0);
     const daysLeft = daysBetween(todayStr(), p.end_date);
     const daysLeftLabel = daysLeft > 0 ? `${daysLeft} días restantes` : daysLeft === 0 ? 'Vence hoy' : `${Math.abs(daysLeft)} días de atraso`;
 
@@ -111,7 +111,7 @@ function filterProjects(q, status, type) {
 
   let projects = DB.getAll('projects');
   const f = window._projectFilters;
-  if (f.q) projects = projects.filter(p => p.name.toLowerCase().includes(f.q) || p.client.toLowerCase().includes(f.q));
+  if (f.q) projects = projects.filter(p => (p.name||'').toLowerCase().includes(f.q) || (p.client||'').toLowerCase().includes(f.q));
   if (f.status) projects = projects.filter(p => p.status === f.status);
   if (f.type) projects = projects.filter(p => p.type === f.type);
 
@@ -126,8 +126,8 @@ function openProjectDetail(id) {
   const tasks = DB.getAll('ganttTasks').filter(t => t.project_id === id);
   const progress = tasks.length ? Math.round(tasks.reduce((s,t) => s+(t.progress||0),0) / tasks.length) : 0;
   const invoices = DB.getAll('invoices').filter(i => i.project_id === id);
-  const totalInvoiced = invoices.reduce((s, i) => s + i.total, 0);
-  const totalCollected = DB.getAll('collections').filter(c => c.project_id === id).reduce((s,c) => s+c.amount, 0);
+  const totalInvoiced = invoices.reduce((s, i) => s + (i.total || 0), 0);
+  const totalCollected = DB.getAll('collections').filter(c => c.project_id === id).reduce((s,c) => s+(c.amount || 0), 0);
   const boqTotal = DB.getAll('boqItems').filter(b => b.project_id === id).reduce((s,b) => s+b.total, 0);
   const actualTotal = DB.getAll('actualCosts').filter(a => a.project_id === id).reduce((s,a) => s+a.amount, 0);
 

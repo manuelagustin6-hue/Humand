@@ -92,7 +92,7 @@ function _rptTesCalcRow(account, allTxs, from, to) {
   const preNet = acctTxs
     .filter(t => t.date < from)
     .reduce((s, t) => s + (t.type === 'income' ? (t.amount || 0) : -(t.amount || 0)), 0);
-  const saldoInicial = (account.initial_balance || 0) + preNet;
+  const saldoInicial = parseFloat(account.initial_balance || 0) + preNet;
 
   // Movements inside the period
   const periodTxs = acctTxs.filter(t => t.date >= from && t.date <= to);

@@ -89,7 +89,7 @@ function renderTesoreria() {
 }
 
 function renderTxTable(txs, accounts, projects) {
-  const sorted = txs.slice().sort((a,b) => b.date.localeCompare(a.date));
+  const sorted = txs.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
   return `
 <div class="filter-bar">
   <div class="search-input-wrap">
@@ -140,10 +140,10 @@ function filterTx(q, type) {
   if (type !== undefined) window._txFilters.type = type;
   let txs = DB.getAll('treasuryTx');
   const f = window._txFilters;
-  if (f.q) txs = txs.filter(t => t.description.toLowerCase().includes(f.q) || (t.category||'').toLowerCase().includes(f.q));
+  if (f.q) txs = txs.filter(t => (t.description||'').toLowerCase().includes(f.q) || (t.category||'').toLowerCase().includes(f.q));
   if (f.type) txs = txs.filter(t => t.type === f.type);
   const wrap = document.getElementById('tx-table-wrap');
-  if (wrap) wrap.innerHTML = buildTxRows(txs.sort((a,b)=>b.date.localeCompare(a.date)), DB.getAll('bankAccounts'), DB.getAll('projects'));
+  if (wrap) wrap.innerHTML = buildTxRows(txs.sort((a,b)=>(b.date||'').localeCompare(a.date||'')), DB.getAll('bankAccounts'), DB.getAll('projects'));
 }
 
 function renderCashflowView(txs) {
@@ -206,7 +206,7 @@ function renderAccountsTable(accounts) {
         <td class="number-cell text-right fw-bold">${fmtMoney(acc.balance)}</td>
         <td><div class="table-actions">
           <button class="btn-ghost btn btn-sm" onclick="openBankAccountForm('${acc.id}')"><i class="fas fa-edit"></i></button>
-          <button class="btn-ghost btn btn-sm danger" onclick="deleteBankAccount('${acc.id}')"><i class="fas fa-trash"></i></button>
+          <button class="btn-ghost btn btn-sm danger" onclick="deleteBankAccountFromTesoreria('${acc.id}')"><i class="fas fa-trash"></i></button>
         </div></td>
       </tr>`).join('')}
     </tbody>
@@ -315,7 +315,7 @@ function showAccountTx(accountId) {
 <div class="table-wrap" style="max-height:400px">
   <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Referencia</th><th class="text-right">Importe</th></tr></thead>
   <tbody>
-    ${txs.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(t => `<tr>
+    ${txs.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(t => `<tr>
       <td>${fmtDate(t.date)}</td>
       <td>${statusBadge(t.type)}</td>
       <td>${t.description}</td>
@@ -389,7 +389,7 @@ function saveBankAccount(id) {
   renderTesoreria();
 }
 
-function deleteBankAccount(id) {
+function deleteBankAccountFromTesoreria(id) {
   confirmDialog('¿Eliminar esta cuenta? Los movimientos asociados se mantendrán.', () => {
     DB.remove('bankAccounts', id);
     toast('Cuenta eliminada', 'warning');

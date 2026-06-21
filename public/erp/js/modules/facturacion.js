@@ -4,10 +4,10 @@ function renderFacturacion() {
   const projects = DB.getAll('projects');
   const collections = DB.getAll('collections');
 
-  const totalBilled = invoices.reduce((s, i) => s + i.total, 0);
-  const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
-  const totalPending = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.total, 0);
-  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0);
+  const totalBilled = invoices.reduce((s, i) => s + (i.total || 0), 0);
+  const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0);
+  const totalPending = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + (i.total || 0), 0);
+  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + (i.total || 0), 0);
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -135,6 +135,7 @@ function filterInvoices(q, status, project, period) {
 
 function viewInvoice(id) {
   const inv = DB.getById('invoices', id);
+  if (!inv) { toast('Factura no encontrada', 'error'); return; }
   const proj = DB.getById('projects', inv.project_id);
   const collections = DB.getAll('collections').filter(c => c.invoice_id === id);
   const totalCollected = collections.reduce((s,c) => s+c.amount, 0);
@@ -170,14 +171,14 @@ function viewInvoice(id) {
     </div>
     <div class="invoice-party-box">
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">RECEPTOR</div>
-      <p><strong>${inv.client_name}</strong><br>CUIT: ${inv.client_cuit}<br>${inv.client_address}</p>
+      <p><strong>${escapeHtml(inv.client_name || '')}</strong><br>CUIT: ${escapeHtml(inv.client_cuit || '')}<br>${escapeHtml(inv.client_address || '')}</p>
     </div>
   </div>
 
   <div class="table-wrap" style="margin-bottom:16px">
   <table><thead><tr><th>Descripcion</th><th class="text-center">Unidad</th><th class="text-right">Cantidad</th><th class="text-right">P.Unit.</th><th class="text-right">Total</th></tr></thead>
   <tbody>
-  ${inv.items.map(it => `<tr><td>${it.description}</td><td class="text-center">${it.unit}</td>
+  ${(inv.items || []).map(it => `<tr><td>${it.description}</td><td class="text-center">${it.unit}</td>
     <td class="number-cell text-right">${fmtNum(it.quantity)}</td>
     <td class="number-cell text-right">${fmtMoney(it.unit_price)}</td>
     <td class="number-cell text-right"><strong>${fmtMoney(it.total)}</strong></td></tr>`).join('')}
