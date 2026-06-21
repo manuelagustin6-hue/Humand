@@ -171,6 +171,7 @@ function _updateSyncBadge() {
   var badge = document.getElementById('sync-status');
   if (!badge) return;
   var pending = (typeof DB !== 'undefined' && typeof DB.getPendingCount === 'function') ? DB.getPendingCount() : 0;
+  var hasSession = !!(_SUPA && _SUPA.session);
   if (!_SUPA.online) {
     badge.textContent = pending > 0 ? '○ Sin conexión (' + pending + ' pend.)' : '○ Sin conexión';
     badge.style.color = '#f59e0b';
@@ -185,6 +186,13 @@ function _updateSyncBadge() {
         if (window.APP_STATE && window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
       }).catch(function() { _updateSyncBadge(); });
     };
+  } else if (!hasSession) {
+    // Connected to Supabase but no auth session — local user, writes can't sync
+    badge.textContent = '○ Modo local';
+    badge.style.color = '#94a3b8';
+    badge.style.cursor = 'default';
+    badge.title = 'Sesión local sin Supabase Auth — los cambios se guardan en este dispositivo únicamente';
+    badge.onclick = null;
   } else if (pending > 0) {
     badge.textContent = '⚠ ' + pending + ' pend.';
     badge.style.color = '#f59e0b';
