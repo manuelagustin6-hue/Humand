@@ -149,6 +149,14 @@ var _SUPA = {
       if (!res.ok) {
         res.text().then(function(body) {
           console.warn('[Supa] upsert failed ' + res.status + ' (' + collection + '):', body);
+          // Show first failure in UI so user can see the real error without a console
+          if (!window._supaUpsertErrShown) {
+            window._supaUpsertErrShown = true;
+            setTimeout(function() { window._supaUpsertErrShown = false; }, 8000);
+            var detail = '';
+            try { detail = JSON.parse(body).message || body; } catch(e) { detail = body; }
+            if (typeof toast === 'function') toast('Error al sincronizar (' + res.status + '): ' + detail.slice(0, 120), 'error');
+          }
           if (onFail) onFail();
         });
       }
