@@ -626,12 +626,14 @@ const DB = {
       return this.load();
     }
     try {
-      // Refresh session before pulling — ensures upserts won't fail due to expired token
-      var sess = await _SUPA.getSession();
-      if (!sess) {
-        if (typeof toast === 'function') toast('Sesión vencida — volvé a iniciar sesión para sincronizar', 'warning');
-        _updateSyncBadge();
-        return false;
+      // Use existing session if available; fall back to getSession() only if null
+      if (!_SUPA.session) {
+        var sess = await _SUPA.getSession();
+        if (!sess) {
+          if (typeof toast === 'function') toast('Sesión vencida — volvé a iniciar sesión para sincronizar', 'warning');
+          _updateSyncBadge();
+          return false;
+        }
       }
       var remoteData = await _SUPA.pull(this._companyId);
       if (Object.keys(remoteData).length === 0) {
