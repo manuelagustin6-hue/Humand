@@ -347,7 +347,7 @@ function renderDashboard() {
           <thead><tr><th>Proyecto</th><th>Avance</th><th>Estado</th><th>Presupuesto</th></tr></thead>
           <tbody>
             ${projects.length ? projects.map(p => {
-              const ptasks = DB.getAll('ganttTasks').filter(t => t.project_id === p.id);
+              const ptasks = tasks.filter(t => t.project_id === p.id);
               const avg = ptasks.length ? Math.round(ptasks.reduce((s,t) => s + (t.progress||0), 0) / ptasks.length) : 0;
               return `<tr>
                 <td><strong>${escapeHtml(p.name)}</strong><br><span class="text-muted" style="font-size:11px">${escapeHtml(p.client || '')}</span></td>

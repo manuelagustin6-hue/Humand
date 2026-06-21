@@ -174,7 +174,17 @@ function _updateSyncBadge() {
   if (!_SUPA.online) {
     badge.textContent = pending > 0 ? '○ Sin conexión (' + pending + ' pend.)' : '○ Sin conexión';
     badge.style.color = '#f59e0b';
-    badge.title = 'Sin conexión a Supabase — ' + (pending > 0 ? pending + ' cambio(s) pendiente(s) de sincronizar' : 'datos guardados solo en este dispositivo');
+    badge.style.cursor = 'pointer';
+    badge.title = 'Sin conexión — hacé clic para reconectar';
+    badge.onclick = function() {
+      badge.textContent = '↻ Reconectando…';
+      badge.style.cursor = 'default';
+      badge.onclick = null;
+      DB.load().then(function() {
+        _updateSyncBadge();
+        if (window.APP_STATE && window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
+      }).catch(function() { _updateSyncBadge(); });
+    };
   } else if (pending > 0) {
     badge.textContent = '⚠ ' + pending + ' pend.';
     badge.style.color = '#f59e0b';

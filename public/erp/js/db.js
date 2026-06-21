@@ -622,8 +622,8 @@ const DB = {
   // Force a fresh pull from Supabase (user-triggered or after reconnect)
   forcePull: async function() {
     if (!_SUPA.online) {
-      if (typeof toast === 'function') toast('Sin conexión con Supabase', 'warning');
-      return false;
+      if (typeof toast === 'function') toast('Reconectando con Supabase…', 'info');
+      return this.load();
     }
     try {
       var remoteData = await _SUPA.pull(this._companyId);
