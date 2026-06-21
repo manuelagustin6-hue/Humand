@@ -580,7 +580,7 @@ const DB = {
 
   // Retry all pending writes and deletes. Called automatically 500ms after a successful pull.
   flushPending: function() {
-    if (!_SUPA.online) return 0;
+    if (!_SUPA.online || !_SUPA.session) return 0;
     var cid  = this._companyId;
     var self = this;
     var count = 0;
