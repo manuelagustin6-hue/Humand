@@ -137,19 +137,46 @@ var _SUPA = {
 
   // Upsert a single record. Calls onFail() if the request fails so the caller can queue a retry.
   upsert: function(companyId, collection, record, onFail) {
+    var self = this;
+    var body = JSON.stringify({
+      company_id: companyId, collection: collection,
+      record_id: record.id, data: record,
+      deleted: false, updated_at: new Date().toISOString()
+    });
     fetch(this.URL + '/rest/v1/erp_data', {
       method: 'POST',
       headers: this.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-      body: JSON.stringify({
-        company_id: companyId, collection: collection,
-        record_id: record.id, data: record,
-        deleted: false, updated_at: new Date().toISOString()
-      })
+      body: body
     }).then(function(res) {
       if (!res.ok) {
+        // 409 = ON CONFLICT failed (RLS hides the existing row). Retry as explicit PATCH.
+        if (res.status === 409) {
+          fetch(
+            self.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
+            '&collection=eq.' + encodeURIComponent(collection) +
+            '&record_id=eq.' + encodeURIComponent(String(record.id)),
+            { method: 'PATCH',
+              headers: self.hdrs({ 'Prefer': 'return=minimal' }),
+              body: JSON.stringify({ data: record, deleted: false, updated_at: new Date().toISOString() })
+            }
+          ).then(function(r2) {
+            if (!r2.ok) {
+              r2.text().then(function(b2) {
+                console.warn('[Supa] patch-fallback failed ' + r2.status + ' (' + collection + '):', b2);
+                if (!window._supaUpsertErrShown) {
+                  window._supaUpsertErrShown = true;
+                  setTimeout(function() { window._supaUpsertErrShown = false; }, 8000);
+                  var d = ''; try { d = JSON.parse(b2).message || b2; } catch(e) { d = b2; }
+                  if (typeof toast === 'function') toast('Error al sincronizar (' + r2.status + '): ' + d.slice(0, 120), 'error');
+                }
+                if (onFail) onFail();
+              });
+            }
+          }).catch(function(e) { console.warn('[Supa] patch-fallback network:', e.message); if (onFail) onFail(); });
+          return;
+        }
         res.text().then(function(body) {
           console.warn('[Supa] upsert failed ' + res.status + ' (' + collection + '):', body);
-          // Show first failure in UI so user can see the real error without a console
           if (!window._supaUpsertErrShown) {
             window._supaUpsertErrShown = true;
             setTimeout(function() { window._supaUpsertErrShown = false; }, 8000);
