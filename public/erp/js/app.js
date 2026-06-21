@@ -190,7 +190,12 @@ function _updateSyncBadge() {
     badge.style.color = '#f59e0b';
     badge.title = pending + ' cambio(s) pendiente(s) de sincronizar con Supabase — hacé clic para reintentar';
     badge.style.cursor = 'pointer';
-    badge.onclick = function() { DB.forcePull(); };
+    badge.onclick = function() {
+      badge.textContent = '↻ Sincronizando…';
+      badge.style.cursor = 'default';
+      badge.onclick = null;
+      DB.forcePull().then(function() { _updateSyncBadge(); }).catch(function() { _updateSyncBadge(); });
+    };
   } else {
     badge.textContent = '● En línea';
     badge.style.color = '#22c55e';
