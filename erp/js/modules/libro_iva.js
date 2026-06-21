@@ -196,9 +196,11 @@ function _livaGetCompras(p, companyId) {
 
   // Count excluded docs for display
   const totalSI = DB.getAll('supplierInvoices').filter(si => _livaInPeriod(si.date, p)).length;
-  rows._excluded = totalSI - rows.filter(r => r.docType === 'FAC').length;
+  var excl = totalSI - rows.filter(r => r.docType === 'FAC').length;
 
-  return rows.sort((a,b) => a.date.localeCompare(b.date));
+  var sorted = rows.sort((a,b) => a.date.localeCompare(b.date));
+  sorted._excluded = excl;
+  return sorted;
 }
 
 function _livaVentasRow(doc, type) {
@@ -213,13 +215,13 @@ function _livaVentasRow(doc, type) {
     number:   doc.number || '',
     cuit:     doc.client_cuit || doc.entity_id || '-',
     name:     doc.client_name || doc.entity_name || '-',
-    neto21:   rate >= 20    ? sub * sign : 0,
-    neto105:  (rate >= 10 && rate < 20) ? sub * sign : 0,
     neto27:   rate >= 27   ? sub * sign : 0,
+    neto21:   (rate >= 20 && rate < 27) ? sub * sign : 0,
+    neto105:  (rate >= 10 && rate < 20) ? sub * sign : 0,
     netoExento: rate === 0 ? sub * sign : 0,
-    iva21:    rate >= 20   ? iva * sign : 0,
-    iva105:   (rate >= 10 && rate < 20) ? iva * sign : 0,
     iva27:    rate >= 27   ? iva * sign : 0,
+    iva21:    (rate >= 20 && rate < 27) ? iva * sign : 0,
+    iva105:   (rate >= 10 && rate < 20) ? iva * sign : 0,
     ivaTotal: iva * sign,
     total:    (parseFloat(doc.total)||0) * sign,
     _id:      doc.id
@@ -256,13 +258,13 @@ function _livaGetVentas(p, companyId) {
       number:     'CUOTA-' + (c.id||'').slice(-6).toUpperCase(),
       cuit:       c.client_cuit || '-',
       name:       c.client_name || '-',
-      neto21:     rate >= 20    ? neto : 0,
-      neto105:    (rate >= 10 && rate < 20) ? neto : 0,
       neto27:     rate >= 27   ? neto : 0,
+      neto21:     (rate >= 20 && rate < 27) ? neto : 0,
+      neto105:    (rate >= 10 && rate < 20) ? neto : 0,
       netoExento: 0,
-      iva21:      rate >= 20   ? iva  : 0,
-      iva105:     (rate >= 10 && rate < 20) ? iva  : 0,
       iva27:      rate >= 27   ? iva  : 0,
+      iva21:      (rate >= 20 && rate < 27) ? iva  : 0,
+      iva105:     (rate >= 10 && rate < 20) ? iva  : 0,
       ivaTotal:   iva,
       total:      parseFloat(c.amount) || 0,
       _id:        c.id,
@@ -976,7 +978,7 @@ function _parsearArchivoARCA(text) {
   for (var i = 1; i < lines.length; i++) {
     var cols = splitLine(lines[i]);
     if (cols.length < 2) continue;
-    function g(idx) { return idx >= 0 && idx < cols.length ? (cols[idx] || '').replace(/"/g,'').trim() : ''; }
+    var g = function(idx) { return idx >= 0 && idx < cols.length ? (cols[idx] || '').replace(/"/g,'').trim() : ''; };
 
     var pvRaw  = g(iPV);
     var numRaw = g(iNum);

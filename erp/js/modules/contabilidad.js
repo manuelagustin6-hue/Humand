@@ -183,9 +183,9 @@ function renderJournal(entries) {
 function buildJEList(entries) {
   if (!entries.length) return `<div class="empty-state"><i class="fas fa-book"></i><p>No hay asientos contables</p></div>`;
 
-  return entries.slice().sort((a,b) => b.date.localeCompare(a.date)).map(e => {
-    const totalDebit = e.lines.reduce((s,l) => s + (l.debit||0), 0);
-    const totalCredit = e.lines.reduce((s,l) => s + (l.credit||0), 0);
+  return entries.slice().sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(e => {
+    const totalDebit = (e.lines||[]).reduce((s,l) => s + (l.debit||0), 0);
+    const totalCredit = (e.lines||[]).reduce((s,l) => s + (l.credit||0), 0);
     return `
 <div class="card mb-2" id="je-${e.id}">
   <div class="card-header" style="cursor:pointer" onclick="toggleJE('${e.id}')">
@@ -471,7 +471,8 @@ function renderAccountPlan(accounts) {
 function openJEForm(id = null) {
   const e = id ? DB.getById('journalEntries', id) : null;
   const nextNum = `AS-${new Date().getFullYear()}-${String(DB.getAll('journalEntries').length + 1).padStart(3,'0')}`;
-  const accounts = DB.getAll('accounts').filter(a => !accounts?.find || a.parent_id);
+  const allAccounts = DB.getAll('accounts');
+  const accounts = allAccounts.filter(a => !allAccounts.find(b => b.parent_id === a.id) || a.parent_id);
   const accountOptions = DB.getAll('accounts').map(a => `<option value="${a.code}" data-name="${a.name}">${a.code} — ${a.name}</option>`).join('');
 
   const lines = e?.lines || [
@@ -819,11 +820,13 @@ function calcAccountBalances(accounts, entries) {
     });
   });
 
-  // Propagate to parents
-  accounts.filter(a => a.parent_id).forEach(a => {
-    const parent = accounts.find(p => p.id === a.parent_id);
-    if (parent) balances[parent.code] = (balances[parent.code]||0) + (balances[a.code]||0);
-  });
+  // Propagate to parents (multi-pass to handle hierarchies deeper than 1 level)
+  for (var pass = 0; pass < 5; pass++) {
+    accounts.filter(a => a.parent_id).forEach(a => {
+      const parent = accounts.find(p => p.id === a.parent_id);
+      if (parent) balances[parent.code] = (balances[parent.code]||0) + (balances[a.code]||0);
+    });
+  }
 
   return balances;
 }

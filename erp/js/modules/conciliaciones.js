@@ -444,6 +444,7 @@ function _concSetTab(tab) {
 }
 
 function _concTabContent(tab) {
+  if (!_concState || !_concState.result) return '';
   var r = _concState.result;
   if (tab === 'matched')  return _concMatchedTable(r.matched);
   if (tab === 'bank')     return _concBankOnlyTable(r.onlyBank);
@@ -720,7 +721,7 @@ function _concSaveMovements() {
 
   if (mode === 'single') {
     var total = window._concPendingTotal || rows.reduce(function(s, r) { return s + (r._grossAmount || r.amount); }, 0);
-    DB.insert('bankMovements', {
+    DB.insert('treasuryTx', {
       account_id: accountId,
       date: date,
       type: type,
@@ -731,7 +732,7 @@ function _concSaveMovements() {
     toast('Movimiento registrado correctamente', 'success');
   } else {
     rows.forEach(function(row) {
-      DB.insert('bankMovements', {
+      DB.insert('treasuryTx', {
         account_id: accountId,
         date: row.date || date,
         type: row.type || type,

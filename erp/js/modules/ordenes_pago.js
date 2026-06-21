@@ -141,7 +141,11 @@ function filterPOs2(q, status, period) {
   if (period !== undefined) window._po2Filters.period = period;
   let orders = DB.getAll('paymentOrders');
   const f = window._po2Filters;
-  if (f.q) orders = orders.filter(o => (o.number||'').toLowerCase().includes(f.q) || (o.concept||'').toLowerCase().includes(f.q) || (o.supplier_name||'').toLowerCase().includes(f.q));
+  if (f.q) orders = orders.filter(o => {
+    var prov = DB.getById('suppliers', o.supplier_id);
+    var supplierName = (prov && prov.name) ? prov.name.toLowerCase() : '';
+    return (o.number||'').toLowerCase().includes(f.q) || (o.concept||'').toLowerCase().includes(f.q) || supplierName.includes(f.q);
+  });
   if (f.status) orders = orders.filter(o => o.status === f.status);
   if (f.period) { const r = _periodRange(f.period); orders = orders.filter(o => o.date && o.date >= r.from && o.date <= r.to); }
   const wrap = document.getElementById('po2-table-wrap');
@@ -150,6 +154,7 @@ function filterPOs2(q, status, period) {
 
 function viewPaymentOrder(id) {
   const o = DB.getById('paymentOrders', id);
+  if (!o) { toast('Orden no encontrada', 'error'); return; }
   const sup = DB.getById('suppliers', o.supplier_id);
   const proj = DB.getById('projects', o.project_id);
   const acc = DB.getById('bankAccounts', o.account_id);
@@ -675,7 +680,7 @@ function printRetencion(paymentOrderId) {
   var METH_LABEL = { transfer: 'Transferencia bancaria', check: 'Cheque', cash: 'Efectivo', other: 'Otro' };
   if (o.payment_methods && o.payment_methods.length) {
     var pm = o.payment_methods[0];
-    firstPaymentMethod = METH_LABEL[pm.method] || pm.method || '';
+    firstPaymentMethod = METH_LABEL[pm.type] || pm.type || '';
   } else if (acc) {
     firstPaymentMethod = escapeHtml(acc.name || '');
   }

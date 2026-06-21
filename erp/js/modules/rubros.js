@@ -67,7 +67,7 @@ function buildRubrosTable(rubros) {
     <th>Código</th><th>Nombre del Rubro</th><th>Categoría</th><th>Unidad</th><th>Cuenta Contable</th><th>Estado</th><th>Acciones</th>
   </tr></thead>
   <tbody>
-  ${rubros.sort((a,b)=>a.code.localeCompare(b.code)).map(r => `<tr>
+  ${rubros.sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(r => `<tr>
     <td><strong>${r.code}</strong></td>
     <td>${r.name}</td>
     <td><span class="badge badge-blue">${r.category}</span></td>

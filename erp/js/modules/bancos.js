@@ -467,7 +467,7 @@ function baRenderTabCuentas(accounts, movements, treasuryTx) {
           '<button class="btn btn-sm btn-secondary" onclick="openBankAccountForm(\'' + acc.id + '\')">' +
             '<i class="fas fa-edit"></i>' +
           '</button>' +
-          '<button class="btn btn-sm" style="color:var(--danger)" onclick="deleteBankAccount(\'' + acc.id + '\')">' +
+          '<button class="btn btn-sm" style="color:var(--danger)" onclick="deleteBankAccountFromBancos(\'' + acc.id + '\')">' +
             '<i class="fas fa-trash"></i>' +
           '</button>' +
         '</div>' +
@@ -530,7 +530,7 @@ function baRenderTabMovimientos(accounts, movements, treasuryTx) {
     });
   });
 
-  allMovements.sort(function(a, b) { return b.date.localeCompare(a.date); });
+  allMovements.sort(function(a, b) { return (b.date||'').localeCompare(a.date||''); });
 
   var rows = '';
   allMovements.forEach(function(m) {
@@ -602,7 +602,7 @@ function baShowAccountMovements(accountId) {
     });
   });
 
-  allMovements.sort(function(a, b) { return a.date.localeCompare(b.date); });
+  allMovements.sort(function(a, b) { return (a.date||'').localeCompare(b.date||''); });
 
   var balance = acc.initial_balance || 0;
   var rows = '';
@@ -752,7 +752,7 @@ function saveBankAccount(id) {
   renderCuentasBanco();
 }
 
-function deleteBankAccount(id) {
+function deleteBankAccountFromBancos(id) {
   confirmDialog('Eliminar esta cuenta bancaria?', function() {
     DB.remove('bankAccounts', id);
     toast('Cuenta eliminada', 'success');
