@@ -626,6 +626,13 @@ const DB = {
       return this.load();
     }
     try {
+      // Refresh session before pulling — ensures upserts won't fail due to expired token
+      var sess = await _SUPA.getSession();
+      if (!sess) {
+        if (typeof toast === 'function') toast('Sesión vencida — volvé a iniciar sesión para sincronizar', 'warning');
+        _updateSyncBadge();
+        return false;
+      }
       var remoteData = await _SUPA.pull(this._companyId);
       if (Object.keys(remoteData).length === 0) {
         if (typeof toast === 'function') toast('No se encontraron datos en el servidor', 'info');
@@ -643,8 +650,10 @@ const DB = {
         if (localOnly.length) remoteData[col] = remoteArr.concat(localOnly);
       });
       localStorage.setItem(this.KEY, JSON.stringify(remoteData));
-      this.flushPending();
-      if (typeof toast === 'function') toast('Sincronización completa', 'success');
+      var flushed = this.flushPending();
+      if (typeof toast === 'function') toast('Sincronización completa' + (flushed > 0 ? ' — ' + flushed + ' cambio(s) enviado(s)' : ''), 'success');
+      // Update badge after a tick so upsert callbacks (re-enqueue on fail) have run
+      setTimeout(function() { _updateSyncBadge(); }, 800);
       // Re-render current module
       var mod = window.MODULES && window.APP_STATE && window.MODULES[window.APP_STATE.currentModule];
       if (mod && typeof mod.render === 'function') { try { mod.render(); } catch(e) {} }
