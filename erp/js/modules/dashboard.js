@@ -375,6 +375,52 @@ function renderDashboard() {
   </div>
 </div>
 
+<!-- COSTOS POR OBRA -->
+<div style="display:flex;align-items:center;gap:10px;margin:16px 0 12px;padding:10px 14px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--danger)">
+  <i class="fas fa-hard-hat" style="color:var(--danger);font-size:13px"></i>
+  <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text)">Costos de Obra</span>
+</div>
+<div class="grid-2" style="margin-bottom:16px">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Presupuesto vs Costo Real</span>
+      <button class="btn btn-sm btn-secondary" onclick="navigate('reporte_costos')"><i class="fas fa-arrow-right"></i> Reporte</button>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrap"><canvas id="chart-budget"></canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fas fa-table text-primary"></i> Desvío Presupuestario</span>
+    </div>
+    <div class="card-body" style="padding:0">
+      ${projects.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Proyecto</th><th class="number-cell">Presupuesto</th><th class="number-cell">Costo Real</th><th class="number-cell">Desvío</th></tr></thead>
+        <tbody>${projects.map(function(p) {
+          var pCosts = actualCosts.filter(function(a) { return a.project_id === p.id; });
+          var cost = pCosts.reduce(function(s,a) { return s+(a.amount||0); }, 0);
+          var dev = (p.budget||0) - cost;
+          var devPct = (p.budget||0) > 0 ? (dev/(p.budget||0)*100) : 0;
+          var color = dev >= 0 ? 'var(--success)' : 'var(--danger)';
+          return '<tr onclick="navigate(\'reporte_costos\')" style="cursor:pointer"><td style="font-size:12px;font-weight:600">' + escapeHtml(p.name) + '</td>' +
+            '<td class="number-cell" style="font-size:12px">' + fmtMoneyK(p.budget||0) + '</td>' +
+            '<td class="number-cell" style="font-size:12px">' + fmtMoneyK(cost) + '</td>' +
+            '<td class="number-cell" style="font-size:12px;font-weight:700;color:' + color + '">' + (dev<0?'-':'') + fmtMoneyK(Math.abs(dev)) + ' <span style="font-size:10px">(' + fmtPct(devPct) + ')</span></td></tr>';
+        }).join('')}</tbody>
+        <tfoot><tr class="total-row">
+          <td><strong>Total</strong></td>
+          <td class="number-cell"><strong>${fmtMoneyK(totalBudget)}</strong></td>
+          <td class="number-cell"><strong>${fmtMoneyK(totalActual)}</strong></td>
+          <td class="number-cell" style="font-weight:700;color:${(totalBudget-totalActual)>=0?'var(--success)':'var(--danger)'}">
+            ${(totalBudget-totalActual)<0?'-':''}${fmtMoneyK(Math.abs(totalBudget-totalActual))}
+          </td>
+        </tr></tfoot>
+      </table></div>` : '<div class="empty-state" style="padding:24px"><i class="fas fa-building"></i><p>Sin proyectos</p></div>'}
+    </div>
+  </div>
+</div>
+
 <!-- FACTURAS RECIENTES -->
 <div class="card mt-3">
   <div class="card-header">
