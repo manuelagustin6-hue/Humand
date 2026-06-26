@@ -25,6 +25,8 @@ function renderTesoreria() {
     <button class="btn btn-secondary" onclick="openBankAccountForm()"><i class="fas fa-university"></i> Nueva Cuenta</button>
     <button class="btn btn-success" onclick="openTxForm('income')"><i class="fas fa-plus"></i> Ingreso</button>
     <button class="btn btn-danger" onclick="openTxForm('expense')"><i class="fas fa-minus"></i> Egreso</button>
+    <button class="btn btn-secondary" onclick="openFxForm()" title="Cambio de moneda entre cuentas"><i class="fas fa-right-left"></i> Cambio FX</button>
+    <button class="btn btn-secondary" onclick="openIntercompanyForm()" title="Transferencia entre sociedades"><i class="fas fa-building-columns"></i> Entre Sociedades</button>
   </div>
 </div>
 
@@ -117,16 +119,23 @@ function buildTxRows(txs, accounts, projects) {
   ${txs.map(tx => {
     const acc = accounts.find(a => a.id === tx.account_id);
     const proj = projects.find(p => p.id === tx.project_id);
+    var typeBadge = statusBadge(tx.type);
+    if (tx.tx_type === 'fx') {
+      typeBadge = '<span class="badge" style="background:#f59e0b22;color:#d97706;font-weight:600"><i class="fas fa-right-left"></i> FX</span>';
+    } else if (tx.tx_type === 'intercompany') {
+      typeBadge = '<span class="badge" style="background:#8b5cf622;color:#7c3aed;font-weight:600"><i class="fas fa-building-columns"></i> IC</span>';
+    }
+    var currency = acc ? (acc.currency === 'USD' ? 'US$ ' : '$ ') : '$ ';
     return `<tr>
       <td>${fmtDate(tx.date)}</td>
-      <td style="font-size:12px">${acc?.name || '-'}</td>
-      <td>${statusBadge(tx.type)}</td>
-      <td><span class="badge badge-gray">${tx.category || '-'}</span></td>
-      <td>${tx.description}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${proj?.name || '-'}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${tx.reference || '-'}</td>
+      <td style="font-size:12px">${escapeHtml(acc ? acc.name : '-')}</td>
+      <td>${typeBadge}</td>
+      <td><span class="badge badge-gray">${escapeHtml(tx.category || '-')}</span></td>
+      <td style="font-size:12px">${escapeHtml(tx.description || '')}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${proj ? escapeHtml(proj.name) : '-'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${escapeHtml(tx.reference || '-')}</td>
       <td class="number-cell text-right ${tx.type==='income'?'text-success':'text-danger'}">
-        ${tx.type==='income'?'+':'-'}${fmtMoney(tx.amount)}
+        ${tx.type==='income'?'+':'-'}${currency}${fmtNum(tx.amount)}
       </td>
       <td><button class="btn-ghost btn btn-sm danger" onclick="deleteTx('${tx.id}')"><i class="fas fa-trash"></i></button></td>
     </tr>`;
@@ -414,4 +423,452 @@ function exportTx() {
       t.type==='expense' ? -t.amount : t.amount
     ])
   );
+}
+
+/* ── CAMBIO DE MONEDA (FX) ───────────────────────────────────────────────── */
+
+function openFxForm() {
+  var accounts = DB.getAll('bankAccounts');
+  var today = todayStr();
+
+  openModal('Cambio de Moneda', `
+<div style="background:var(--bg);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text-muted)">
+  <i class="fas fa-info-circle"></i> Registra la salida de una moneda de una cuenta y la entrada en otra. Genera dos movimientos enlazados.
+</div>
+<div class="form-grid form-grid-2">
+  <div class="form-group">
+    <label class="form-label">Fecha *</label>
+    <input class="form-control" id="fx-date" type="date" value="${today}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Referencia</label>
+    <input class="form-control" id="fx-ref" placeholder="N° operación, ticket, etc.">
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-bottom:4px">
+  <div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--danger);margin-bottom:8px"><i class="fas fa-arrow-up"></i> Cuenta de Origen (sale)</div>
+    <div class="form-group">
+      <label class="form-label">Cuenta *</label>
+      <select class="form-control" id="fx-from-acc" onchange="fxUpdateLabels()">
+        <option value="">Seleccionar...</option>
+        ${accounts.map(a => `<option value="${a.id}" data-currency="${a.currency}">${escapeHtml(a.name)} (${a.currency})</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" id="fx-from-label">Importe que sale *</label>
+      <input class="form-control" id="fx-from-amount" type="number" min="0" step="0.01" placeholder="0" oninput="fxCalcDestAmount()">
+    </div>
+  </div>
+  <div style="text-align:center;padding-bottom:12px;font-size:22px;color:var(--text-muted)">
+    <i class="fas fa-right-left"></i>
+  </div>
+  <div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--success);margin-bottom:8px"><i class="fas fa-arrow-down"></i> Cuenta de Destino (entra)</div>
+    <div class="form-group">
+      <label class="form-label">Cuenta *</label>
+      <select class="form-control" id="fx-to-acc" onchange="fxUpdateLabels()">
+        <option value="">Seleccionar...</option>
+        ${accounts.map(a => `<option value="${a.id}" data-currency="${a.currency}">${escapeHtml(a.name)} (${a.currency})</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" id="fx-to-label">Importe que entra *</label>
+      <input class="form-control" id="fx-to-amount" type="number" min="0" step="0.01" placeholder="0">
+    </div>
+  </div>
+</div>
+
+<div class="form-grid form-grid-2">
+  <div class="form-group">
+    <label class="form-label">Tipo de cambio <span id="fx-rate-label" style="color:var(--text-muted)">(opcional — para referencia)</span></label>
+    <input class="form-control" id="fx-rate" type="number" min="0" step="0.01" placeholder="Ej: 1050" oninput="fxCalcDestAmount()">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Descripción</label>
+    <input class="form-control" id="fx-desc" placeholder="Ej: Venta de dólares — Banco XYZ">
+  </div>
+</div>
+`, 'modal-lg', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-primary" onclick="saveFxTx()"><i class="fas fa-save"></i> Registrar Cambio</button>
+`);
+}
+
+function fxUpdateLabels() {
+  var fromSel = document.getElementById('fx-from-acc');
+  var toSel = document.getElementById('fx-to-acc');
+  var fromOpt = fromSel && fromSel.selectedOptions[0];
+  var toOpt = toSel && toSel.selectedOptions[0];
+  var fromCur = fromOpt ? (fromOpt.dataset.currency || '') : '';
+  var toCur = toOpt ? (toOpt.dataset.currency || '') : '';
+  var fl = document.getElementById('fx-from-label');
+  var tl = document.getElementById('fx-to-label');
+  var rl = document.getElementById('fx-rate-label');
+  if (fl) fl.textContent = 'Importe que sale' + (fromCur ? ' (' + fromCur + ')' : '') + ' *';
+  if (tl) tl.textContent = 'Importe que entra' + (toCur ? ' (' + toCur + ')' : '') + ' *';
+  if (rl && fromCur && toCur && fromCur !== toCur) {
+    rl.textContent = '(' + fromCur + ' → ' + toCur + ')';
+  }
+  fxCalcDestAmount();
+}
+
+function fxCalcDestAmount() {
+  var fromAmt = parseFloat(document.getElementById('fx-from-amount').value) || 0;
+  var rate = parseFloat(document.getElementById('fx-rate').value) || 0;
+  var toEl = document.getElementById('fx-to-amount');
+  if (fromAmt > 0 && rate > 0 && toEl && !parseFloat(toEl.value)) {
+    toEl.value = (fromAmt * rate).toFixed(2);
+  }
+}
+
+function saveFxTx() {
+  var fromAccId = document.getElementById('fx-from-acc').value;
+  var toAccId = document.getElementById('fx-to-acc').value;
+  var fromAmt = parseFloat(document.getElementById('fx-from-amount').value);
+  var toAmt = parseFloat(document.getElementById('fx-to-amount').value);
+  var date = document.getElementById('fx-date').value;
+  var ref = document.getElementById('fx-ref').value.trim();
+  var desc = document.getElementById('fx-desc').value.trim() || 'Cambio de moneda';
+  var rate = parseFloat(document.getElementById('fx-rate').value) || 0;
+
+  if (!fromAccId || !toAccId) { toast('Seleccioná ambas cuentas', 'error'); return; }
+  if (fromAccId === toAccId) { toast('Las cuentas origen y destino deben ser distintas', 'error'); return; }
+  if (!fromAmt || fromAmt <= 0) { toast('Ingresá el importe que sale', 'error'); return; }
+  if (!toAmt || toAmt <= 0) { toast('Ingresá el importe que entra', 'error'); return; }
+
+  var accounts = DB.getAll('bankAccounts');
+  var fromAcc = accounts.find(function(a) { return a.id === fromAccId; });
+  var toAcc = accounts.find(function(a) { return a.id === toAccId; });
+  var groupId = 'fx-' + Date.now();
+
+  // Salida de cuenta origen
+  DB.insert('treasuryTx', {
+    account_id: fromAccId,
+    type: 'expense',
+    tx_type: 'fx',
+    fx_group_id: groupId,
+    category: 'Cambio de moneda',
+    description: desc + (ref ? ' [' + ref + ']' : '') + (toAcc ? ' → ' + toAcc.name : ''),
+    amount: fromAmt,
+    date: date,
+    reference: ref,
+    fx_rate: rate,
+    linked_account_id: toAccId,
+  });
+
+  // Entrada en cuenta destino
+  DB.insert('treasuryTx', {
+    account_id: toAccId,
+    type: 'income',
+    tx_type: 'fx',
+    fx_group_id: groupId,
+    category: 'Cambio de moneda',
+    description: desc + (ref ? ' [' + ref + ']' : '') + (fromAcc ? ' ← ' + fromAcc.name : ''),
+    amount: toAmt,
+    date: date,
+    reference: ref,
+    fx_rate: rate,
+    linked_account_id: fromAccId,
+  });
+
+  // Asiento contable (si hay cuentas contables cargadas)
+  var accounts2 = DB.getAll('accounts');
+  if (accounts2.length) {
+    var fromCur = fromAcc ? fromAcc.currency : '';
+    var toCur = toAcc ? toAcc.currency : '';
+    var num = 'AS-' + new Date().getFullYear() + '-' + String(DB.getAll('journalEntries').length + 1).padStart(3, '0');
+    var bankFrom = accounts2.find(function(a) {
+      return a.name && (a.name.toLowerCase().includes((fromAcc ? fromAcc.name.toLowerCase() : '')) || a.code === '1.1.1.1');
+    });
+    var bankTo = accounts2.find(function(a) {
+      return a.name && (a.name.toLowerCase().includes((toAcc ? toAcc.name.toLowerCase() : '')) || a.code === '1.1.1.2');
+    });
+    DB.insert('journalEntries', {
+      number: num,
+      date: date,
+      description: 'Cambio de moneda: ' + desc + (rate ? ' | TC: ' + rate : ''),
+      status: 'posted',
+      origin: 'fx',
+      fx_group_id: groupId,
+      lines: [
+        { account_code: bankTo ? bankTo.code : '', account_name: bankTo ? bankTo.name : (toAcc ? toAcc.name : 'Banco destino'), debit: toAmt, credit: 0, description: 'Ingreso ' + (toCur || '') + ' — ' + (toAcc ? toAcc.name : '') },
+        { account_code: bankFrom ? bankFrom.code : '', account_name: bankFrom ? bankFrom.name : (fromAcc ? fromAcc.name : 'Banco origen'), debit: 0, credit: fromAmt, description: 'Salida ' + (fromCur || '') + ' — ' + (fromAcc ? fromAcc.name : '') },
+      ]
+    });
+  }
+
+  toast('Cambio FX registrado: salida y entrada guardadas', 'success');
+  closeModal();
+  renderTesoreria();
+}
+
+/* ── MOVIMIENTO ENTRE SOCIEDADES (INTERCOMPANY) ──────────────────────────── */
+
+function openIntercompanyForm() {
+  var accounts = DB.getAll('bankAccounts');
+  var companies = DB.getAllCompanies();
+  var today = todayStr();
+
+  var conceptos = ['Préstamo entre sociedades', 'Devolución de préstamo', 'Dividendos a cobrar', 'Aporte de capital', 'Transferencia de fondos', 'Otro'];
+
+  openModal('Movimiento entre Sociedades', `
+<div style="background:#8b5cf622;border:1px solid #8b5cf644;border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:#6d28d9">
+  <i class="fas fa-info-circle"></i> Genera dos movimientos de tesorería (salida y entrada) y dos asientos contables, uno por sociedad, con la contrapartida de deuda/crédito entre empresas.
+</div>
+<div class="form-grid form-grid-2">
+  <div class="form-group">
+    <label class="form-label">Concepto *</label>
+    <select class="form-control" id="ic-concepto" onchange="icUpdateDesc()">
+      ${conceptos.map(function(c) { return '<option value="' + c + '">' + c + '</option>'; }).join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Importe *</label>
+    <input class="form-control" id="ic-amount" type="number" min="0" step="0.01" placeholder="0">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Fecha *</label>
+    <input class="form-control" id="ic-date" type="date" value="${today}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Referencia / N° operación</label>
+    <input class="form-control" id="ic-ref" placeholder="Ej: PREST-001">
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:start;margin:8px 0 4px">
+  <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--danger);margin-bottom:10px"><i class="fas fa-arrow-up"></i> Sociedad Prestadora (sale)</div>
+    <div class="form-group">
+      <label class="form-label">Sociedad *</label>
+      <select class="form-control" id="ic-from-company" onchange="icUpdateDesc()">
+        <option value="">Seleccionar...</option>
+        ${companies.map(function(c) { return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join('')}
+        <option value="__manual__">— Ingresar nombre manualmente —</option>
+      </select>
+      <input class="form-control mt-1" id="ic-from-company-name" placeholder="Nombre de la sociedad" style="display:none">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cuenta bancaria de la que sale *</label>
+      <select class="form-control" id="ic-from-acc">
+        <option value="">Seleccionar...</option>
+        ${accounts.map(function(a) { return '<option value="' + a.id + '">' + escapeHtml(a.name) + ' (' + a.currency + ')</option>'; }).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cuenta contable contrapartida (Préstamo otorgado)</label>
+      <input class="form-control" id="ic-from-contra-code" placeholder="Ej: 1.2.3.1" style="width:120px;display:inline-block">
+      <input class="form-control" id="ic-from-contra-name" placeholder="Créditos a vinculadas" style="width:calc(100% - 130px);display:inline-block;margin-left:6px">
+    </div>
+  </div>
+  <div style="text-align:center;padding-top:60px;font-size:20px;color:var(--text-muted)">
+    <i class="fas fa-arrow-right-long"></i>
+  </div>
+  <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--success);margin-bottom:10px"><i class="fas fa-arrow-down"></i> Sociedad Receptora (entra)</div>
+    <div class="form-group">
+      <label class="form-label">Sociedad *</label>
+      <select class="form-control" id="ic-to-company" onchange="icUpdateDesc()">
+        <option value="">Seleccionar...</option>
+        ${companies.map(function(c) { return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join('')}
+        <option value="__manual__">— Ingresar nombre manualmente —</option>
+      </select>
+      <input class="form-control mt-1" id="ic-to-company-name" placeholder="Nombre de la sociedad" style="display:none">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cuenta bancaria que recibe *</label>
+      <select class="form-control" id="ic-to-acc">
+        <option value="">Seleccionar...</option>
+        ${accounts.map(function(a) { return '<option value="' + a.id + '">' + escapeHtml(a.name) + ' (' + a.currency + ')</option>'; }).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cuenta contable contrapartida (Deuda asumida)</label>
+      <input class="form-control" id="ic-to-contra-code" placeholder="Ej: 2.1.3.1" style="width:120px;display:inline-block">
+      <input class="form-control" id="ic-to-contra-name" placeholder="Deudas con vinculadas" style="width:calc(100% - 130px);display:inline-block;margin-left:6px">
+    </div>
+  </div>
+</div>
+
+<div class="form-group mt-2">
+  <label class="form-label">Observaciones</label>
+  <input class="form-control" id="ic-desc" placeholder="Descripción adicional (opcional)">
+</div>
+`, 'modal-xl', `
+<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+<button class="btn btn-primary" onclick="saveIntercompanyTx()"><i class="fas fa-save"></i> Registrar Movimiento</button>
+`);
+
+  // Show manual input when "Ingresar manualmente" selected
+  ['ic-from-company', 'ic-to-company'].forEach(function(selId) {
+    var sel = document.getElementById(selId);
+    var nameField = document.getElementById(selId.replace('-company', '-company-name'));
+    if (sel && nameField) {
+      sel.addEventListener('change', function() {
+        nameField.style.display = this.value === '__manual__' ? '' : 'none';
+      });
+    }
+  });
+}
+
+function icUpdateDesc() {
+  var concepto = (document.getElementById('ic-concepto') || {}).value || '';
+  // pre-fill contra account names based on concepto
+  var fromContraName = document.getElementById('ic-from-contra-name');
+  var toContraName = document.getElementById('ic-to-contra-name');
+  if (!fromContraName || !toContraName) return;
+  var isLoan = concepto.toLowerCase().includes('préstamo') || concepto.toLowerCase().includes('prestamo');
+  var isDev = concepto.toLowerCase().includes('devolución') || concepto.toLowerCase().includes('devolucion');
+  if (isLoan && !isDev) {
+    if (!fromContraName.value) fromContraName.value = 'Créditos entre sociedades';
+    if (!toContraName.value) toContraName.value = 'Deudas entre sociedades';
+  } else if (isDev) {
+    if (!fromContraName.value) fromContraName.value = 'Deudas entre sociedades (cobro)';
+    if (!toContraName.value) toContraName.value = 'Créditos entre sociedades (pago)';
+  }
+}
+
+function _icGetCompanyName(selId, nameId) {
+  var sel = document.getElementById(selId);
+  var nameEl = document.getElementById(nameId);
+  if (!sel) return '';
+  if (sel.value === '__manual__') return (nameEl ? nameEl.value.trim() : '') || 'Sociedad';
+  var opt = sel.selectedOptions && sel.selectedOptions[0];
+  return opt ? opt.textContent.trim() : '';
+}
+
+function saveIntercompanyTx() {
+  var fromAccId = document.getElementById('ic-from-acc').value;
+  var toAccId = document.getElementById('ic-to-acc').value;
+  var amount = parseFloat(document.getElementById('ic-amount').value);
+  var date = document.getElementById('ic-date').value;
+  var ref = document.getElementById('ic-ref').value.trim();
+  var concepto = document.getElementById('ic-concepto').value;
+  var extraDesc = document.getElementById('ic-desc').value.trim();
+  var fromName = _icGetCompanyName('ic-from-company', 'ic-from-company-name');
+  var toName = _icGetCompanyName('ic-to-company', 'ic-to-company-name');
+
+  var fromContraCode = (document.getElementById('ic-from-contra-code').value || '').trim();
+  var fromContraName = (document.getElementById('ic-from-contra-name').value || '').trim() || 'Créditos entre sociedades';
+  var toContraCode = (document.getElementById('ic-to-contra-code').value || '').trim();
+  var toContraName = (document.getElementById('ic-to-contra-name').value || '').trim() || 'Deudas entre sociedades';
+
+  if (!fromAccId || !toAccId) { toast('Seleccioná las cuentas bancarias de origen y destino', 'error'); return; }
+  if (!fromName) { toast('Ingresá la sociedad de origen', 'error'); return; }
+  if (!toName) { toast('Ingresá la sociedad de destino', 'error'); return; }
+  if (!amount || amount <= 0) { toast('Ingresá un importe válido', 'error'); return; }
+
+  var accounts = DB.getAll('bankAccounts');
+  var fromAcc = accounts.find(function(a) { return a.id === fromAccId; });
+  var toAcc = accounts.find(function(a) { return a.id === toAccId; });
+  var groupId = 'ic-' + Date.now();
+  var baseDesc = concepto + ' — ' + fromName + ' → ' + toName + (ref ? ' [' + ref + ']' : '');
+
+  // ── TreasuryTx salida (sociedad prestadora) ──
+  DB.insert('treasuryTx', {
+    account_id: fromAccId,
+    type: 'expense',
+    tx_type: 'intercompany',
+    ic_group_id: groupId,
+    ic_from_company: fromName,
+    ic_to_company: toName,
+    category: 'Intercompany — salida',
+    description: baseDesc + (extraDesc ? ' — ' + extraDesc : ''),
+    amount: amount,
+    date: date,
+    reference: ref,
+  });
+
+  // ── TreasuryTx entrada (sociedad receptora) ──
+  DB.insert('treasuryTx', {
+    account_id: toAccId,
+    type: 'income',
+    tx_type: 'intercompany',
+    ic_group_id: groupId,
+    ic_from_company: fromName,
+    ic_to_company: toName,
+    category: 'Intercompany — entrada',
+    description: baseDesc + (extraDesc ? ' — ' + extraDesc : ''),
+    amount: amount,
+    date: date,
+    reference: ref,
+  });
+
+  // ── Asientos contables ──
+  var existingEntries = DB.getAll('journalEntries');
+  var num1 = 'AS-' + new Date().getFullYear() + '-' + String(existingEntries.length + 1).padStart(3, '0');
+  var num2 = 'AS-' + new Date().getFullYear() + '-' + String(existingEntries.length + 2).padStart(3, '0');
+
+  // Buscar cuenta contable del banco en el plan de cuentas
+  var chartAccs = DB.getAll('accounts');
+  function findBankAcc(bankAcc) {
+    if (!bankAcc || !chartAccs.length) return null;
+    return chartAccs.find(function(a) {
+      return a.name && a.name.toLowerCase().includes(bankAcc.name.toLowerCase().split(' ')[0]);
+    }) || null;
+  }
+  var fromBankAcc = findBankAcc(fromAcc);
+  var toBankAcc = findBankAcc(toAcc);
+
+  // Asiento empresa prestadora:
+  // Dr. "Créditos entre sociedades - [toName]"  →  amount
+  // Cr. "Banco/Caja [fromAcc]"                  →  amount
+  DB.insert('journalEntries', {
+    number: num1,
+    date: date,
+    description: '[' + fromName + '] ' + baseDesc,
+    status: 'posted',
+    origin: 'intercompany',
+    ic_group_id: groupId,
+    ic_company: fromName,
+    ic_role: 'prestadora',
+    lines: [
+      {
+        account_code: fromContraCode,
+        account_name: fromContraName + ' — ' + toName,
+        debit: amount, credit: 0,
+        description: concepto + ' otorgado a ' + toName
+      },
+      {
+        account_code: fromBankAcc ? fromBankAcc.code : '',
+        account_name: fromBankAcc ? fromBankAcc.name : (fromAcc ? fromAcc.name : 'Banco origen'),
+        debit: 0, credit: amount,
+        description: 'Salida fondos — ' + (fromAcc ? fromAcc.name : '')
+      }
+    ]
+  });
+
+  // Asiento empresa receptora:
+  // Dr. "Banco/Caja [toAcc]"                    →  amount
+  // Cr. "Deudas entre sociedades - [fromName]"   →  amount
+  DB.insert('journalEntries', {
+    number: num2,
+    date: date,
+    description: '[' + toName + '] ' + baseDesc,
+    status: 'posted',
+    origin: 'intercompany',
+    ic_group_id: groupId,
+    ic_company: toName,
+    ic_role: 'receptora',
+    lines: [
+      {
+        account_code: toBankAcc ? toBankAcc.code : '',
+        account_name: toBankAcc ? toBankAcc.name : (toAcc ? toAcc.name : 'Banco destino'),
+        debit: amount, credit: 0,
+        description: 'Entrada fondos — ' + (toAcc ? toAcc.name : '')
+      },
+      {
+        account_code: toContraCode,
+        account_name: toContraName + ' — ' + fromName,
+        debit: 0, credit: amount,
+        description: concepto + ' recibido de ' + fromName
+      }
+    ]
+  });
+
+  toast('Movimiento intercompany registrado: 2 movimientos + 2 asientos contables generados', 'success');
+  closeModal();
+  renderTesoreria();
 }
