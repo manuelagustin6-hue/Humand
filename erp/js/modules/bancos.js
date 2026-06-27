@@ -456,6 +456,7 @@ function baRenderTabCuentas(accounts, movements, treasuryTx) {
         '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">' +
           'Saldo inicial: ' + fmtMoney(acc.initial_balance || 0) +
           ' &bull; ' + totalMvts + ' movimientos' +
+          (acc.account_code ? ' &bull; Cta. ' + escapeHtml(acc.account_code) : '') +
         '</div>' +
         '<div style="display:flex;gap:8px">' +
           '<button class="btn btn-sm btn-primary" onclick="openBankMovementForm(\'' + acc.id + '\')">' +
@@ -666,6 +667,17 @@ function baSetTab(tab) {
   });
 }
 
+// Campo de cuenta contable asignada (desplegable del plan de cuentas, o texto manual si no hay plan)
+function _baChartAccountField(acc) {
+  var code = acc ? (acc.account_code || '') : '';
+  var opts = (typeof _chartAccountOptions === 'function') ? _chartAccountOptions(code) : '';
+  if (opts !== '') {
+    return '<select class="form-control" id="ba-acc-sel"><option value="">Sin asignar</option>' + opts + '</select>';
+  }
+  return '<input class="form-control" id="ba-acc-code" placeholder="Codigo" style="width:120px;display:inline-block" value="' + escapeHtml(code) + '">' +
+    '<input class="form-control" id="ba-acc-name" placeholder="Nombre de la cuenta contable" style="width:calc(100% - 130px);display:inline-block;margin-left:6px" value="' + escapeHtml(acc ? (acc.account_name || '') : '') + '">';
+}
+
 function openBankAccountForm(id) {
   var acc = id ? DB.getById('bankAccounts', id) : null;
   var isEdit = !!acc;
@@ -706,6 +718,10 @@ function openBankAccountForm(id) {
       '</div>' +
     '</div>' +
     '<div class="form-group">' +
+      '<label>Cuenta contable asignada <span style="color:var(--text-muted);font-weight:400;font-size:11px">— se usa en los asientos automáticos (FX, entre sociedades, etc.)</span></label>' +
+      _baChartAccountField(acc) +
+    '</div>' +
+    '<div class="form-group">' +
       '<label>Notas</label>' +
       '<textarea class="form-control" id="ba-notes" rows="2">' + (acc ? acc.notes || '' : '') + '</textarea>' +
     '</div>';
@@ -730,6 +746,19 @@ function saveBankAccount(id) {
 
   if (!name || !name.value.trim()) { toast('Ingrese el nombre de la cuenta', 'error'); return; }
 
+  // Cuenta contable asignada (select del plan o campos manuales)
+  var accCode = '', accName = '';
+  var accSel = document.getElementById('ba-acc-sel');
+  if (accSel) {
+    var chart = (typeof _readChartAccount === 'function') ? _readChartAccount('ba-acc-sel') : { code: accSel.value || '', name: '' };
+    accCode = chart.code; accName = chart.name;
+  } else {
+    var ce = document.getElementById('ba-acc-code');
+    var ne = document.getElementById('ba-acc-name');
+    accCode = ce ? ce.value.trim() : '';
+    accName = ne ? ne.value.trim() : '';
+  }
+
   var record = {
     name: name.value.trim(),
     bank: bank ? bank.value.trim() : '',
@@ -738,6 +767,8 @@ function saveBankAccount(id) {
     currency: currency ? currency.value : 'ARS',
     initial_balance: parseFloat(initial ? initial.value : 0) || 0,
     notes: notes ? notes.value.trim() : '',
+    account_code: accCode,
+    account_name: accName,
   };
 
   if (id) {
