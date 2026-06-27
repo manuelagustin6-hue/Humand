@@ -458,7 +458,7 @@ function openFxForm() {
     </div>
     <div class="form-group">
       <label class="form-label" id="fx-from-label">Importe que sale *</label>
-      <input class="form-control" id="fx-from-amount" type="number" min="0" step="0.01" placeholder="0" oninput="fxCalcDestAmount()">
+      <input class="form-control" id="fx-from-amount" type="number" min="0" step="0.01" placeholder="0" oninput="fxRecalc('from')">
     </div>
   </div>
   <div style="text-align:center;padding-bottom:12px;font-size:22px;color:var(--text-muted)">
@@ -475,15 +475,15 @@ function openFxForm() {
     </div>
     <div class="form-group">
       <label class="form-label" id="fx-to-label">Importe que entra *</label>
-      <input class="form-control" id="fx-to-amount" type="number" min="0" step="0.01" placeholder="0">
+      <input class="form-control" id="fx-to-amount" type="number" min="0" step="0.01" placeholder="0" oninput="fxRecalc('to')">
     </div>
   </div>
 </div>
 
 <div class="form-grid form-grid-2">
   <div class="form-group">
-    <label class="form-label">Tipo de cambio <span id="fx-rate-label" style="color:var(--text-muted)">(opcional — para referencia)</span></label>
-    <input class="form-control" id="fx-rate" type="number" min="0" step="0.01" placeholder="Ej: 1050" oninput="fxCalcDestAmount()">
+    <label class="form-label">Tipo de cambio <span id="fx-rate-label" style="color:var(--text-muted)">(se calcula solo)</span></label>
+    <input class="form-control" id="fx-rate" type="number" min="0" step="0.0001" placeholder="Ej: 1050" oninput="fxRecalc('rate')">
   </div>
   <div class="form-group">
     <label class="form-label">Descripción</label>
@@ -509,17 +509,41 @@ function fxUpdateLabels() {
   if (fl) fl.textContent = 'Importe que sale' + (fromCur ? ' (' + fromCur + ')' : '') + ' *';
   if (tl) tl.textContent = 'Importe que entra' + (toCur ? ' (' + toCur + ')' : '') + ' *';
   if (rl && fromCur && toCur && fromCur !== toCur) {
-    rl.textContent = '(' + fromCur + ' → ' + toCur + ')';
+    rl.textContent = '(' + fromCur + ' por 1 ' + toCur + ')';
   }
-  fxCalcDestAmount();
+  fxRecalc('account');
 }
 
-function fxCalcDestAmount() {
-  var fromAmt = parseFloat(document.getElementById('fx-from-amount').value) || 0;
-  var rate = parseFloat(document.getElementById('fx-rate').value) || 0;
+// Bidirectional FX calc: fill any two of (sale / entra / tipo de cambio) → computes the third.
+// Rate is defined as: importe que SALE / importe que ENTRA  (unidades de origen por unidad de destino).
+// Ej: 10000 ARS salen / 6,5789 USD entran → TC = 1520 (1 USD = 1520 ARS).
+function fxRecalc(source) {
+  var fromEl = document.getElementById('fx-from-amount');
   var toEl = document.getElementById('fx-to-amount');
-  if (fromAmt > 0 && rate > 0 && toEl && !parseFloat(toEl.value)) {
-    toEl.value = (fromAmt * rate).toFixed(2);
+  var rateEl = document.getElementById('fx-rate');
+  if (!fromEl || !toEl || !rateEl) return;
+  var from = parseFloat(fromEl.value) || 0;
+  var to = parseFloat(toEl.value) || 0;
+  var rate = parseFloat(rateEl.value) || 0;
+
+  function fmtAmt(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+  function fmtRate(v) { return (Math.round(v * 10000) / 10000).toString(); }
+
+  if (source === 'from') {
+    // El usuario editó "sale": si hay TC → recalcular "entra"; si no hay TC pero hay "entra" → calcular TC
+    if (rate > 0 && from > 0) { toEl.value = fmtAmt(from / rate); }
+    else if (to > 0 && from > 0) { rateEl.value = fmtRate(from / to); }
+  } else if (source === 'to') {
+    // El usuario editó "entra": si hay TC → recalcular "sale"; si no hay TC pero hay "sale" → calcular TC
+    if (rate > 0 && to > 0) { fromEl.value = fmtAmt(to * rate); }
+    else if (from > 0 && to > 0) { rateEl.value = fmtRate(from / to); }
+  } else if (source === 'rate') {
+    // El usuario editó el TC: recalcular "entra" desde "sale", o "sale" desde "entra"
+    if (rate > 0 && from > 0) { toEl.value = fmtAmt(from / rate); }
+    else if (rate > 0 && to > 0) { fromEl.value = fmtAmt(to * rate); }
+  } else {
+    // Cambio de cuenta: recalcular TC si ambos importes están cargados
+    if (from > 0 && to > 0) { rateEl.value = fmtRate(from / to); }
   }
 }
 
