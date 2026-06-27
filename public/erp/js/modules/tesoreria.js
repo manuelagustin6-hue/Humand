@@ -209,7 +209,7 @@ function renderCashflowChartTesoreria(txs) {
 function renderAccountsTable(accounts) {
   return `<div class="card"><div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr>
-      <th>Nombre</th><th>Banco</th><th>N° Cuenta</th><th>Tipo</th><th>Moneda</th>
+      <th>Nombre</th><th>Banco</th><th>N° Cuenta</th><th>Tipo</th><th>Cta. Contable</th><th>Moneda</th>
       <th class="text-right">Saldo Inicial</th><th class="text-right">Ingresos</th><th class="text-right">Egresos</th><th class="text-right fw-bold">Saldo Actual</th><th>Acciones</th>
     </tr></thead>
     <tbody>
@@ -218,6 +218,7 @@ function renderAccountsTable(accounts) {
         <td>${acc.bank}</td>
         <td style="font-size:11px">${acc.account_number}</td>
         <td><span class="badge badge-gray">${acc.type}</span></td>
+        <td style="font-size:11px">${acc.account_code ? '<span class="badge badge-blue">' + escapeHtml(acc.account_code) + '</span> ' + escapeHtml(acc.account_name || '') : '<span style="color:var(--text-muted)">Sin asignar</span>'}</td>
         <td><span class="badge ${acc.currency==='USD'?'badge-green':'badge-blue'}">${acc.currency}</span></td>
         <td class="number-cell text-right">${fmtMoney(acc.initial_balance)}</td>
         <td class="number-cell text-right text-success">${fmtMoney(acc.income)}</td>
@@ -389,6 +390,12 @@ function openBankAccountForm(id = null) {
     <label class="form-label">Saldo Inicial</label>
     <input class="form-control" id="ba-initial" type="number" value="${acc?.initial_balance || 0}">
   </div>
+  <div class="form-group full">
+    <label class="form-label">Cuenta contable asignada
+      <span style="color:var(--text-muted);font-weight:400">— se usa en los asientos automáticos (FX, entre sociedades, etc.)</span>
+    </label>
+    ${_baAccountField(acc)}
+  </div>
 </div>
 `, '', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -396,9 +403,34 @@ function openBankAccountForm(id = null) {
 `);
 }
 
+// Campo de cuenta contable asignada a una cuenta de tesorería.
+// Desplegable del plan de cuentas si existe; texto manual como respaldo.
+function _baAccountField(acc) {
+  var code = acc ? (acc.account_code || '') : '';
+  var opts = _chartAccountOptions(code);
+  if (opts !== '') {
+    return '<select class="form-control" id="ba-acc-sel">' +
+      '<option value="">Sin asignar</option>' + opts + '</select>';
+  }
+  return '<input class="form-control" id="ba-acc-code" placeholder="Código" style="width:120px;display:inline-block" value="' + escapeHtml(code) + '">' +
+    '<input class="form-control" id="ba-acc-name" placeholder="Nombre de la cuenta" style="width:calc(100% - 130px);display:inline-block;margin-left:6px" value="' + escapeHtml(acc ? (acc.account_name || '') : '') + '">';
+}
+
 function saveBankAccount(id) {
   const name = document.getElementById('ba-name').value.trim();
   if (!name) { toast('El nombre es obligatorio', 'error'); return; }
+  // Cuenta contable asignada (select del plan o campos manuales)
+  var accSel = document.getElementById('ba-acc-sel');
+  var accCode = '', accName = '';
+  if (accSel) {
+    var chart = _readChartAccount('ba-acc-sel');
+    accCode = chart.code; accName = chart.name;
+  } else {
+    var ce = document.getElementById('ba-acc-code');
+    var ne = document.getElementById('ba-acc-name');
+    accCode = ce ? ce.value.trim() : '';
+    accName = ne ? ne.value.trim() : '';
+  }
   const data = {
     name,
     bank: document.getElementById('ba-bank').value.trim(),
@@ -406,6 +438,8 @@ function saveBankAccount(id) {
     account_number: document.getElementById('ba-num').value.trim(),
     currency: document.getElementById('ba-currency').value,
     initial_balance: parseFloat(document.getElementById('ba-initial').value) || 0,
+    account_code: accCode,
+    account_name: accName,
   };
   if (id) { DB.update('bankAccounts', id, data); toast('Cuenta actualizada', 'success'); }
   else { DB.insert('bankAccounts', data); toast('Cuenta creada', 'success'); }
@@ -455,6 +489,22 @@ function _bookSelect(id, selected) {
 function _readBook(id) {
   var el = document.getElementById(id);
   return (el && el.value) ? el.value : 'A';
+}
+
+// Devuelve la cuenta contable {code, name} de una cuenta de tesorería.
+// Usa la cuenta asignada manualmente; si no hay, intenta matchear por nombre en el plan; si no, usa el nombre de la cuenta.
+function _bankChartAccount(bankAcc) {
+  if (!bankAcc) return { code: '', name: 'Banco' };
+  if (bankAcc.account_code || bankAcc.account_name) {
+    return { code: bankAcc.account_code || '', name: bankAcc.account_name || bankAcc.name };
+  }
+  var chart = DB.getAll('accounts');
+  if (chart.length && bankAcc.name) {
+    var firstWord = bankAcc.name.toLowerCase().split(' ')[0];
+    var match = chart.find(function(a) { return a.name && a.name.toLowerCase().includes(firstWord); });
+    if (match) return { code: match.code, name: match.name };
+  }
+  return { code: '', name: bankAcc.name };
 }
 
 // Opciones <option> del plan de cuentas (solo cuentas imputables = hojas sin hijos).
@@ -666,12 +716,8 @@ function saveFxTx() {
     var fromCur = fromAcc ? fromAcc.currency : '';
     var toCur = toAcc ? toAcc.currency : '';
     var num = 'AS-' + new Date().getFullYear() + '-' + String(DB.getAll('journalEntries').length + 1).padStart(3, '0');
-    var bankFrom = accounts2.find(function(a) {
-      return a.name && (a.name.toLowerCase().includes((fromAcc ? fromAcc.name.toLowerCase() : '')) || a.code === '1.1.1.1');
-    });
-    var bankTo = accounts2.find(function(a) {
-      return a.name && (a.name.toLowerCase().includes((toAcc ? toAcc.name.toLowerCase() : '')) || a.code === '1.1.1.2');
-    });
+    var bankFrom = _bankChartAccount(fromAcc);
+    var bankTo = _bankChartAccount(toAcc);
     DB.insert('journalEntries', {
       number: num,
       date: date,
@@ -681,8 +727,8 @@ function saveFxTx() {
       book: book,
       fx_group_id: groupId,
       lines: [
-        { account_code: bankTo ? bankTo.code : '', account_name: bankTo ? bankTo.name : (toAcc ? toAcc.name : 'Banco destino'), debit: toAmt, credit: 0, description: 'Ingreso ' + (toCur || '') + ' — ' + (toAcc ? toAcc.name : '') },
-        { account_code: bankFrom ? bankFrom.code : '', account_name: bankFrom ? bankFrom.name : (fromAcc ? fromAcc.name : 'Banco origen'), debit: 0, credit: fromAmt, description: 'Salida ' + (fromCur || '') + ' — ' + (fromAcc ? fromAcc.name : '') },
+        { account_code: bankTo.code, account_name: bankTo.name, debit: toAmt, credit: 0, description: 'Ingreso ' + (toCur || '') + ' — ' + (toAcc ? toAcc.name : '') },
+        { account_code: bankFrom.code, account_name: bankFrom.name, debit: 0, credit: fromAmt, description: 'Salida ' + (fromCur || '') + ' — ' + (fromAcc ? fromAcc.name : '') },
       ]
     });
   }
@@ -925,16 +971,9 @@ function saveIntercompanyTx() {
   var num1 = 'AS-' + new Date().getFullYear() + '-' + String(existingEntries.length + 1).padStart(3, '0');
   var num2 = 'AS-' + new Date().getFullYear() + '-' + String(existingEntries.length + 2).padStart(3, '0');
 
-  // Buscar cuenta contable del banco en el plan de cuentas
-  var chartAccs = DB.getAll('accounts');
-  function findBankAcc(bankAcc) {
-    if (!bankAcc || !chartAccs.length) return null;
-    return chartAccs.find(function(a) {
-      return a.name && a.name.toLowerCase().includes(bankAcc.name.toLowerCase().split(' ')[0]);
-    }) || null;
-  }
-  var fromBankAcc = findBankAcc(fromAcc);
-  var toBankAcc = findBankAcc(toAcc);
+  // Cuenta contable asignada a cada cuenta de tesorería (con respaldo por nombre)
+  var fromBankAcc = _bankChartAccount(fromAcc);
+  var toBankAcc = _bankChartAccount(toAcc);
 
   // Asiento empresa prestadora:
   // Dr. "Créditos entre sociedades - [toName]"  →  amount
@@ -957,8 +996,8 @@ function saveIntercompanyTx() {
         description: concepto + ' otorgado a ' + toName
       },
       {
-        account_code: fromBankAcc ? fromBankAcc.code : '',
-        account_name: fromBankAcc ? fromBankAcc.name : (fromAcc ? fromAcc.name : 'Banco origen'),
+        account_code: fromBankAcc.code,
+        account_name: fromBankAcc.name,
         debit: 0, credit: amount,
         description: 'Salida fondos — ' + (fromAcc ? fromAcc.name : '')
       }
@@ -980,8 +1019,8 @@ function saveIntercompanyTx() {
     ic_role: 'receptora',
     lines: [
       {
-        account_code: toBankAcc ? toBankAcc.code : '',
-        account_name: toBankAcc ? toBankAcc.name : (toAcc ? toAcc.name : 'Banco destino'),
+        account_code: toBankAcc.code,
+        account_name: toBankAcc.name,
         debit: amount, credit: 0,
         description: 'Entrada fondos — ' + (toAcc ? toAcc.name : '')
       },
