@@ -425,6 +425,32 @@ function exportTx() {
   );
 }
 
+/* ── HELPERS COMPARTIDOS ─────────────────────────────────────────────────── */
+
+// Opciones <option> del plan de cuentas (solo cuentas imputables = hojas sin hijos).
+// selectedCode marca la opción activa. Devuelve '' si no hay plan de cuentas cargado.
+function _chartAccountOptions(selectedCode) {
+  var accs = DB.getAll('accounts');
+  if (!accs.length) return '';
+  var leaves = accs.filter(function(a) {
+    return !accs.some(function(b) { return b.parent_id === a.id; });
+  });
+  leaves.sort(function(a, b) { return (a.code || '').localeCompare(b.code || ''); });
+  return leaves.map(function(a) {
+    var sel = (selectedCode && a.code === selectedCode) ? ' selected' : '';
+    return '<option value="' + a.code + '" data-name="' + escapeHtml(a.name || '') + '"' + sel + '>' +
+      escapeHtml(a.code + ' — ' + (a.name || '')) + '</option>';
+  }).join('');
+}
+
+// Lee código y nombre de un <select> de cuentas contables por id
+function _readChartAccount(selectId) {
+  var sel = document.getElementById(selectId);
+  if (!sel) return { code: '', name: '' };
+  var opt = sel.selectedOptions && sel.selectedOptions[0];
+  return { code: sel.value || '', name: opt ? (opt.dataset.name || '') : '' };
+}
+
 /* ── CAMBIO DE MONEDA (FX) ───────────────────────────────────────────────── */
 
 function openFxForm() {
@@ -637,6 +663,19 @@ function openIntercompanyForm() {
 
   var conceptos = ['Préstamo entre sociedades', 'Devolución de préstamo', 'Dividendos a cobrar', 'Aporte de capital', 'Transferencia de fondos', 'Otro'];
 
+  var chartOpts = _chartAccountOptions('');
+  var hasChart = chartOpts !== '';
+
+  // Campo de cuenta contable: desplegable del plan de cuentas si existe, o texto manual si no
+  function contraField(idBase, placeholder) {
+    if (hasChart) {
+      return '<select class="form-control" id="' + idBase + '-sel">' +
+        '<option value="">Seleccionar cuenta...</option>' + chartOpts + '</select>';
+    }
+    return '<input class="form-control" id="' + idBase + '-code" placeholder="Código" style="width:110px;display:inline-block">' +
+      '<input class="form-control" id="' + idBase + '-name" placeholder="' + placeholder + '" style="width:calc(100% - 120px);display:inline-block;margin-left:6px">';
+  }
+
   openModal('Movimiento entre Sociedades', `
 <div style="background:#8b5cf622;border:1px solid #8b5cf644;border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:#6d28d9">
   <i class="fas fa-info-circle"></i> Genera dos movimientos de tesorería (salida y entrada) y dos asientos contables, uno por sociedad, con la contrapartida de deuda/crédito entre empresas.
@@ -683,8 +722,7 @@ function openIntercompanyForm() {
     </div>
     <div class="form-group">
       <label class="form-label">Cuenta contable contrapartida (Préstamo otorgado)</label>
-      <input class="form-control" id="ic-from-contra-code" placeholder="Ej: 1.2.3.1" style="width:120px;display:inline-block">
-      <input class="form-control" id="ic-from-contra-name" placeholder="Créditos a vinculadas" style="width:calc(100% - 130px);display:inline-block;margin-left:6px">
+      ${contraField('ic-from-contra', 'Créditos a vinculadas')}
     </div>
   </div>
   <div style="text-align:center;padding-top:60px;font-size:20px;color:var(--text-muted)">
@@ -710,8 +748,7 @@ function openIntercompanyForm() {
     </div>
     <div class="form-group">
       <label class="form-label">Cuenta contable contrapartida (Deuda asumida)</label>
-      <input class="form-control" id="ic-to-contra-code" placeholder="Ej: 2.1.3.1" style="width:120px;display:inline-block">
-      <input class="form-control" id="ic-to-contra-name" placeholder="Deudas con vinculadas" style="width:calc(100% - 130px);display:inline-block;margin-left:6px">
+      ${contraField('ic-to-contra', 'Deudas con vinculadas')}
     </div>
   </div>
 </div>
@@ -763,6 +800,21 @@ function _icGetCompanyName(selId, nameId) {
   return opt ? opt.textContent.trim() : '';
 }
 
+// Lee una cuenta contrapartida que puede ser select del plan o campos de texto manuales
+function _icReadContra(idBase, fallbackName) {
+  var sel = document.getElementById(idBase + '-sel');
+  if (sel) {
+    var acc = _readChartAccount(idBase + '-sel');
+    return { code: acc.code, name: acc.name || fallbackName };
+  }
+  var codeEl = document.getElementById(idBase + '-code');
+  var nameEl = document.getElementById(idBase + '-name');
+  return {
+    code: codeEl ? (codeEl.value || '').trim() : '',
+    name: (nameEl ? (nameEl.value || '').trim() : '') || fallbackName
+  };
+}
+
 function saveIntercompanyTx() {
   var fromAccId = document.getElementById('ic-from-acc').value;
   var toAccId = document.getElementById('ic-to-acc').value;
@@ -774,10 +826,13 @@ function saveIntercompanyTx() {
   var fromName = _icGetCompanyName('ic-from-company', 'ic-from-company-name');
   var toName = _icGetCompanyName('ic-to-company', 'ic-to-company-name');
 
-  var fromContraCode = (document.getElementById('ic-from-contra-code').value || '').trim();
-  var fromContraName = (document.getElementById('ic-from-contra-name').value || '').trim() || 'Créditos entre sociedades';
-  var toContraCode = (document.getElementById('ic-to-contra-code').value || '').trim();
-  var toContraName = (document.getElementById('ic-to-contra-name').value || '').trim() || 'Deudas entre sociedades';
+  // Las contrapartidas pueden venir de un <select> del plan de cuentas o de campos de texto manuales
+  var fromContra = _icReadContra('ic-from-contra', 'Créditos entre sociedades');
+  var toContra = _icReadContra('ic-to-contra', 'Deudas entre sociedades');
+  var fromContraCode = fromContra.code;
+  var fromContraName = fromContra.name;
+  var toContraCode = toContra.code;
+  var toContraName = toContra.name;
 
   if (!fromAccId || !toAccId) { toast('Seleccioná las cuentas bancarias de origen y destino', 'error'); return; }
   if (!fromName) { toast('Ingresá la sociedad de origen', 'error'); return; }
