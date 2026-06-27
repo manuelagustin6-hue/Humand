@@ -103,6 +103,11 @@ function renderTxTable(txs, accounts, projects) {
     <option value="income">Solo ingresos</option>
     <option value="expense">Solo egresos</option>
   </select>
+  <select class="form-control" style="width:150px" onchange="filterTx(undefined, undefined, this.value)">
+    <option value="">Conta. A y B</option>
+    <option value="A">Solo Contabilidad A</option>
+    <option value="B">Solo Contabilidad B</option>
+  </select>
   <button class="btn btn-secondary" onclick="exportTx()"><i class="fas fa-download"></i> Exportar</button>
 </div>
 <div class="card"><div class="card-body" style="padding:0"><div class="table-wrap" id="tx-table-wrap">
@@ -113,7 +118,7 @@ function renderTxTable(txs, accounts, projects) {
 function buildTxRows(txs, accounts, projects) {
   if (!txs.length) return `<div class="empty-state"><i class="fas fa-landmark"></i><p>Sin movimientos registrados</p></div>`;
   return `<table><thead><tr>
-    <th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Proyecto</th><th>Ref.</th><th class="text-right">Importe</th><th>Acciones</th>
+    <th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Conta.</th><th>Categoría</th><th>Descripción</th><th>Proyecto</th><th>Ref.</th><th class="text-right">Importe</th><th>Acciones</th>
   </tr></thead>
   <tbody>
   ${txs.map(tx => {
@@ -125,11 +130,14 @@ function buildTxRows(txs, accounts, projects) {
     } else if (tx.tx_type === 'intercompany') {
       typeBadge = '<span class="badge" style="background:#8b5cf622;color:#7c3aed;font-weight:600"><i class="fas fa-building-columns"></i> IC</span>';
     }
+    var book = tx.book || 'A';
+    var bookBadge = '<span class="badge" style="background:' + (book === 'B' ? '#64748b22;color:#475569' : '#2563eb22;color:#1d4ed8') + ';font-weight:700">' + book + '</span>';
     var currency = acc ? (acc.currency === 'USD' ? 'US$ ' : '$ ') : '$ ';
     return `<tr>
       <td>${fmtDate(tx.date)}</td>
       <td style="font-size:12px">${escapeHtml(acc ? acc.name : '-')}</td>
       <td>${typeBadge}</td>
+      <td>${bookBadge}</td>
       <td><span class="badge badge-gray">${escapeHtml(tx.category || '-')}</span></td>
       <td style="font-size:12px">${escapeHtml(tx.description || '')}</td>
       <td style="font-size:11px;color:var(--text-muted)">${proj ? escapeHtml(proj.name) : '-'}</td>
@@ -143,14 +151,16 @@ function buildTxRows(txs, accounts, projects) {
   </tbody></table>`;
 }
 
-window._txFilters = { q: '', type: '' };
-function filterTx(q, type) {
+window._txFilters = { q: '', type: '', book: '' };
+function filterTx(q, type, book) {
   if (q !== undefined) window._txFilters.q = q.toLowerCase();
   if (type !== undefined) window._txFilters.type = type;
+  if (book !== undefined) window._txFilters.book = book;
   let txs = DB.getAll('treasuryTx');
   const f = window._txFilters;
   if (f.q) txs = txs.filter(t => (t.description||'').toLowerCase().includes(f.q) || (t.category||'').toLowerCase().includes(f.q));
   if (f.type) txs = txs.filter(t => t.type === f.type);
+  if (f.book) txs = txs.filter(t => (t.book || 'A') === f.book);
   const wrap = document.getElementById('tx-table-wrap');
   if (wrap) wrap.innerHTML = buildTxRows(txs.sort((a,b)=>(b.date||'').localeCompare(a.date||'')), DB.getAll('bankAccounts'), DB.getAll('projects'));
 }
@@ -233,7 +243,7 @@ function openTxForm(type = 'expense') {
   openModal(`Registrar ${type === 'income' ? 'Ingreso' : 'Egreso'}`, `
 <div class="form-grid form-grid-2">
   <div class="form-group">
-    <label class="form-label">Cuenta *</label>
+    <label class="form-label">Cuenta de tesorería *</label>
     <select class="form-control" id="tx-account">
       <option value="">Seleccionar...</option>
       ${accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
@@ -244,6 +254,10 @@ function openTxForm(type = 'expense') {
     <select class="form-control" id="tx-category">
       ${categories.map(c => `<option value="${c}">${c}</option>`).join('')}
     </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Contabilidad</label>
+    ${_bookSelect('tx-book')}
   </div>
   <div class="form-group full">
     <label class="form-label">Descripción *</label>
@@ -287,6 +301,7 @@ function saveTx(type) {
     account_id: accountId,
     project_id: document.getElementById('tx-project').value || '',
     type,
+    book: _readBook('tx-book'),
     category: document.getElementById('tx-category').value,
     description,
     amount,
@@ -411,11 +426,12 @@ function exportTx() {
   const accounts = DB.getAll('bankAccounts');
   const projects = DB.getAll('projects');
   exportXLSX('movimientos_tesoreria.xlsx',
-    ['Fecha','Cuenta','Tipo','Categoría','Descripción','Proyecto','Referencia','Importe'],
+    ['Fecha','Cuenta','Tipo','Contabilidad','Categoría','Descripción','Proyecto','Referencia','Importe'],
     txs.map(t => [
       t.date,
       accounts.find(a=>a.id===t.account_id)?.name||'',
       t.type,
+      t.book||'A',
       t.category||'',
       t.description,
       projects.find(p=>p.id===t.project_id)?.name||'',
@@ -426,6 +442,20 @@ function exportTx() {
 }
 
 /* ── HELPERS COMPARTIDOS ─────────────────────────────────────────────────── */
+
+// Selector de contabilidad (A / B). selected marca la opción activa.
+function _bookSelect(id, selected) {
+  selected = selected || 'A';
+  return '<select class="form-control" id="' + id + '">' +
+    '<option value="A"' + (selected === 'A' ? ' selected' : '') + '>Contabilidad A</option>' +
+    '<option value="B"' + (selected === 'B' ? ' selected' : '') + '>Contabilidad B</option>' +
+    '</select>';
+}
+
+function _readBook(id) {
+  var el = document.getElementById(id);
+  return (el && el.value) ? el.value : 'A';
+}
 
 // Opciones <option> del plan de cuentas (solo cuentas imputables = hojas sin hijos).
 // selectedCode marca la opción activa. Devuelve '' si no hay plan de cuentas cargado.
@@ -461,7 +491,7 @@ function openFxForm() {
 <div style="background:var(--bg);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text-muted)">
   <i class="fas fa-info-circle"></i> Registra la salida de una moneda de una cuenta y la entrada en otra. Genera dos movimientos enlazados.
 </div>
-<div class="form-grid form-grid-2">
+<div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px">
   <div class="form-group">
     <label class="form-label">Fecha *</label>
     <input class="form-control" id="fx-date" type="date" value="${today}">
@@ -470,13 +500,17 @@ function openFxForm() {
     <label class="form-label">Referencia</label>
     <input class="form-control" id="fx-ref" placeholder="N° operación, ticket, etc.">
   </div>
+  <div class="form-group">
+    <label class="form-label">Contabilidad</label>
+    ${_bookSelect('fx-book')}
+  </div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-bottom:4px">
   <div>
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--danger);margin-bottom:8px"><i class="fas fa-arrow-up"></i> Cuenta de Origen (sale)</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--danger);margin-bottom:8px"><i class="fas fa-arrow-up"></i> Cuenta de Tesorería de Origen (sale)</div>
     <div class="form-group">
-      <label class="form-label">Cuenta *</label>
+      <label class="form-label">Cuenta de tesorería *</label>
       <select class="form-control" id="fx-from-acc" onchange="fxUpdateLabels()">
         <option value="">Seleccionar...</option>
         ${accounts.map(a => `<option value="${a.id}" data-currency="${a.currency}">${escapeHtml(a.name)} (${a.currency})</option>`).join('')}
@@ -491,9 +525,9 @@ function openFxForm() {
     <i class="fas fa-right-left"></i>
   </div>
   <div>
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--success);margin-bottom:8px"><i class="fas fa-arrow-down"></i> Cuenta de Destino (entra)</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--success);margin-bottom:8px"><i class="fas fa-arrow-down"></i> Cuenta de Tesorería de Destino (entra)</div>
     <div class="form-group">
-      <label class="form-label">Cuenta *</label>
+      <label class="form-label">Cuenta de tesorería *</label>
       <select class="form-control" id="fx-to-acc" onchange="fxUpdateLabels()">
         <option value="">Seleccionar...</option>
         ${accounts.map(a => `<option value="${a.id}" data-currency="${a.currency}">${escapeHtml(a.name)} (${a.currency})</option>`).join('')}
@@ -582,6 +616,7 @@ function saveFxTx() {
   var ref = document.getElementById('fx-ref').value.trim();
   var desc = document.getElementById('fx-desc').value.trim() || 'Cambio de moneda';
   var rate = parseFloat(document.getElementById('fx-rate').value) || 0;
+  var book = _readBook('fx-book');
 
   if (!fromAccId || !toAccId) { toast('Seleccioná ambas cuentas', 'error'); return; }
   if (fromAccId === toAccId) { toast('Las cuentas origen y destino deben ser distintas', 'error'); return; }
@@ -598,6 +633,7 @@ function saveFxTx() {
     account_id: fromAccId,
     type: 'expense',
     tx_type: 'fx',
+    book: book,
     fx_group_id: groupId,
     category: 'Cambio de moneda',
     description: desc + (ref ? ' [' + ref + ']' : '') + (toAcc ? ' → ' + toAcc.name : ''),
@@ -613,6 +649,7 @@ function saveFxTx() {
     account_id: toAccId,
     type: 'income',
     tx_type: 'fx',
+    book: book,
     fx_group_id: groupId,
     category: 'Cambio de moneda',
     description: desc + (ref ? ' [' + ref + ']' : '') + (fromAcc ? ' ← ' + fromAcc.name : ''),
@@ -641,6 +678,7 @@ function saveFxTx() {
       description: 'Cambio de moneda: ' + desc + (rate ? ' | TC: ' + rate : ''),
       status: 'posted',
       origin: 'fx',
+      book: book,
       fx_group_id: groupId,
       lines: [
         { account_code: bankTo ? bankTo.code : '', account_name: bankTo ? bankTo.name : (toAcc ? toAcc.name : 'Banco destino'), debit: toAmt, credit: 0, description: 'Ingreso ' + (toCur || '') + ' — ' + (toAcc ? toAcc.name : '') },
@@ -699,6 +737,10 @@ function openIntercompanyForm() {
     <label class="form-label">Referencia / N° operación</label>
     <input class="form-control" id="ic-ref" placeholder="Ej: PREST-001">
   </div>
+  <div class="form-group">
+    <label class="form-label">Contabilidad</label>
+    ${_bookSelect('ic-book')}
+  </div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:start;margin:8px 0 4px">
@@ -714,7 +756,7 @@ function openIntercompanyForm() {
       <input class="form-control mt-1" id="ic-from-company-name" placeholder="Nombre de la sociedad" style="display:none">
     </div>
     <div class="form-group">
-      <label class="form-label">Cuenta bancaria de la que sale *</label>
+      <label class="form-label">Cuenta de tesorería de la que sale *</label>
       <select class="form-control" id="ic-from-acc">
         <option value="">Seleccionar...</option>
         ${accounts.map(function(a) { return '<option value="' + a.id + '">' + escapeHtml(a.name) + ' (' + a.currency + ')</option>'; }).join('')}
@@ -740,7 +782,7 @@ function openIntercompanyForm() {
       <input class="form-control mt-1" id="ic-to-company-name" placeholder="Nombre de la sociedad" style="display:none">
     </div>
     <div class="form-group">
-      <label class="form-label">Cuenta bancaria que recibe *</label>
+      <label class="form-label">Cuenta de tesorería que recibe *</label>
       <select class="form-control" id="ic-to-acc">
         <option value="">Seleccionar...</option>
         ${accounts.map(function(a) { return '<option value="' + a.id + '">' + escapeHtml(a.name) + ' (' + a.currency + ')</option>'; }).join('')}
@@ -825,6 +867,7 @@ function saveIntercompanyTx() {
   var extraDesc = document.getElementById('ic-desc').value.trim();
   var fromName = _icGetCompanyName('ic-from-company', 'ic-from-company-name');
   var toName = _icGetCompanyName('ic-to-company', 'ic-to-company-name');
+  var book = _readBook('ic-book');
 
   // Las contrapartidas pueden venir de un <select> del plan de cuentas o de campos de texto manuales
   var fromContra = _icReadContra('ic-from-contra', 'Créditos entre sociedades');
@@ -850,6 +893,7 @@ function saveIntercompanyTx() {
     account_id: fromAccId,
     type: 'expense',
     tx_type: 'intercompany',
+    book: book,
     ic_group_id: groupId,
     ic_from_company: fromName,
     ic_to_company: toName,
@@ -865,6 +909,7 @@ function saveIntercompanyTx() {
     account_id: toAccId,
     type: 'income',
     tx_type: 'intercompany',
+    book: book,
     ic_group_id: groupId,
     ic_from_company: fromName,
     ic_to_company: toName,
@@ -900,6 +945,7 @@ function saveIntercompanyTx() {
     description: '[' + fromName + '] ' + baseDesc,
     status: 'posted',
     origin: 'intercompany',
+    book: book,
     ic_group_id: groupId,
     ic_company: fromName,
     ic_role: 'prestadora',
@@ -928,6 +974,7 @@ function saveIntercompanyTx() {
     description: '[' + toName + '] ' + baseDesc,
     status: 'posted',
     origin: 'intercompany',
+    book: book,
     ic_group_id: groupId,
     ic_company: toName,
     ic_role: 'receptora',
