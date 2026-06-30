@@ -228,7 +228,10 @@ function openInvoiceForm(id = null) {
   const inv = id ? DB.getById('invoices', id) : null;
   const projects = DB.getAll('projects');
   const items = inv?.items || [{ description: '', unit: 'Global', quantity: 1, unit_price: 0, total: 0, tax_rate: 21 }];
-  const nextNum = `FA-0001-${String(DB.getAll('invoices').length + 1235).padStart(8,'0')}`;
+  const _fcountry = (typeof fiscalCountry === 'function') ? fiscalCountry() : 'AR';
+  const _fseq = DB.getAll('invoices').length + 1;
+  const nextNum = (typeof fiscalNextIssued === 'function') ? fiscalNextIssued(_fcountry, _fseq) : `0001-${String(_fseq).padStart(8,'0')}`;
+  const _finfo = (typeof fiscalFormatInfo === 'function') ? fiscalFormatInfo(_fcountry) : { hint: '' };
   const source = inv?.source || 'manual';
   const imputacion = inv?.imputacion || [];
 
@@ -236,11 +239,12 @@ function openInvoiceForm(id = null) {
 <div class="form-grid form-grid-2">
   <div class="form-group">
     <label class="form-label">Numero</label>
-    <input class="form-control" id="if-num" value="${inv?.number || nextNum}">
+    <input class="form-control" id="if-num" value="${inv?.number || nextNum}" placeholder="${_finfo.example || ''}">
+    <small style="color:var(--text-muted)" id="if-num-hint">${_finfo.hint || ''}</small>
   </div>
   <div class="form-group">
     <label class="form-label">Tipo</label>
-    <select class="form-control" id="if-type">
+    <select class="form-control" id="if-type" onchange="_invUpdateNumHint()">
       <option value="A" ${inv?.type==='A'?'selected':''}>Factura A (IVA discriminado)</option>
       <option value="B" ${inv?.type==='B'?'selected':''}>Factura B</option>
       <option value="C" ${inv?.type==='C'?'selected':''}>Factura C (Monotributo)</option>
@@ -487,6 +491,18 @@ function calcImpTotalsHtml(lines, netoOverride) {
         : ` &nbsp;|&nbsp; <span style="color:${color};font-weight:600">${diff > 0 ? `Faltan ${fmtMoney(diff)} por imputar` : `Excede por ${fmtMoney(-diff)}`}</span>`);
 }
 
+// Actualiza el hint del número según el tipo elegido (formato fiscal vs libre)
+function _invUpdateNumHint() {
+  var hintEl = document.getElementById('if-num-hint');
+  var typeEl = document.getElementById('if-type');
+  if (!hintEl || !typeEl || typeof fiscalFormatInfo !== 'function') return;
+  if (typeof fiscalIsLegalType === 'function' && !fiscalIsLegalType(typeEl.value)) {
+    hintEl.textContent = 'Comprobante no fiscal — formato libre';
+  } else {
+    hintEl.textContent = fiscalFormatInfo(fiscalCountry()).hint;
+  }
+}
+
 // ---- SAVE ----
 function saveInvoice(id) {
   const projectId = document.getElementById('if-project').value;
@@ -510,8 +526,17 @@ function saveInvoice(id) {
   }
 
   const invType = document.getElementById('if-type').value;
+
+  // Validar formato del número de comprobante para comprobantes fiscales (Contabilidad A)
+  let invNumber = document.getElementById('if-num').value.trim();
+  if (typeof fiscalIsLegalType === 'function' && fiscalIsLegalType(invType)) {
+    const norm = fiscalNormalizeNumber(invNumber, fiscalCountry());
+    if (!norm.ok) { toast(norm.message, 'error'); return; }
+    invNumber = norm.value;
+  }
+
   const data = {
-    number: document.getElementById('if-num').value,
+    number: invNumber,
     type: invType,
     tipo_comprobante: invType,
     company_id: document.getElementById('if-company')?.value || '',
