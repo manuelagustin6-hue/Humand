@@ -541,7 +541,7 @@ function openFxForm() {
 <div style="background:var(--bg);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text-muted)">
   <i class="fas fa-info-circle"></i> Registra la salida de una moneda de una cuenta y la entrada en otra. Genera dos movimientos enlazados.
 </div>
-<div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px">
+<div class="tjoin-3">
   <div class="form-group">
     <label class="form-label">Fecha *</label>
     <input class="form-control" id="fx-date" type="date" value="${today}">
@@ -556,7 +556,7 @@ function openFxForm() {
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-bottom:4px">
+<div class="tjoin-transfer" style="margin-bottom:4px">
   <div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--danger);margin-bottom:8px"><i class="fas fa-arrow-up"></i> Cuenta de Tesorería de Origen (sale)</div>
     <div class="form-group">
@@ -571,7 +571,7 @@ function openFxForm() {
       <input class="form-control" id="fx-from-amount" type="number" min="0" step="0.01" placeholder="0" oninput="fxRecalc('from')">
     </div>
   </div>
-  <div style="text-align:center;padding-bottom:12px;font-size:22px;color:var(--text-muted)">
+  <div class="tjoin-arrow" style="text-align:center;padding-bottom:12px;font-size:22px;color:var(--text-muted)">
     <i class="fas fa-right-left"></i>
   </div>
   <div>
@@ -789,7 +789,7 @@ function openIntercompanyForm() {
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:start;margin:8px 0 4px">
+<div class="tjoin-transfer" style="align-items:start;margin:8px 0 4px">
   <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--danger);margin-bottom:10px"><i class="fas fa-arrow-up"></i> Sociedad Prestadora (sale)</div>
     <div class="form-group">
@@ -813,7 +813,7 @@ function openIntercompanyForm() {
       ${contraField('ic-from-contra', 'Créditos a vinculadas')}
     </div>
   </div>
-  <div style="text-align:center;padding-top:60px;font-size:20px;color:var(--text-muted)">
+  <div class="tjoin-arrow" style="text-align:center;padding-top:60px;font-size:20px;color:var(--text-muted)">
     <i class="fas fa-arrow-right-long"></i>
   </div>
   <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
