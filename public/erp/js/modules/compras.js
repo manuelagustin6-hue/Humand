@@ -130,7 +130,7 @@ function reqPriorityBadge(priority) {
 
 function buildRequisitionRows(reqs, projects) {
   if (!reqs.length) return `<div class="empty-state"><i class="fas fa-clipboard-list"></i><p>No hay pedidos de materiales</p></div>`;
-  return `<table><thead><tr>
+  return `<table class="rcard"><thead><tr>
     <th>Número</th><th>Proyecto</th><th>Solicitado por</th><th>Prioridad</th><th>Fecha Nec.</th><th>Total Est.</th><th>Estado</th><th>Acciones</th>
   </tr></thead>
   <tbody>
@@ -582,7 +582,7 @@ function renderPOTable() {
 
 function buildPORows(pos, projects, suppliers) {
   if (!pos.length) return `<div class="empty-state"><i class="fas fa-shopping-cart"></i><p>No hay órdenes de compra</p></div>`;
-  return `<table><thead><tr>
+  return `<table class="rcard"><thead><tr>
     <th>Número</th><th>Proyecto</th><th>Proveedor</th><th>Fecha</th><th>Entrega Est.</th><th>Total</th><th>Estado</th><th>Acciones</th>
   </tr></thead>
   <tbody>

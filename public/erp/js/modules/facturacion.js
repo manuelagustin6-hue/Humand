@@ -78,7 +78,7 @@ function renderFacturacion() {
 function buildInvoiceRows(invoices, projects, collections) {
   if (!invoices.length) return `<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas</p></div>`;
   const sourceLabels = { manual: 'Manual', certificacion: 'Certificacion', oc: 'Desde OC' };
-  return `<table><thead><tr>
+  return `<table class="rcard"><thead><tr>
     <th>Numero</th><th>Tipo</th><th>Origen</th><th>Proyecto</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th>
     <th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>
     <th>Estado</th><th style="text-align:center">CAE / ARCA</th><th>Acciones</th>
