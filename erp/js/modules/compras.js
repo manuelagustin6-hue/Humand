@@ -1163,6 +1163,12 @@ function openSIForm(id, prefillPoId, prefillCertId) {
   const suppliers = DB.getAll('suppliers');
   const projects  = DB.getAll('projects');
   const nextNum   = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
+  const _siCountry = (typeof fiscalCountry === 'function') ? fiscalCountry() : 'AR';
+  const _siInfo    = (typeof fiscalFormatInfo === 'function') ? fiscalFormatInfo(_siCountry) : { example: '', hint: '' };
+  // Tipo por defecto es 'A' (fiscal) → el N° debe ser el real del proveedor con formato legal.
+  const _siTipo    = (si && si.tipo_comprobante) || 'A';
+  const _siLegal   = (typeof fiscalIsLegalType !== 'function') || fiscalIsLegalType(_siTipo);
+  const _siNumVal  = (si && si.number) ? si.number : (_siLegal ? '' : nextNum);
 
   // certs that are approved and either not linked or are the current si's cert
   const certs     = DB.getAll('certificates').filter(function(c) {
@@ -1201,9 +1207,10 @@ function openSIForm(id, prefillPoId, prefillCertId) {
   openModal(si ? 'Editar Factura Proveedor' : 'Nueva Factura de Proveedor',
     '<div class="form-grid form-grid-2">' +
       '<div class="form-group"><label class="form-label">N° Factura Proveedor</label>' +
-        '<input class="form-control" id="si-num" value="' + ((si && si.number) || nextNum) + '"></div>' +
+        '<input class="form-control" id="si-num" value="' + escapeHtml(_siNumVal) + '" placeholder="' + escapeHtml(_siInfo.example || '') + '">' +
+        '<small style="color:var(--text-muted)" id="si-num-hint">' + (_siLegal ? _siInfo.hint : 'Comprobante no fiscal — formato libre') + '</small></div>' +
       '<div class="form-group"><label class="form-label">Tipo de Comprobante</label>' +
-        '<select class="form-control" id="si-tipo-comp">' +
+        '<select class="form-control" id="si-tipo-comp" onchange="_siUpdateNumHint()">' +
           '<option value="A"'        + ((si && si.tipo_comprobante === 'A')        ? ' selected' : (!si ? ' selected' : '')) + '>Factura A (IVA discriminado)</option>' +
           '<option value="B"'        + ((si && si.tipo_comprobante === 'B')        ? ' selected' : '') + '>Factura B</option>' +
           '<option value="C"'        + ((si && si.tipo_comprobante === 'C')        ? ' selected' : '') + '>Factura C (Monotributo)</option>' +
@@ -1474,9 +1481,32 @@ function siRecalcTotal() {
 
 function recalcSI() { siRecalcFromSubtotal(); }
 
+// Actualiza el hint/placeholder del N° de comprobante según el tipo elegido
+function _siUpdateNumHint() {
+  var tipoEl = document.getElementById('si-tipo-comp');
+  var hintEl = document.getElementById('si-num-hint');
+  var numEl  = document.getElementById('si-num');
+  if (!tipoEl || typeof fiscalFormatInfo !== 'function') return;
+  var legal = (typeof fiscalIsLegalType !== 'function') || fiscalIsLegalType(tipoEl.value);
+  var info = fiscalFormatInfo(fiscalCountry());
+  if (hintEl) hintEl.textContent = legal ? info.hint : 'Comprobante no fiscal — formato libre';
+  if (numEl) numEl.setAttribute('placeholder', legal ? (info.example || '') : '');
+}
+
 function saveSI(id) {
   const supplierId = document.getElementById('si-supplier').value;
   if (!supplierId) { toast('El proveedor es obligatorio', 'error'); return; }
+
+  // Validar formato del N° de comprobante para comprobantes fiscales (Contabilidad A)
+  var siTipo = document.getElementById('si-tipo-comp').value;
+  var siNum = document.getElementById('si-num').value.trim();
+  if (typeof fiscalIsLegalType === 'function' && fiscalIsLegalType(siTipo)) {
+    var siNorm = fiscalNormalizeNumber(siNum, fiscalCountry());
+    if (!siNorm.ok) { toast(siNorm.message, 'error'); return; }
+    siNum = siNorm.value;
+  } else if (!siNum) {
+    siNum = 'FPROV-' + new Date().getFullYear() + '-' + String(DB.getAll('supplierInvoices').length + 1).padStart(3, '0');
+  }
   var sub       = numParse(document.getElementById('si-subtotal').value);
   var ivaRate   = parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21;
   var taxRaw    = numParse(document.getElementById('si-tax').value);
@@ -1496,8 +1526,8 @@ function saveSI(id) {
     }
   }
   var data = {
-    number:           document.getElementById('si-num').value,
-    tipo_comprobante: document.getElementById('si-tipo-comp').value,
+    number:           siNum,
+    tipo_comprobante: siTipo,
     po_id:            document.getElementById('si-po').value || '',
     cert_id:          certId,
     supplier_id:      supplierId,
