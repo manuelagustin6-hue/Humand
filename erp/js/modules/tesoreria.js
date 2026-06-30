@@ -117,7 +117,7 @@ function renderTxTable(txs, accounts, projects) {
 
 function buildTxRows(txs, accounts, projects) {
   if (!txs.length) return `<div class="empty-state"><i class="fas fa-landmark"></i><p>Sin movimientos registrados</p></div>`;
-  return `<table><thead><tr>
+  return `<table class="rcard"><thead><tr>
     <th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Conta.</th><th>Categoría</th><th>Descripción</th><th>Proyecto</th><th>Ref.</th><th class="text-right">Importe</th><th>Acciones</th>
   </tr></thead>
   <tbody>

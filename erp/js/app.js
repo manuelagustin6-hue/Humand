@@ -526,8 +526,10 @@ function _initApp() {
     var savedModule0 = null;
     try { savedModule0 = localStorage.getItem('erp_active_module'); } catch(e) {}
     navigate(savedModule0 && MODULES[savedModule0] ? savedModule0 : 'dashboard');
+    _watchResponsiveTables();
     setTimeout(syncExchangeRates, 1500);
     setTimeout(checkDataHealth, 3000);
+    setTimeout(_maybeShowInstall, 4000);
     return;
   }
 
@@ -542,11 +544,113 @@ function _initApp() {
     var savedModule = null;
     try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
     navigate(savedModule && MODULES[savedModule] ? savedModule : 'dashboard');
+    _watchResponsiveTables();
     setTimeout(syncExchangeRates, 1500);
     setTimeout(checkDataHealth, 3000);
+    setTimeout(_maybeShowInstall, 4000);
   } else {
     showLoginScreen();
   }
+}
+
+// ---- RESPONSIVE CARD TABLES ----
+// For every <table class="rcard">, copy each column's header text onto the
+// matching <td> as data-label so the mobile CSS can render rows as cards.
+function _applyResponsiveTables(root) {
+  var scope = root || document.getElementById('content');
+  if (!scope) return;
+  var tables = scope.querySelectorAll('table.rcard');
+  for (var t = 0; t < tables.length; t++) {
+    var tbl = tables[t];
+    var ths = tbl.querySelectorAll('thead th');
+    if (!ths.length) continue;
+    var labels = [];
+    for (var h = 0; h < ths.length; h++) labels.push(ths[h].textContent.trim());
+    var rows = tbl.querySelectorAll('tbody tr');
+    for (var r = 0; r < rows.length; r++) {
+      var cells = rows[r].children;
+      for (var c = 0; c < cells.length; c++) {
+        if (labels[c] != null && !cells[c].hasAttribute('data-label')) {
+          cells[c].setAttribute('data-label', labels[c]);
+        }
+      }
+    }
+  }
+}
+
+function _watchResponsiveTables() {
+  var content = document.getElementById('content');
+  if (!content || typeof MutationObserver === 'undefined') return;
+  // childList/subtree only — setting data-label attributes does NOT retrigger this.
+  var obs = new MutationObserver(function() { _applyResponsiveTables(content); });
+  obs.observe(content, { childList: true, subtree: true });
+  _applyResponsiveTables(content);
+}
+
+// ---- PWA INSTALL BANNER ----
+window._deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  window._deferredInstallPrompt = e;
+  _maybeShowInstall();
+});
+window.addEventListener('appinstalled', function() {
+  window._deferredInstallPrompt = null;
+  _hideInstall();
+});
+
+function _isStandalonePWA() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+         window.navigator.standalone === true;
+}
+function _installDismissedRecently() {
+  try {
+    var t = parseInt(localStorage.getItem('erp_install_dismissed') || '0', 10);
+    return t && (Date.now() - t) < 7 * 24 * 3600 * 1000; // 7 días
+  } catch (e) { return false; }
+}
+function _isIOSDevice() { return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+
+function _maybeShowInstall() {
+  if (!(window.APP_STATE && window.APP_STATE.currentUser)) return; // sólo logueado
+  if (_isStandalonePWA() || _installDismissedRecently()) return;
+  var banner = document.getElementById('install-banner');
+  var sub = document.getElementById('install-sub');
+  var go = document.getElementById('install-go');
+  if (!banner || !sub || !go) return;
+
+  if (window._deferredInstallPrompt) {
+    sub.textContent = 'Acceso directo desde tu pantalla de inicio';
+    go.textContent = 'Instalar';
+    banner.classList.add('show');
+  } else if (_isIOSDevice() && /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent)) {
+    // iOS Safari no permite instalar por código → mostrar instrucciones
+    sub.innerHTML = 'Tocá <i class="fas fa-arrow-up-from-bracket"></i> Compartir y luego “Agregar a inicio”';
+    go.textContent = 'Entendido';
+    banner.classList.add('show');
+  }
+}
+
+function doInstall() {
+  var p = window._deferredInstallPrompt;
+  if (p && typeof p.prompt === 'function') {
+    p.prompt();
+    p.userChoice.then(function() {
+      window._deferredInstallPrompt = null;
+      _hideInstall();
+    });
+  } else {
+    // iOS / sin prompt nativo: el botón sólo cierra el aviso
+    dismissInstall();
+  }
+}
+function dismissInstall() {
+  try { localStorage.setItem('erp_install_dismissed', String(Date.now())); } catch (e) {}
+  _hideInstall();
+}
+function _hideInstall() {
+  var b = document.getElementById('install-banner');
+  if (b) b.classList.remove('show');
 }
 
 // ---- PASSWORD RECOVERY ----
