@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/main.css?v=23">
+  <link rel="stylesheet" href="css/main.css?v=24">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -634,6 +634,25 @@
 <button id="mobile-nav-fab" onclick="toggleSidebar()" aria-label="Abrir menu">
   <i class="fas fa-bars"></i>
 </button>
+
+<!-- Mobile bottom navigation — shows only on mobile -->
+<nav id="mobile-bottom-nav" aria-label="Navegacion principal">
+  <button class="mnav-item" data-nav="dashboard" onclick="navigate('dashboard')">
+    <i class="fas fa-chart-pie"></i><span>Inicio</span>
+  </button>
+  <button class="mnav-item" data-nav="tesoreria" onclick="navigate('tesoreria')">
+    <i class="fas fa-wallet"></i><span>Tesorería</span>
+  </button>
+  <button class="mnav-item" data-nav="compras" onclick="navigate('compras')">
+    <i class="fas fa-shopping-cart"></i><span>Compras</span>
+  </button>
+  <button class="mnav-item" data-nav="projects" onclick="navigate('projects')">
+    <i class="fas fa-building"></i><span>Obras</span>
+  </button>
+  <button class="mnav-item" data-nav="__more__" onclick="toggleSidebar()">
+    <i class="fas fa-ellipsis"></i><span>Más</span>
+  </button>
+</nav>
 
 
 <script>
