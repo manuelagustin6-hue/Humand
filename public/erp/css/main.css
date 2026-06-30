@@ -1346,6 +1346,30 @@ body.sidebar-open #mobile-nav-fab { display: none !important; }
   #content { padding-bottom: 84px !important; }
 }
 
+/* ===== LICITACIÓN ITEM ROWS (responsive) ===== */
+.lic-item-grid {
+  display: grid;
+  grid-template-columns: 2.5fr 80px 80px 2fr 34px;
+  gap: 6px;
+  align-items: center;
+}
+.lic-item-grid > * { min-width: 0; } /* let inputs shrink instead of overflowing */
+@media (max-width: 767px) {
+  .lic-item-header { display: none !important; }
+  .lic-item-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+  }
+  .lic-item-grid .lic-desc,
+  .lic-item-grid .lic-specs { grid-column: 1 / -1; }
+  .lic-item-grid .lic-rm { grid-column: 1 / -1; justify-self: end; }
+}
+
 /* ===== RESPONSIVE CARD TABLES (mobile) ===== */
 @media (max-width: 767px) {
   table.rcard { min-width: 0 !important; width: 100%; }

@@ -779,7 +779,7 @@ function _licFormView(id) {
             '<strong style="font-size:13px">Ítems de la Licitación</strong>' +
             '<button class="btn btn-sm btn-secondary" onclick="_licAddItem()"><i class="fas fa-plus"></i> Agregar ítem</button>' +
           '</div>' +
-          '<div style="display:grid;grid-template-columns:2.5fr 80px 80px 2fr 34px;gap:6px;margin-bottom:6px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">' +
+          '<div class="lic-item-grid lic-item-header" style="margin-bottom:6px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">' +
             '<span>Descripción</span><span>Cantidad</span><span>Unidad</span><span>Especificaciones</span><span></span>' +
           '</div>' +
           '<div id="lic-items-list">' + itemsHtml + '</div>' +
@@ -829,12 +829,12 @@ function _licOnODPChange() {
 }
 
 function _licItemRow(it, i) {
-  return '<div id="lic-item-row-' + i + '" style="display:grid;grid-template-columns:2.5fr 80px 80px 2fr 34px;gap:6px;margin-bottom:8px;align-items:center">' +
-    '<input class="form-control" style="font-size:12px" placeholder="Descripción del ítem" value="' + escapeHtml(it.description || '') + '" oninput="window._licFormItems[' + i + '].description=this.value">' +
-    '<input class="form-control" style="font-size:12px;text-align:center" type="number" min="0" value="' + (it.quantity || 1) + '" oninput="window._licFormItems[' + i + '].quantity=+this.value">' +
-    '<input class="form-control" style="font-size:12px" placeholder="un" value="' + escapeHtml(it.unit || 'un') + '" oninput="window._licFormItems[' + i + '].unit=this.value">' +
-    '<input class="form-control" style="font-size:12px" placeholder="Especificaciones técnicas..." value="' + escapeHtml(it.specs || '') + '" oninput="window._licFormItems[' + i + '].specs=this.value">' +
-    '<button class="btn-ghost btn danger" onclick="_licRemoveItem(' + i + ')"><i class="fas fa-times"></i></button>' +
+  return '<div id="lic-item-row-' + i + '" class="lic-item-grid" style="margin-bottom:8px">' +
+    '<input class="form-control lic-desc" style="font-size:12px" placeholder="Descripción del ítem" value="' + escapeHtml(it.description || '') + '" oninput="window._licFormItems[' + i + '].description=this.value">' +
+    '<input class="form-control" style="font-size:12px;text-align:center" type="number" min="0" placeholder="Cant." value="' + (it.quantity || 1) + '" oninput="window._licFormItems[' + i + '].quantity=+this.value">' +
+    '<input class="form-control" style="font-size:12px" placeholder="Unidad" value="' + escapeHtml(it.unit || 'un') + '" oninput="window._licFormItems[' + i + '].unit=this.value">' +
+    '<input class="form-control lic-specs" style="font-size:12px" placeholder="Especificaciones técnicas..." value="' + escapeHtml(it.specs || '') + '" oninput="window._licFormItems[' + i + '].specs=this.value">' +
+    '<button class="btn-ghost btn danger lic-rm" onclick="_licRemoveItem(' + i + ')"><i class="fas fa-times"></i></button>' +
   '</div>';
 }
 
