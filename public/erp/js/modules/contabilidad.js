@@ -820,13 +820,24 @@ function calcAccountBalances(accounts, entries) {
     });
   });
 
-  // Propagate to parents (multi-pass to handle hierarchies deeper than 1 level)
-  for (var pass = 0; pass < 5; pass++) {
-    accounts.filter(a => a.parent_id).forEach(a => {
-      const parent = accounts.find(p => p.id === a.parent_id);
-      if (parent) balances[parent.code] = (balances[parent.code]||0) + (balances[a.code]||0);
-    });
+  // Propagate leaf → root EXACTLY ONCE. Process deepest accounts first so each
+  // subtotal (own postings + already-rolled-up children) is added to its parent
+  // a single time. The previous 5-pass loop re-added every child on each pass,
+  // multiplying parent balances ~5× and breaking the Balance General.
+  var byId = {};
+  accounts.forEach(function(a) { byId[a.id] = a; });
+  function _acctDepth(a) {
+    var d = 0, cur = a, guard = 0;
+    while (cur && cur.parent_id && guard++ < 100) { cur = byId[cur.parent_id]; d++; }
+    return d;
   }
+  accounts.slice()
+    .sort(function(a, b) { return _acctDepth(b) - _acctDepth(a); })
+    .forEach(function(a) {
+      if (!a.parent_id) return;
+      var parent = byId[a.parent_id];
+      if (parent) balances[parent.code] = (balances[parent.code] || 0) + (balances[a.code] || 0);
+    });
 
   return balances;
 }

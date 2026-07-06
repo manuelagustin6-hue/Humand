@@ -188,7 +188,7 @@ function viewInvoice(id) {
   <div style="display:flex;justify-content:flex-end">
     <div class="invoice-totals">
       <div class="invoice-total-row"><span>Subtotal</span><span>${fmtMoney(inv.subtotal)}</span></div>
-      <div class="invoice-total-row"><span>IVA (21%)</span><span>${fmtMoney(inv.tax)}</span></div>
+      <div class="invoice-total-row"><span>IVA (${((inv.iva_rate != null ? inv.iva_rate : (inv.subtotal ? Math.round(inv.tax/inv.subtotal*1000)/10 : 21)))}%)</span><span>${fmtMoney(inv.tax)}</span></div>
       <div class="invoice-total-row grand"><span>TOTAL</span><span>${fmtMoney(inv.total)}</span></div>
     </div>
   </div>
@@ -234,6 +234,7 @@ function openInvoiceForm(id = null) {
   const _finfo = (typeof fiscalFormatInfo === 'function') ? fiscalFormatInfo(_fcountry) : { hint: '' };
   const source = inv?.source || 'manual';
   const imputacion = inv?.imputacion || [];
+  window._invIvaRate = (inv && inv.iva_rate != null) ? inv.iva_rate : _invDefaultIvaRate(inv?.type || 'A', _fcountry);
 
   openModal(inv ? 'Editar Factura' : 'Nueva Factura', `
 <div class="form-grid form-grid-2">
@@ -244,7 +245,7 @@ function openInvoiceForm(id = null) {
   </div>
   <div class="form-group">
     <label class="form-label">Tipo</label>
-    <select class="form-control" id="if-type" onchange="_invUpdateNumHint()">
+    <select class="form-control" id="if-type" onchange="_invOnTypeChange()">
       <option value="A" ${inv?.type==='A'?'selected':''}>Factura A (IVA discriminado)</option>
       <option value="B" ${inv?.type==='B'?'selected':''}>Factura B</option>
       <option value="C" ${inv?.type==='C'?'selected':''}>Factura C (Monotributo)</option>
@@ -253,6 +254,13 @@ function openInvoiceForm(id = null) {
       <option value="I" ${inv?.type==='I'?'selected':''}>Interna / Informal</option>
     </select>
     <small style="color:var(--text-muted)">A/B/C/M van al Libro IVA. X e Interna se excluyen.</small>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Alícuota IVA %</label>
+    <input class="form-control" id="if-iva-rate" type="number" min="0" step="0.5"
+           value="${inv?.iva_rate != null ? inv.iva_rate : _invDefaultIvaRate(inv?.type || 'A')}"
+           oninput="_invSetIvaRate(this.value)">
+    <small style="color:var(--text-muted)">Se autocompleta por tipo/país. Editable (ej. 10,5% vivienda).</small>
   </div>
   <div class="form-group">
     <label class="form-label">Empresa del Grupo</label>
@@ -409,12 +417,49 @@ function removeInvItem(i) {
   if (impEl) impEl.innerHTML = calcImpTotalsHtml(window._impLines.filter(Boolean));
 }
 
+// Alícuota de IVA por defecto según tipo de comprobante y país (editable).
+function _invDefaultIvaRate(type, country) {
+  country = country || (typeof fiscalCountry === 'function' ? fiscalCountry() : 'AR');
+  var t = String(type || '').toUpperCase();
+  if (t === 'X' || t === 'I' || t === 'INFORMAL' || t === 'INTERNA') return 0; // no gravado
+  if (country === 'US') return 0;   // sin IVA federal (sales tax se maneja aparte)
+  if (country === 'UY') return 22;  // básica DGI (10% mínima existe — editable)
+  return 21;                        // AR general (10,5% vivienda — editable)
+}
+
+// Lee la alícuota vigente del form (variable de módulo, sincronizada con el input).
+function _invCurrentIvaRate() {
+  var r = (window._invIvaRate != null) ? parseFloat(window._invIvaRate) : 21;
+  return isNaN(r) ? 0 : r;
+}
+
+function _invSetIvaRate(v) {
+  window._invIvaRate = parseFloat(v);
+  if (isNaN(window._invIvaRate)) window._invIvaRate = 0;
+  var el = document.getElementById('inv-totals');
+  if (el) el.innerHTML = calcInvTotalsHtml((window._invItems || []).filter(Boolean));
+}
+
+// Al cambiar el tipo: recalcula la alícuota por defecto (0 si no gravado) y actualiza el hint fiscal.
+function _invOnTypeChange() {
+  var typeEl = document.getElementById('if-type');
+  var rateEl = document.getElementById('if-iva-rate');
+  if (typeEl && rateEl) {
+    var def = _invDefaultIvaRate(typeEl.value);
+    rateEl.value = def;
+    _invSetIvaRate(def);
+  }
+  if (typeof _invUpdateNumHint === 'function') _invUpdateNumHint();
+}
+
 function calcInvTotalsHtml(items) {
   const validItems = items.filter(Boolean);
   const subtotal = validItems.reduce((s, it) => s + (it.total||0), 0);
-  const tax = subtotal * 0.21;
+  const rate = _invCurrentIvaRate();
+  const tax = subtotal * rate / 100;
   const total = subtotal + tax;
-  return `Subtotal: <strong>${fmtMoney(subtotal)}</strong> &nbsp;|&nbsp; IVA 21%: <strong>${fmtMoney(tax)}</strong> &nbsp;|&nbsp; <strong style="font-size:15px;color:var(--primary)">TOTAL: ${fmtMoney(total)}</strong>`;
+  const rateLabel = (Math.round(rate * 100) / 100).toString().replace('.', ',');
+  return `Subtotal: <strong>${fmtMoney(subtotal)}</strong> &nbsp;|&nbsp; IVA ${rateLabel}%: <strong>${fmtMoney(tax)}</strong> &nbsp;|&nbsp; <strong style="font-size:15px;color:var(--primary)">TOTAL: ${fmtMoney(total)}</strong>`;
 }
 
 // ---- IMPUTACION ----
@@ -513,7 +558,8 @@ function saveInvoice(id) {
   if (!items.length) { toast('Agrega al menos un item', 'error'); return; }
 
   const subtotal = items.reduce((s, it) => s+it.total, 0);
-  const tax = subtotal * 0.21;
+  const ivaRate = _invCurrentIvaRate();
+  const tax = subtotal * ivaRate / 100;
   const source = document.getElementById('if-source').value;
   const imputacion = (window._impLines || []).filter(Boolean).filter(l => l.rubro_id || l.amount);
 
@@ -555,6 +601,7 @@ function saveInvoice(id) {
     items,
     imputacion,
     subtotal,
+    iva_rate: ivaRate,
     tax,
     total: subtotal + tax,
   };

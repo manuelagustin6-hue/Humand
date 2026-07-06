@@ -265,8 +265,18 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
     var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
 
     var isDebit = (cfg.account_side === 'debit');
-    var counterCode = opts.counterAccount || '---';
-    var counterName = opts.counterName || 'Contraparte pendiente';
+    var counterCode = opts.counterAccount || '';
+    var counterName = opts.counterName || 'Contraparte';
+
+    // Integridad: nunca postear a una cuenta contraparte inexistente. Una línea
+    // con código fuera del plan la descarta calcAccountBalances y descuadra el
+    // balance. Si el módulo no aportó una contraparte real, omitimos el asiento.
+    var _accts = DB.getAll('accounts');
+    var _counterValid = counterCode && _accts.some(function(a) { return a.code === counterCode; });
+    if (!_counterValid) {
+      console.warn('[asientos] "' + operationTypeId + '": sin cuenta contraparte válida — asiento omitido para no descuadrar el balance.');
+      return null;
+    }
 
     var mainLine   = { account_code: cfg.account,  account_name: cfg.account_name || cfg.account, debit: isDebit ? amount : 0, credit: isDebit ? 0 : amount, description: concept };
     var counterLine = { account_code: counterCode, account_name: counterName, debit: isDebit ? 0 : amount, credit: isDebit ? amount : 0, description: concept };
@@ -353,12 +363,21 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
         });
       }
     }
-    // Counter line = configured AP/AR account (full invoice total including taxes)
+    // Counter line = configured AP/AR account. Debe igualar EXACTAMENTE la suma de
+    // las líneas realmente contabilizadas (neto + impuestos cuyas cuentas están
+    // mapeadas), no el `total` crudo. Si una cuenta de impuesto no está configurada
+    // su línea no se emite; usar `total` dejaría el asiento descuadrado por ese monto.
+    var _postedSum = lines.reduce(function(s, ln) { return s + (isDebit ? (ln.credit || 0) : (ln.debit || 0)); }, 0);
+    if (Math.abs(_postedSum - total) > 0.01) {
+      console.warn('[asientos] "' + operationTypeId + '": faltan cuentas de impuesto configuradas — se contabilizó ' +
+        _postedSum + ' de ' + total + '. Mapeá las cuentas de IVA/percepciones en Asientos Automáticos.');
+      if (typeof toast === 'function') toast('Asiento generado sin la cuenta de IVA/percepción configurada — revisá Asientos Automáticos', 'warning');
+    }
     lines.push({
       account_code: cfg.account,
       account_name: cfg.account_name || cfg.account,
-      debit:  isDebit ? total : 0,
-      credit: isDebit ? 0 : total,
+      debit:  isDebit ? _postedSum : 0,
+      credit: isDebit ? 0 : _postedSum,
       description: concept
     });
 
