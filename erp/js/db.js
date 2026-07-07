@@ -266,6 +266,8 @@ var _SUPA = {
 /* ===== DATABASE LAYER (localStorage + Supabase) ===== */
 const DB = {
   _companyId: 'comp-001',
+  _cache: null,        // objeto parseado del blob de la empresa activa (memoización de get())
+  _cacheKey: null,     // KEY a la que corresponde _cache
   GLOBAL_KEY:    'erp_global_v1',
   PENDING_KEY:   'erp_pending_writes',   // upsert queue (namespaced with company_id per entry)
   PENDING_DEL_KEY: 'erp_pending_deletes', // delete queue
@@ -273,24 +275,34 @@ const DB = {
   get KEY() { return 'erp_company_' + (this._companyId || 'comp-001') + '_v1'; },
 
   get() {
+    // Memoización: evita re-parsear todo el blob de la empresa en cada getAll
+    // (cientos por render). El cache se mantiene en sync desde save() y se
+    // invalida en los puntos que escriben la KEY directamente (load/realtime/pull).
+    var key = this.KEY;
+    if (this._cache && this._cacheKey === key) return this._cache;
     try {
-      var raw = localStorage.getItem(this.KEY);
-      if (!raw) return this.init();
+      var raw = localStorage.getItem(key);
+      if (!raw) return this.init(); // init()→save() deja el cache seteado
       var data = JSON.parse(raw);
       // Migration: seed default users if the collection is missing or empty
       if (!data.users || !data.users.length) {
         data.users = this._defaultUsers();
-        this.save(data);
+        this.save(data); // setea el cache
       }
+      this._cache = data;
+      this._cacheKey = key;
       return data;
     } catch(e) {
       // JSON parse error: return seed in-memory WITHOUT overwriting localStorage
-      // (avoids wiping user data on a transient parse error)
+      // (avoids wiping user data on a transient parse error). No se cachea el fallback.
       console.error('DB.get parse error:', e);
       if (typeof toast === 'function') toast('Error al leer datos guardados — mostrando datos de respaldo', 'error');
       return this.seed();
     }
   },
+
+  // Invalida la memoización (usar tras escribir la KEY por fuera de save()).
+  _invalidateCache: function() { this._cache = null; this._cacheKey = null; },
 
   _defaultUsers() {
     // Comp-specific defaults keyed by company id
@@ -311,6 +323,8 @@ const DB = {
   save(data) {
     try {
       localStorage.setItem(this.KEY, JSON.stringify(data));
+      this._cache = data;          // mantener el cache en sync con lo persistido
+      this._cacheKey = this.KEY;
       try {
         var snap = { ts: new Date().toISOString(), counts: {} };
         Object.keys(data).forEach(function(k) { if (Array.isArray(data[k])) snap.counts[k] = data[k].length; });
@@ -459,6 +473,7 @@ const DB = {
 
         // Persist the merged company-specific data
         localStorage.setItem(self.KEY, JSON.stringify(remoteData));
+        self._cache = remoteData; self._cacheKey = self.KEY; // sync cache con lo pulleado
         _SUPA.online = true;
 
         var totalRecords = Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0);
@@ -514,7 +529,7 @@ const DB = {
       }
 
       // Persist locally (don't push back to Supabase — this came FROM Supabase)
-      try { localStorage.setItem(this.KEY, JSON.stringify(db)); } catch(e) {}
+      try { localStorage.setItem(this.KEY, JSON.stringify(db)); this._cache = db; this._cacheKey = this.KEY; } catch(e) {}
 
       // Re-render current view after a short debounce
       clearTimeout(_SUPA._realtimeTimer);
@@ -738,6 +753,7 @@ const DB = {
         if (localOnly.length) remoteData[col] = remoteArr.concat(localOnly);
       });
       localStorage.setItem(this.KEY, JSON.stringify(remoteData));
+      this._cache = remoteData; this._cacheKey = this.KEY; // sync cache tras el re-pull
       var flushed = this.flushPending();
       if (typeof toast === 'function') toast('Sincronización completa' + (flushed > 0 ? ' — ' + flushed + ' cambio(s) enviado(s)' : ''), 'success');
       // Update badge after a tick so upsert callbacks (re-enqueue on fail) have run
