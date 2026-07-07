@@ -480,7 +480,7 @@ function doConvertToOC(reqId) {
     rubro_id: (allRubros.find(r => r.name === it.rubro || r.id === it.rubro_id) || {}).id || '',
   }));
   const subtotal = items.reduce((s, it) => s + (it.total || 0), 0);
-  const tax = subtotal * 0.21;
+  const tax = subtotal * _defIvaRate() / 100;
   const nextNum = `OC-${new Date().getFullYear()}-${String(DB.getAll('purchaseOrders').length + 1).padStart(3, '0')}`;
 
   const po = DB.insert('purchaseOrders', {
@@ -820,7 +820,7 @@ function removePOItem(i) {
 function _calcPOItemsTotals(items) {
   const validItems = items.filter(Boolean);
   const subtotal = validItems.reduce((s, it) => s + (it.total || 0), 0);
-  const tax = subtotal * 0.21;
+  const tax = subtotal * _defIvaRate() / 100;
   const total = subtotal + tax;
   return `<span>Subtotal: <strong>${fmtMoney(subtotal)}</strong> &nbsp;|&nbsp; IVA 21%: <strong>${fmtMoney(tax)}</strong> &nbsp;|&nbsp; TOTAL: <strong style="font-size:15px;color:var(--primary)">${fmtMoney(total)}</strong></span>`;
 }
@@ -840,7 +840,7 @@ function savePO(id) {
   }
 
   const subtotal = items.reduce((s,it) => s + it.total, 0);
-  const tax = subtotal * 0.21;
+  const tax = subtotal * _defIvaRate() / 100;
 
   const data = {
     number: document.getElementById('po-num').value,
@@ -1009,6 +1009,15 @@ function saveSupplier(id) {
 }
 
 function deleteSupplier(id) {
+  // No borrar si tiene documentos asociados (dejaría facturas/OC/OP con proveedor colgado)
+  var sis = DB.getAll('supplierInvoices').filter(function(x) { return x.supplier_id === id; }).length;
+  var ocs = DB.getAll('purchaseOrders').filter(function(x) { return x.supplier_id === id; }).length;
+  var ops = DB.getAll('paymentOrders').filter(function(x) { return x.supplier_id === id; }).length;
+  var deps = sis + ocs + ops;
+  if (deps > 0) {
+    toast('No se puede eliminar: el proveedor tiene ' + deps + ' documento(s) asociado(s) (facturas/OC/OP). Desactivalo en su lugar.', 'error');
+    return;
+  }
   confirmDialog('¿Eliminar este proveedor?', () => {
     DB.remove('suppliers', id);
     toast('Proveedor eliminado', 'warning');
@@ -1213,7 +1222,7 @@ function openSIForm(id, prefillPoId, prefillCertId) {
   var selectedProjectId  = (si && si.project_id)   || (prefillPO && prefillPO.project_id)  || (prefillCert && prefillCert.project_id) || '';
   var defaultSubtotal    = si ? si.subtotal : (prefillPO ? (prefillPO.subtotal || 0) : (prefillCert ? (prefillCert.net_amount || 0) : 0));
   var defaultIvaRate     = si ? (si.iva_rate || 21) : 21;
-  var defaultTax         = si ? si.tax      : (prefillPO ? (prefillPO.tax || 0) : (prefillCert ? ((prefillCert.net_amount || 0) * 0.21) : 0));
+  var defaultTax         = si ? si.tax      : (prefillPO ? (prefillPO.tax || 0) : (prefillCert ? ((prefillCert.net_amount || 0) * _defIvaRate() / 100) : 0));
   var defaultPercIva     = si ? (si.perc_iva  || 0) : 0;
   var defaultPercIibb    = si ? (si.perc_iibb || 0) : 0;
   var defaultTotal       = si ? si.total    : defaultSubtotal + defaultTax + defaultPercIva + defaultPercIibb;
@@ -1469,7 +1478,7 @@ function prefillSIFromCert(certId) {
   const poEl   = document.getElementById('si-po');
   if (poEl) poEl.value = '';
   const net    = cert.net_amount || 0;
-  const tax    = Math.round(net * 21) / 100;
+  const tax    = Math.round(net * _defIvaRate()) / 100;
   const subEl  = document.getElementById('si-subtotal');
   const taxEl  = document.getElementById('si-tax');
   const supEl  = document.getElementById('si-supplier');
@@ -1662,6 +1671,12 @@ var SI_TAX_TYPES = [
 // Retenciones: se practican al pagar (reducen el neto a pagar), NO integran el
 // total de la factura. El resto (percepciones, sellos, otro) sí suma al total.
 var SI_RETENTION_TYPES = ['ret_gan', 'ret_iva', 'suss'];
+
+// Alícuota de IVA por defecto según el país de la empresa activa (editable en el form).
+function _defIvaRate() {
+  var c = (typeof fiscalCountry === 'function') ? fiscalCountry() : 'AR';
+  return c === 'US' ? 0 : (c === 'UY' ? 22 : 21);
+}
 
 window._siTaxLines = [];
 

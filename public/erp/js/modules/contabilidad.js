@@ -604,12 +604,23 @@ function saveJE(id) {
     }
   });
 
-  // Also use _jeLines
-  window._jeLines.filter(Boolean).forEach(l => {
-    if (l.account_code && !lines.find(ll => ll.account_code === l.account_code)) lines.push(l);
-  });
+  // Fallback SOLO si el DOM no aportó líneas (el DOM es la fuente de verdad).
+  // Antes se mergeaba deduplicando por account_code, lo que descartaba una segunda
+  // línea legítima sobre la misma cuenta.
+  if (!lines.length) {
+    window._jeLines.filter(Boolean).forEach(l => { if (l.account_code) lines.push(l); });
+  }
 
   if (!lines.length) { toast('Agregá al menos una línea', 'error'); return; }
+
+  // Partida doble: el asiento DEBE balancear (Debe = Haber).
+  var totalD = lines.reduce(function(s, l) { return s + (l.debit || 0); }, 0);
+  var totalC = lines.reduce(function(s, l) { return s + (l.credit || 0); }, 0);
+  if (Math.abs(totalD - totalC) > 0.01) {
+    toast('El asiento no balancea: Debe ' + fmtMoney(totalD) + ' ≠ Haber ' + fmtMoney(totalC) +
+          ' (diferencia ' + fmtMoney(Math.abs(totalD - totalC)) + ')', 'error');
+    return;
+  }
 
   const data = {
     number: document.getElementById('je-num').value,

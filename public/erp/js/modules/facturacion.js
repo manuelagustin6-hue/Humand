@@ -669,7 +669,15 @@ function markInvoicePaid(id) {
 }
 
 function deleteInvoice(id) {
-  confirmDialog('Eliminar esta factura?', () => {
+  var colls = DB.getAll('collections').filter(function(c) { return c.invoice_id === id; });
+  var extra = colls.length ? ' Se eliminarán también ' + colls.length + ' cobro(s) asociado(s) y sus movimientos de tesorería.' : '';
+  confirmDialog('Eliminar esta factura?' + extra, () => {
+    // Cascada: cobros de esta factura y los movimientos de tesorería que generaron
+    colls.forEach(function(c) {
+      DB.getAll('treasuryTx').filter(function(t) { return t.source === 'collection' && t.source_id === c.id; })
+        .forEach(function(t) { DB.remove('treasuryTx', t.id); });
+      DB.remove('collections', c.id);
+    });
     DB.remove('invoices', id);
     toast('Factura eliminada', 'warning');
     renderFacturacion();

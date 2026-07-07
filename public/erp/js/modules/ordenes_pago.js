@@ -529,6 +529,9 @@ function markPOPaid(id) {
 
 function deletePaymentOrder(id) {
   confirmDialog('¿Eliminar esta orden de pago?', () => {
+    // Cascada: remover el egreso de tesorería generado por esta OP
+    DB.getAll('treasuryTx').filter(function(t) { return t.source === 'payment_order' && t.source_id === id; })
+      .forEach(function(t) { DB.remove('treasuryTx', t.id); });
     DB.remove('paymentOrders', id);
     toast('Orden eliminada', 'warning');
     renderOrdenesPago();
