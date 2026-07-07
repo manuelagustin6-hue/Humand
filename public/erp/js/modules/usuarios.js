@@ -319,6 +319,7 @@ function usrToggleProjMode(mode) {
 }
 
 function saveUser(id) {
+  if (!requireEdit('usuarios')) return;
   const name = document.getElementById('usr-name').value.trim();
   const email = document.getElementById('usr-email').value.trim();
   if (!name || !email) { toast('Nombre y email son obligatorios', 'error'); return; }
@@ -383,12 +384,14 @@ function saveUser(id) {
 }
 
 function toggleUser(id, active) {
+  if (!requireEdit('usuarios')) return;
   DB.update('users', id, { active });
   toast(`Usuario ${active ? 'activado' : 'desactivado'}`, active ? 'success' : 'warning');
   renderUsuarios();
 }
 
 function deleteUser(id) {
+  if (!requireEdit('usuarios')) return;
   confirmDialog('¿Eliminar este usuario?', () => {
     DB.remove('users', id);
     toast('Usuario eliminado', 'warning');
@@ -468,6 +471,7 @@ function roleSetAll(level) {
 }
 
 function saveRole(id) {
+  if (!requireEdit('usuarios')) return;
   const label = document.getElementById('role-name').value.trim();
   if (!label) { toast('El nombre del rol es obligatorio', 'error'); return; }
   const color = document.getElementById('role-color').value;
@@ -489,6 +493,7 @@ function saveRole(id) {
 }
 
 function deleteRole(id) {
+  if (!requireEdit('usuarios')) return;
   const usersWithRole = DB.getAll('users').filter(u => u.role === id);
   const msg = usersWithRole.length
     ? `Este rol está asignado a ${usersWithRole.length} usuario(s). Si lo eliminás, esos usuarios quedarán sin rol válido. ¿Continuar?`
