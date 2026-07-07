@@ -135,6 +135,28 @@ var _SUPA = {
     return out;
   },
 
+  // Diagnóstico liviano de conexión. Devuelve {ok, status, detail} para que la UI
+  // pueda distinguir proyecto pausado / error de auth / RLS / sin red.
+  ping: async function() {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function() { ctrl.abort(); }, 6000);
+    try {
+      var res = await fetch(this.URL + '/rest/v1/erp_data?select=company_id&limit=1', {
+        headers: this.hdrs(), signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (res.ok) return { ok: true, status: res.status, detail: 'Conectado correctamente' };
+      if (res.status === 401 || res.status === 403) return { ok: false, status: res.status, detail: 'Error de autenticación/permisos — revisá la anon key o las policies RLS' };
+      if (res.status === 404) return { ok: false, status: res.status, detail: 'La tabla erp_data no existe en este proyecto' };
+      return { ok: false, status: res.status, detail: 'Respuesta inesperada (HTTP ' + res.status + ')' };
+    } catch (e) {
+      clearTimeout(timer);
+      return { ok: false, status: 0, detail: (e && e.name === 'AbortError')
+        ? 'Sin respuesta (timeout) — el proyecto de Supabase probablemente está pausado. Reactivalo desde el panel.'
+        : 'Sin conexión: ' + ((e && e.message) || (e && e.name) || 'error de red') };
+    }
+  },
+
   // Upsert a single record. Calls onFail() if the request fails so the caller can queue a retry.
   upsert: function(companyId, collection, record, onFail) {
     var self = this;
@@ -827,6 +849,59 @@ const DB = {
     // Clear any pending writes (they were for data that no longer exists)
     try { localStorage.removeItem(this.PENDING_KEY); localStorage.removeItem(this.PENDING_DEL_KEY); } catch(e) {}
     _updateSyncBadge();
+  },
+
+  // Estructura de empresa VACÍA para producción: misma forma que seed() pero sin
+  // los ~499 registros demo transaccionales. Conserva sólo el andamiaje mínimo
+  // para que la app sea usable: usuarios por defecto, plan de cuentas y rubros.
+  seedEmpty() {
+    var full = this.seed();
+    var keep = { accounts: true, rubros: true };
+    var out = {};
+    Object.keys(full).forEach(function(k) {
+      if (Array.isArray(full[k])) out[k] = keep[k] ? full[k] : [];
+      else out[k] = full[k];
+    });
+    out.users = this._defaultUsers();
+    return out;
+  },
+
+  // Inicializa la empresa activa vacía (sin datos demo).
+  initEmpty() {
+    var data = this.seedEmpty();
+    this.save(data);
+    return data;
+  },
+
+  // Borrado real de la empresa activa: vacía local Y remoto (Supabase), para que
+  // el pull no vuelva a hidratar los datos viejos. Deja la empresa como vacía.
+  wipeCompanyData: async function(keepScaffolding) {
+    var cid = this._companyId;
+    // Borrar en Supabase todas las colecciones actuales de esta empresa
+    if (_SUPA.online) {
+      var current = this.get();
+      var cols = Object.keys(current).filter(function(k) { return Array.isArray(current[k]); });
+      for (var c = 0; c < cols.length; c++) {
+        var col = cols[c];
+        var recs = current[col] || [];
+        for (var r = 0; r < recs.length; r++) {
+          if (recs[r] && recs[r].id != null) {
+            try { await _SUPA.del(cid, col, recs[r].id); } catch(e) {}
+          }
+        }
+      }
+    }
+    var data = keepScaffolding ? this.seedEmpty() : {};
+    this.save(data);
+    if (keepScaffolding && _SUPA.online) this._pushAllToSupabase(data);
+    try {
+      var pk = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]').filter(function(p){ return p.cid !== cid; });
+      var pd = JSON.parse(localStorage.getItem(this.PENDING_DEL_KEY) || '[]').filter(function(p){ return p.cid !== cid; });
+      localStorage.setItem(this.PENDING_KEY, JSON.stringify(pk));
+      localStorage.setItem(this.PENDING_DEL_KEY, JSON.stringify(pd));
+    } catch(e) {}
+    _updateSyncBadge();
+    return data;
   },
 
   // ---- MULTI-COMPANY METHODS ----
