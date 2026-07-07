@@ -1544,7 +1544,10 @@ function saveSI(id) {
   var taxes     = (window._siTaxLines || []).filter(Boolean).filter(function(t) { return t.amount > 0; });
   var percIva   = taxes.filter(function(t) { return t.type === 'perc_iva'; }).reduce(function(s, t) { return s + t.amount; }, 0);
   var percIibb  = taxes.filter(function(t) { return t.type === 'perc_iibb'; }).reduce(function(s, t) { return s + t.amount; }, 0);
-  var otherTaxTotal = taxes.reduce(function(s, t) { return s + (t.amount || 0); }, 0);
+  // Las RETENCIONES (Ganancias/IVA/SUSS) se practican AL PAGAR: reducen el neto a
+  // pagar, NO integran el total de la factura. Las percepciones y demás sí suman.
+  var retTotal      = taxes.filter(function(t) { return SI_RETENTION_TYPES.indexOf(t.type) !== -1; }).reduce(function(s, t) { return s + (t.amount || 0); }, 0);
+  var addToTotal    = taxes.filter(function(t) { return SI_RETENTION_TYPES.indexOf(t.type) === -1; }).reduce(function(s, t) { return s + (t.amount || 0); }, 0);
   var certId    = document.getElementById('si-cert').value || '';
   var imputacion = (window._siImpLines || []).filter(Boolean).filter(function(l) { return l.rubro_id || l.amount; });
 
@@ -1571,7 +1574,9 @@ function saveSI(id) {
     perc_iva:    percIva,
     perc_iibb:   percIibb,
     taxes:       taxes,
-    total:       sub + tax + otherTaxTotal,
+    retentions_total: retTotal,
+    total:       sub + tax + addToTotal,
+    net_to_pay:  sub + tax + addToTotal - retTotal,
     status:      id ? ((DB.getById('supplierInvoices', id) || {}).status || 'pending') : 'pending',
     notes:       document.getElementById('si-notes').value.trim(),
     imputacion:  imputacion,
@@ -1653,6 +1658,10 @@ var SI_TAX_TYPES = [
   { id: 'sellos',    label: 'Impuesto de Sellos' },
   { id: 'otro',      label: 'Otro' },
 ];
+
+// Retenciones: se practican al pagar (reducen el neto a pagar), NO integran el
+// total de la factura. El resto (percepciones, sellos, otro) sí suma al total.
+var SI_RETENTION_TYPES = ['ret_gan', 'ret_iva', 'suss'];
 
 window._siTaxLines = [];
 
@@ -1768,8 +1777,10 @@ function buildSiTaxSummaryHtml(opts) {
   var iva      = (opts.iva      !== undefined) ? opts.iva      : numParse((document.getElementById('si-tax')      || {}).value);
   var ivaRate  = (opts.ivaRate  !== undefined) ? opts.ivaRate  : (parseFloat((document.getElementById('si-iva-rate') || {}).value) || 21);
   var taxLines = (opts.taxLines !== undefined) ? opts.taxLines : ((window._siTaxLines || []).filter(Boolean).filter(function(t) { return t.amount > 0; }));
-  var otherTaxTotal = taxLines.reduce(function(s, t) { return s + (t.amount || 0); }, 0);
-  var total    = sub + iva + otherTaxTotal;
+  var isRet = function(t) { return SI_RETENTION_TYPES.indexOf(t.type) !== -1; };
+  var addToTotal = taxLines.filter(function(t){ return !isRet(t); }).reduce(function(s, t) { return s + (t.amount || 0); }, 0);
+  var retTotal   = taxLines.filter(isRet).reduce(function(s, t) { return s + (t.amount || 0); }, 0);
+  var total    = sub + iva + addToTotal;
 
   var rows = '<table style="width:100%;border-collapse:collapse">' +
     '<tr>' +
@@ -1781,7 +1792,8 @@ function buildSiTaxSummaryHtml(opts) {
       '<td style="text-align:right;font-size:13px;font-weight:600;padding:3px 0">' + fmtMoney(iva) + '</td>' +
     '</tr>';
 
-  taxLines.forEach(function(t) {
+  // Percepciones y demás que suman al total
+  taxLines.filter(function(t){ return !isRet(t); }).forEach(function(t) {
     var typeInfo = SI_TAX_TYPES.find(function(x) { return x.id === t.type; }) || { label: t.type || 'Impuesto' };
     rows += '<tr>' +
       '<td style="font-size:13px;color:var(--text-muted);padding:3px 0">' + typeInfo.label + ':</td>' +
@@ -1794,8 +1806,25 @@ function buildSiTaxSummaryHtml(opts) {
     '<tr>' +
       '<td style="font-weight:800;font-size:15px;color:var(--primary)">TOTAL FACTURA:</td>' +
       '<td style="text-align:right;font-weight:800;font-size:16px;color:var(--primary)">' + fmtMoney(total) + '</td>' +
-    '</tr>' +
-    '</table>';
+    '</tr>';
+
+  // Retenciones: se descuentan al pagar (no integran el total)
+  if (retTotal > 0) {
+    taxLines.filter(isRet).forEach(function(t) {
+      var typeInfo = SI_TAX_TYPES.find(function(x) { return x.id === t.type; }) || { label: t.type || 'Retención' };
+      rows += '<tr>' +
+        '<td style="font-size:12px;color:var(--danger);padding:3px 0">− ' + typeInfo.label + ' (se retiene al pagar):</td>' +
+        '<td style="text-align:right;font-size:12px;color:var(--danger);padding:3px 0">−' + fmtMoney(t.amount) + '</td>' +
+      '</tr>';
+    });
+    rows +=
+      '<tr>' +
+        '<td style="font-weight:700;font-size:13px;color:var(--text)">NETO A PAGAR:</td>' +
+        '<td style="text-align:right;font-weight:700;font-size:14px;color:var(--text)">' + fmtMoney(total - retTotal) + '</td>' +
+      '</tr>';
+  }
+
+  rows += '</table>';
   return rows;
 }
 

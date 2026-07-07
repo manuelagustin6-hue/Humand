@@ -338,6 +338,13 @@ function openCollectionForm(invoiceId) {
     </select>
   </div>
   <div class="form-group">
+    <label class="form-label">Cuenta / Caja que recibe</label>
+    <select class="form-control" id="cf-account">
+      <option value="">— No registrar en Tesorería —</option>
+      ${DB.getAll('bankAccounts').map(a => `<option value="${a.id}">${escapeHtml(a.name)} (${a.currency||'ARS'})</option>`).join('')}
+    </select>
+  </div>
+  <div class="form-group">
     <label class="form-label">Referencia / N° Operación</label>
     <input class="form-control" id="cf-ref" placeholder="TRF-20250415, CHQ-001122...">
   </div>
@@ -406,12 +413,32 @@ function updateCollectionBalance(invoiceId) {
   }
 }
 
+// Genera un ingreso en Tesorería para un cobro (si se eligió cuenta que recibe).
+function _cobranzaToTesoreria(accountId, coll, clientName) {
+  if (!accountId || !(coll.amount > 0)) return;
+  DB.insert('treasuryTx', {
+    account_id:  accountId,
+    project_id:  coll.project_id || '',
+    type:        'income',
+    book:        (coll.iva_incluido === false && coll.tipo_cobranza && coll.tipo_cobranza !== 'factura') ? 'B' : 'A',
+    category:    'Cobranza a cliente',
+    description: 'Cobro' + (clientName ? ' — ' + clientName : '') + (coll.reference ? ' (' + coll.reference + ')' : ''),
+    amount:      coll.amount,
+    date:        coll.date || todayStr(),
+    reference:   coll.reference || '',
+    source:      'collection',
+    source_id:   coll.id,
+    auto_generated: true,
+  });
+}
+
 function saveCollection() {
   var tipo      = document.getElementById('cf-tipo')?.value || 'factura';
   var amount    = numParse(document.getElementById('cf-amount')?.value);
   var companyId = document.getElementById('cf-company')?.value || '';
   var date      = document.getElementById('cf-date')?.value;
   var method    = document.getElementById('cf-method')?.value;
+  var accountId = document.getElementById('cf-account')?.value || '';
   var reference = document.getElementById('cf-ref')?.value.trim() || '';
   var notes     = document.getElementById('cf-notes')?.value.trim() || '';
 
@@ -429,7 +456,8 @@ function saveCollection() {
     data.client_cuit = inv?.client_cuit || '';
     data.iva_incluido = false;
 
-    DB.insert('collections', data);
+    var _coll = DB.insert('collections', data);
+    _cobranzaToTesoreria(accountId, _coll || data, data.client_name);
 
     var allCollected = DB.getAll('collections').filter(function(c) { return c.invoice_id === invoiceId; }).reduce(function(s,c){ return s+c.amount; }, 0);
     if (inv && allCollected >= inv.total) {
@@ -460,8 +488,9 @@ function saveCollection() {
     data.neto         = Math.round(neto * 100) / 100;
     data.iva_amount   = Math.round(ivaAmt * 100) / 100;
 
-    DB.insert('collections', data);
-    toast('Cuota registrada', 'success');
+    var _collC = DB.insert('collections', data);
+    _cobranzaToTesoreria(accountId, _collC || data, data.client_name);
+    toast('Cuota registrada' + (accountId ? ' e ingreso en Tesorería' : ''), 'success');
   }
 
   closeModal();
