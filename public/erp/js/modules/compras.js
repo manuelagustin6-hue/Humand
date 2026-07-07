@@ -1140,9 +1140,36 @@ function createOPFromSI(siId) {
   }, 250);
 }
 
+// Al cambiar la sociedad emisora de la factura de proveedor: trabajamos en el
+// contexto (proyectos/rubros/libro) de esa empresa. Una factura ya creada no se mueve.
+function siOnCompanyChange(sel) {
+  var cid = sel ? sel.value : '';
+  if (!cid) return;
+  if (window._siEditId) {
+    toast('No se puede cambiar la sociedad de una factura ya creada', 'error');
+    sel.value = (DB.getById('supplierInvoices', window._siEditId) || {}).company_id || DB._companyId;
+    return;
+  }
+  if (cid === DB._companyId) return;
+  var co = DB.getAllCompanies().find(function(c){ return c.id === cid; });
+  confirmDialog(
+    'Vas a registrar la factura en <b>' + escapeHtml(co ? co.name : cid) + '</b>. El formulario se recargará con los proyectos y rubros de esa sociedad. ¿Continuar?',
+    function() {
+      DB.setCompany(cid);
+      window.APP_STATE.activeCompany = cid;
+      try { localStorage.setItem('erp_active_company', cid); } catch(e) {}
+      if (typeof populateCompanySelector === 'function') populateCompanySelector();
+      if (typeof populateProjectSelector === 'function') populateProjectSelector();
+      closeModal();
+      openSIForm();
+    }
+  );
+}
+
 function openSIForm(id, prefillPoId, prefillCertId) {
   id = id || null; prefillPoId = prefillPoId || null; prefillCertId = prefillCertId || null;
   window._siPendingFiles = [];   // reset pending uploads on each open
+  window._siEditId = id;
   const si        = id ? DB.getById('supplierInvoices', id) : null;
   // Build set of PO ids that already have a SI (excluding the current SI being edited)
   const invoicedPoIds = new Set(
@@ -1250,10 +1277,13 @@ function openSIForm(id, prefillPoId, prefillCertId) {
           suppliers.map(function(s) { return '<option value="' + s.id + '"' + (selectedSupplierId === s.id ? ' selected' : '') + '>' + s.name + '</option>'; }).join('') +
         '</select></div>' +
       '<div class="form-group"><label class="form-label">Razón Social *</label>' +
-        '<select class="form-control" id="si-company">' +
-          '<option value="">Sin empresa asignada</option>' +
-          (function() { try { return DB.getAllCompanies().map(function(c) { var sel = si && si.company_id === c.id ? ' selected' : ''; return '<option value="' + c.id + '"' + sel + '>' + escapeHtml(c.name) + '</option>'; }).join(''); } catch(e) { return ''; } })() +
-        '</select></div>' +
+        '<select class="form-control" id="si-company" onchange="siOnCompanyChange(this)">' +
+          (function() { try {
+            var actId = si ? (si.company_id || DB._companyId) : DB._companyId;
+            return DB.getAllCompanies().map(function(c) { var sel = actId === c.id ? ' selected' : ''; return '<option value="' + c.id + '"' + sel + '>' + escapeHtml(c.name) + '</option>'; }).join('');
+          } catch(e) { return ''; } })() +
+        '</select>' +
+        '<small style="color:var(--text-muted)">La factura y su asiento se registran en el libro de esta sociedad.</small></div>' +
       '<div class="form-group"><label class="form-label">Proyecto</label>' +
         '<select class="form-control" id="si-project">' +
           '<option value="">Sin proyecto</option>' +

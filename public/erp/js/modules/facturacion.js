@@ -264,10 +264,13 @@ function openInvoiceForm(id = null) {
   </div>
   <div class="form-group">
     <label class="form-label">Empresa del Grupo</label>
-    <select class="form-control" id="if-company">
-      <option value="">Sin empresa asignada</option>
-      ${(function(){ try { return DB.getAllCompanies().map(c => '<option value="'+c.id+'"'+(inv?.company_id===c.id?' selected':'')+'>'+escapeHtml(c.name)+'</option>').join(''); } catch(e){ return ''; } })()}
+    <select class="form-control" id="if-company" onchange="invOnCompanyChange(this)">
+      ${(function(){ try {
+        var actId = inv ? (inv.company_id || DB._companyId) : DB._companyId;
+        return DB.getAllCompanies().map(c => '<option value="'+c.id+'"'+(actId===c.id?' selected':'')+'>'+escapeHtml(c.name)+'</option>').join('');
+      } catch(e){ return ''; } })()}
     </select>
+    <small style="color:var(--text-muted)">La factura y su asiento se guardan en el libro de esta sociedad.</small>
   </div>
   <div class="form-group">
     <label class="form-label">Origen</label>
@@ -372,6 +375,35 @@ function openInvoiceForm(id = null) {
 `);
   window._invItems = [...items];
   window._impLines = imputacion.map(l => Object.assign({}, l));
+  window._invEditId = id || null;
+}
+
+// Al cambiar la sociedad emisora: la factura pertenece a esa empresa, y sus
+// proyectos/rubros/cuentas viven en el libro de ESA empresa. Por eso, para una
+// factura nueva, trabajamos en el contexto de la sociedad elegida (se recarga
+// el formulario con sus datos). Una factura existente no se puede mover de libro.
+function invOnCompanyChange(sel) {
+  var cid = sel ? sel.value : '';
+  if (!cid) return;
+  if (window._invEditId) {
+    toast('No se puede cambiar la sociedad de una factura ya creada', 'error');
+    sel.value = (DB.getById('invoices', window._invEditId) || {}).company_id || DB._companyId;
+    return;
+  }
+  if (cid === DB._companyId) return;
+  var co = DB.getAllCompanies().find(function(c){ return c.id === cid; });
+  confirmDialog(
+    'Vas a facturar como <b>' + escapeHtml(co ? co.name : cid) + '</b>. El formulario se recargará con los proyectos y rubros de esa sociedad. ¿Continuar?',
+    function() {
+      DB.setCompany(cid);
+      window.APP_STATE.activeCompany = cid;
+      try { localStorage.setItem('erp_active_company', cid); } catch(e) {}
+      if (typeof populateCompanySelector === 'function') populateCompanySelector();
+      if (typeof populateProjectSelector === 'function') populateProjectSelector();
+      closeModal();
+      openInvoiceForm();
+    }
+  );
 }
 
 // ---- ITEMS ----
