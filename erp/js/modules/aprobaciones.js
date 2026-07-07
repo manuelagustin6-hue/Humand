@@ -298,6 +298,7 @@ function _apprBuildLicConfig() {
 }
 
 function apprSaveLicConfig() {
+  if (!requireEdit('aprobaciones')) return;
   var steps = ['jefe_compras', 'gerencia', 'direccion'];
   var usuarios = DB.getAll('users');
   var stepsCfg = {};
@@ -814,6 +815,7 @@ function apprConfirmSelectApprovers(docType, docId) {
 
 // Approve current step
 function apprDoApprove(instanceId, comment) {
+  if (!requireEdit('aprobaciones')) return;
   const inst = DB.getById('approvalInstances', instanceId);
   if (!inst) return;
   const steps = inst.steps.slice();
@@ -835,6 +837,7 @@ function apprDoApprove(instanceId, comment) {
 
 // Reject current step
 function apprDoReject(instanceId, comment) {
+  if (!requireEdit('aprobaciones')) return;
   const inst = DB.getById('approvalInstances', instanceId);
   if (!inst || !comment) return;
   const steps = inst.steps.slice();

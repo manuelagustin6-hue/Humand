@@ -208,6 +208,7 @@ function empUpdateTaxHint(country) {
 }
 
 function empSaveNewCompany() {
+  if (!requireEdit('empresas')) return;
   var name = (document.getElementById('emp-name') || {}).value || '';
   var legalName = (document.getElementById('emp-legalName') || {}).value || '';
   if (!name.trim()) { toast('El nombre es obligatorio', 'error'); return; }
@@ -330,6 +331,7 @@ function empEditCompany(id) {
 }
 
 function empUpdateCompany() {
+  if (!requireEdit('empresas')) return;
   var id = (document.getElementById('emp-edit-id') || {}).value || '';
   var name = (document.getElementById('emp-name') || {}).value || '';
   var legalName = (document.getElementById('emp-legalName') || {}).value || '';
@@ -359,6 +361,7 @@ function empUpdateCompany() {
 }
 
 function empDeleteCompany(id) {
+  if (!requireEdit('empresas')) return;
   var activeId = (window.APP_STATE && window.APP_STATE.activeCompany) || 'comp-001';
   if (id === activeId) {
     toast('No se puede eliminar la empresa activa', 'error');
@@ -486,6 +489,7 @@ function empNewRate() {
 }
 
 function empSaveRate() {
+  if (!requireEdit('empresas')) return;
   var date = (document.getElementById('er-date') || {}).value || '';
   var from = (document.getElementById('er-from') || {}).value || '';
   var to = (document.getElementById('er-to') || {}).value || '';
