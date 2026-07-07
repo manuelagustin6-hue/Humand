@@ -499,7 +499,20 @@ function saveCollection() {
 
 function deleteCollection(id) {
   confirmDialog('¿Eliminar este cobro?', () => {
+    // Cascada: remover el ingreso de tesorería generado por este cobro
+    DB.getAll('treasuryTx').filter(function(t) { return t.source === 'collection' && t.source_id === id; })
+      .forEach(function(t) { DB.remove('treasuryTx', t.id); });
+    // Si la factura estaba marcada pagada por este cobro, revertirla a 'sent'
+    var col = DB.getById('collections', id);
     DB.remove('collections', id);
+    if (col && col.invoice_id) {
+      var inv = DB.getById('invoices', col.invoice_id);
+      if (inv && inv.status === 'paid') {
+        var rest = DB.getAll('collections').filter(function(c) { return c.invoice_id === col.invoice_id; })
+          .reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+        if (rest < (inv.total || 0)) DB.update('invoices', col.invoice_id, { status: 'sent' });
+      }
+    }
     toast('Cobro eliminado', 'warning');
     renderCobranzas();
   });
