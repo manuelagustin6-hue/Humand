@@ -11,9 +11,34 @@ function renderTesoreria() {
     return { ...acc, balance: (acc.initial_balance || 0) + income - expense, income, expense };
   });
 
-  const totalBalance = accountsWithBalance.reduce((s, a) => a.currency === 'ARS' ? s + a.balance : s, 0);
-  const totalIncome = txs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
-  const totalExpense = txs.filter(t => t.type === 'expense').reduce((s,t) => s+t.amount, 0);
+  // Moneda de cada cuenta
+  const accCur = {};
+  accounts.forEach(a => { accCur[a.id] = a.currency || 'ARS'; });
+
+  // Saldo por moneda (incluye TODOS los movimientos: FX/intercompany mueven plata real)
+  const balByCur = {};
+  accountsWithBalance.forEach(a => { const c = a.currency || 'ARS'; balByCur[c] = (balByCur[c] || 0) + a.balance; });
+
+  // Ingresos/Egresos OPERATIVOS (excluir transferencias FX e intercompany), agrupados por moneda
+  const operativeTx = txs.filter(t => t.tx_type !== 'fx' && t.tx_type !== 'intercompany');
+  const _sumByCur = (list) => {
+    const m = {};
+    list.forEach(t => { const c = accCur[t.account_id] || 'ARS'; m[c] = (m[c] || 0) + (t.amount || 0); });
+    return m;
+  };
+  const incomeByCur  = _sumByCur(operativeTx.filter(t => t.type === 'income'));
+  const expenseByCur = _sumByCur(operativeTx.filter(t => t.type === 'expense'));
+  const netByCur = {};
+  Object.keys(incomeByCur).forEach(c => { netByCur[c] = (netByCur[c] || 0) + incomeByCur[c]; });
+  Object.keys(expenseByCur).forEach(c => { netByCur[c] = (netByCur[c] || 0) - expenseByCur[c]; });
+
+  // Renderiza un importe multi-moneda (una línea por moneda presente)
+  const _curBlock = (map, cls) => {
+    const keys = Object.keys(map).filter(c => Math.abs(map[c]) > 0.005);
+    if (!keys.length) return `<div class="stat-value ${cls}">${fmtMoney(0)}</div>`;
+    return keys.map(c => `<div class="stat-value ${cls}"${keys.length > 1 ? ' style="font-size:17px"' : ''}>${fmtMoney(map[c], c)}</div>`).join('');
+  };
+  const _netCls = (map) => (Object.keys(map).every(c => map[c] >= 0) ? 'text-success' : 'text-danger');
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -46,26 +71,29 @@ function renderTesoreria() {
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;padding:10px 16px;gap:8px;border-top:1px solid var(--border)">
-      <div style="font-size:11px"><span class="text-success">▲ Ingresos: ${fmtMoney(acc.income)}</span></div>
-      <div style="font-size:11px;text-align:right"><span class="text-danger">▼ Egresos: ${fmtMoney(acc.expense)}</span></div>
+      <div style="font-size:11px"><span class="text-success">▲ Ingresos: ${fmtMoney(acc.income, acc.currency)}</span></div>
+      <div style="font-size:11px;text-align:right"><span class="text-danger">▼ Egresos: ${fmtMoney(acc.expense, acc.currency)}</span></div>
     </div>
   </div>`).join('')}
   <div class="stat-card" style="flex-direction:column;justify-content:center;min-height:110px">
-    <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:6px">SALDO TOTAL ARS</div>
-    <div style="font-size:24px;font-weight:700;color:var(--primary)">${fmtMoney(totalBalance)}</div>
+    <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:6px">SALDO TOTAL</div>
+    <div style="color:var(--primary);font-weight:700">${(function(){
+      const keys = Object.keys(balByCur).filter(c => Math.abs(balByCur[c]) > 0.005);
+      if (!keys.length) return `<span style="font-size:24px">${fmtMoney(0)}</span>`;
+      return keys.map(c => `<div style="font-size:${keys.length > 1 ? '18px' : '24px'}">${fmtMoney(balByCur[c], c)}</div>`).join('');
+    })()}</div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${accounts.length} cuentas</div>
   </div>
 </div>
 
-<!-- SUMMARY -->
+<!-- SUMMARY (operativo, sin transferencias FX/intercompany) -->
 <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
   <div class="stat-card"><div class="stat-icon green"><i class="fas fa-arrow-down"></i></div><div>
-    <div class="stat-value text-success">${fmtMoney(totalIncome)}</div><div class="stat-label">Ingresos Totales</div></div></div>
+    ${_curBlock(incomeByCur, 'text-success')}<div class="stat-label">Ingresos Operativos</div></div></div>
   <div class="stat-card"><div class="stat-icon red"><i class="fas fa-arrow-up"></i></div><div>
-    <div class="stat-value text-danger">${fmtMoney(totalExpense)}</div><div class="stat-label">Egresos Totales</div></div></div>
-  <div class="stat-card"><div class="stat-icon ${totalIncome-totalExpense >= 0 ? 'cyan' : 'red'}"><i class="fas fa-balance-scale"></i></div><div>
-    <div class="stat-value ${totalIncome-totalExpense >= 0 ? 'text-success' : 'text-danger'}">${fmtMoney(totalIncome-totalExpense)}</div>
-    <div class="stat-label">Resultado Neto</div></div></div>
+    ${_curBlock(expenseByCur, 'text-danger')}<div class="stat-label">Egresos Operativos</div></div></div>
+  <div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-balance-scale"></i></div><div>
+    ${_curBlock(netByCur, _netCls(netByCur))}<div class="stat-label">Resultado Neto</div></div></div>
 </div>
 
 <div id="tesoreria-tabs" class="mt-2">
@@ -174,6 +202,14 @@ function renderCashflowView(txs) {
 function renderCashflowChartTesoreria(txs) {
   const ctx = document.getElementById('teso-cashflow-chart');
   if (!ctx) return;
+  if (typeof Chart === 'undefined') return; // Chart.js no cargó
+
+  // Un solo cuadro de moneda: base de la empresa. Excluir transferencias FX/intercompany
+  // y movimientos de otras monedas para no mezclar (un gráfico no puede sumar ARS+USD).
+  const baseCur = (typeof _activeCurrency === 'function') ? _activeCurrency() : 'ARS';
+  const accCur = {};
+  DB.getAll('bankAccounts').forEach(a => { accCur[a.id] = a.currency || 'ARS'; });
+  const flowTx = txs.filter(t => t.tx_type !== 'fx' && t.tx_type !== 'intercompany' && (accCur[t.account_id] || 'ARS') === baseCur);
 
   const months = [];
   for (let i = 11; i >= 0; i--) {
@@ -181,8 +217,8 @@ function renderCashflowChartTesoreria(txs) {
     months.push({ key: d.toISOString().slice(0,7), label: d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }) });
   }
 
-  const income = months.map(m => txs.filter(t => t.type==='income' && t.date?.startsWith(m.key)).reduce((s,t) => s+t.amount, 0));
-  const expense = months.map(m => txs.filter(t => t.type==='expense' && t.date?.startsWith(m.key)).reduce((s,t) => s+t.amount, 0));
+  const income = months.map(m => flowTx.filter(t => t.type==='income' && t.date?.startsWith(m.key)).reduce((s,t) => s+t.amount, 0));
+  const expense = months.map(m => flowTx.filter(t => t.type==='expense' && t.date?.startsWith(m.key)).reduce((s,t) => s+t.amount, 0));
   const net = income.map((v,i) => v - expense[i]);
 
   new Chart(ctx, {
@@ -199,7 +235,7 @@ function renderCashflowChartTesoreria(txs) {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { labels: { font: { size: 11 } } } },
       scales: {
-        y: { ticks: { callback: v => fmtMoney(v), font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+        y: { ticks: { callback: v => fmtMoney(v, baseCur), font: { size: 10 } }, grid: { color: '#f1f5f9' } },
         x: { ticks: { font: { size: 10 } }, grid: { display: false } }
       }
     }
@@ -220,10 +256,10 @@ function renderAccountsTable(accounts) {
         <td><span class="badge badge-gray">${acc.type}</span></td>
         <td style="font-size:11px">${acc.account_code ? '<span class="badge badge-blue">' + escapeHtml(acc.account_code) + '</span> ' + escapeHtml(acc.account_name || '') : '<span style="color:var(--text-muted)">Sin asignar</span>'}</td>
         <td><span class="badge ${acc.currency==='USD'?'badge-green':'badge-blue'}">${acc.currency}</span></td>
-        <td class="number-cell text-right">${fmtMoney(acc.initial_balance)}</td>
-        <td class="number-cell text-right text-success">${fmtMoney(acc.income)}</td>
-        <td class="number-cell text-right text-danger">${fmtMoney(acc.expense)}</td>
-        <td class="number-cell text-right fw-bold">${fmtMoney(acc.balance)}</td>
+        <td class="number-cell text-right">${fmtMoney(acc.initial_balance, acc.currency)}</td>
+        <td class="number-cell text-right text-success">${fmtMoney(acc.income, acc.currency)}</td>
+        <td class="number-cell text-right text-danger">${fmtMoney(acc.expense, acc.currency)}</td>
+        <td class="number-cell text-right fw-bold">${fmtMoney(acc.balance, acc.currency)}</td>
         <td><div class="table-actions">
           <button class="btn-ghost btn btn-sm" onclick="openBankAccountForm('${acc.id}')"><i class="fas fa-edit"></i></button>
           <button class="btn-ghost btn btn-sm danger" onclick="deleteBankAccountFromTesoreria('${acc.id}')"><i class="fas fa-trash"></i></button>
