@@ -276,7 +276,25 @@ function runAjustesIntegrity() {
 
 // ---- SYSTEM TAB ----
 function buildSystemTab() {
+  var connGuess = (typeof _SUPA !== 'undefined' && _SUPA.online)
+    ? '<span style="color:var(--success);font-weight:600"><i class="fas fa-circle" style="font-size:8px"></i> Conectado</span>'
+    : '<span style="color:var(--text-muted);font-weight:600"><i class="fas fa-circle" style="font-size:8px"></i> Sin verificar / offline</span>';
   return '<div class="card mb-3">' +
+    '<div class="card-header"><span class="card-title"><i class="fas fa-cloud text-primary"></i> Conexión Supabase (sincronización)</span></div>' +
+    '<div class="card-body">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+    '<div>' +
+    '<div style="font-size:13px">Estado actual: <span id="supa-conn-state">' + connGuess + '</span></div>' +
+    '<div id="supa-conn-detail" style="font-size:12px;color:var(--text-muted);margin-top:4px">Probá la conexión para ver el estado real del servidor.</div>' +
+    '</div>' +
+    '<button class="btn btn-primary btn-sm" id="supa-conn-btn" onclick="ajustesTestSupabase()"><i class="fas fa-plug"></i> Probar / Reconectar</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:10px">' +
+    'Si figura pausado o sin respuesta: entrá a <b>supabase.com</b> → tu proyecto → <b>Resume/Restore</b>, esperá 1-3 min y volvé a tocar este botón.' +
+    '</div>' +
+    '</div></div>' +
+
+    '<div class="card mb-3">' +
     '<div class="card-header"><span class="card-title"><i class="fas fa-info-circle text-primary"></i> Información del Sistema</span></div>' +
     '<div class="card-body">' +
     '<div class="form-grid form-grid-2" style="gap:14px;font-size:13px">' +
@@ -321,6 +339,38 @@ function buildSystemTab() {
     '</div>' +
 
     '</div></div>';
+}
+
+// ---- SUPABASE CONNECTION TEST ----
+function ajustesTestSupabase() {
+  var stateEl  = document.getElementById('supa-conn-state');
+  var detailEl = document.getElementById('supa-conn-detail');
+  var btn      = document.getElementById('supa-conn-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Probando...'; }
+  if (stateEl) stateEl.innerHTML = '<span style="color:var(--text-muted)"><i class="fas fa-circle" style="font-size:8px"></i> Verificando…</span>';
+
+  Promise.resolve(_SUPA.ping()).then(function(res) {
+    if (res.ok) {
+      if (stateEl) stateEl.innerHTML = '<span style="color:var(--success);font-weight:600"><i class="fas fa-circle" style="font-size:8px"></i> Conectado</span>';
+      if (detailEl) detailEl.textContent = 'Servidor accesible. Sincronizando datos…';
+      // Reconectar y bajar datos
+      return Promise.resolve(DB.forcePull()).then(function() {
+        _SUPA.online = true;
+        if (typeof _updateSyncBadge === 'function') _updateSyncBadge();
+        if (detailEl) detailEl.textContent = 'Conectado y sincronizado ✓';
+        if (typeof toast === 'function') toast('Supabase reconectado y sincronizado', 'success');
+      });
+    } else {
+      if (stateEl) stateEl.innerHTML = '<span style="color:var(--danger);font-weight:600"><i class="fas fa-circle" style="font-size:8px"></i> Sin conexión</span>';
+      if (detailEl) detailEl.textContent = res.detail + (res.status ? ' (HTTP ' + res.status + ')' : '');
+      if (typeof toast === 'function') toast('No se pudo conectar a Supabase', 'error');
+    }
+  }).catch(function(e) {
+    if (stateEl) stateEl.innerHTML = '<span style="color:var(--danger);font-weight:600"><i class="fas fa-circle" style="font-size:8px"></i> Error</span>';
+    if (detailEl) detailEl.textContent = 'Error al probar: ' + ((e && e.message) || 'desconocido');
+  }).then(function() {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plug"></i> Probar / Reconectar'; }
+  });
 }
 
 // ---- ACTIONS ----

@@ -135,6 +135,28 @@ var _SUPA = {
     return out;
   },
 
+  // Diagnóstico liviano de conexión. Devuelve {ok, status, detail} para que la UI
+  // pueda distinguir proyecto pausado / error de auth / RLS / sin red.
+  ping: async function() {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function() { ctrl.abort(); }, 6000);
+    try {
+      var res = await fetch(this.URL + '/rest/v1/erp_data?select=company_id&limit=1', {
+        headers: this.hdrs(), signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (res.ok) return { ok: true, status: res.status, detail: 'Conectado correctamente' };
+      if (res.status === 401 || res.status === 403) return { ok: false, status: res.status, detail: 'Error de autenticación/permisos — revisá la anon key o las policies RLS' };
+      if (res.status === 404) return { ok: false, status: res.status, detail: 'La tabla erp_data no existe en este proyecto' };
+      return { ok: false, status: res.status, detail: 'Respuesta inesperada (HTTP ' + res.status + ')' };
+    } catch (e) {
+      clearTimeout(timer);
+      return { ok: false, status: 0, detail: (e && e.name === 'AbortError')
+        ? 'Sin respuesta (timeout) — el proyecto de Supabase probablemente está pausado. Reactivalo desde el panel.'
+        : 'Sin conexión: ' + ((e && e.message) || (e && e.name) || 'error de red') };
+    }
+  },
+
   // Upsert a single record. Calls onFail() if the request fails so the caller can queue a retry.
   upsert: function(companyId, collection, record, onFail) {
     var self = this;
