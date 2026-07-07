@@ -499,8 +499,20 @@ function _apprCondRowHtml(docType, cond) {
 function _apprStepPool(s) {
   if (!s) return [];
   if (s.approver_user_ids && s.approver_user_ids.length) return s.approver_user_ids.slice();
+  if (s.eligible_user_ids && s.eligible_user_ids.length) return s.eligible_user_ids.slice();
   if (s.approver_user_id) return [s.approver_user_id];
   return [];
+}
+
+// True si el usuario actual puede actuar sobre este paso (está en el pool, o es admin,
+// o el paso no tiene aprobador asignado). Sin sesión → true (modo dev).
+function _apprCanActOnStep(step) {
+  var u = window.APP_STATE && window.APP_STATE.currentUser;
+  if (!u) return true;
+  if (u.role === 'admin') return true;
+  var pool = _apprStepPool(step);
+  if (!pool.length) return true;
+  return pool.indexOf(u.id) !== -1;
 }
 
 function _apprUserName(uid) {
@@ -818,6 +830,10 @@ function apprDoApprove(instanceId, comment) {
   if (!requireEdit('aprobaciones')) return;
   const inst = DB.getById('approvalInstances', instanceId);
   if (!inst) return;
+  if (!_apprCanActOnStep(inst.steps[inst.current_step_index])) {
+    toast('Este paso debe aprobarlo el aprobador asignado', 'error');
+    return;
+  }
   const steps = inst.steps.slice();
   steps[inst.current_step_index] = Object.assign({}, steps[inst.current_step_index], { status: 'approved', comment: comment || '', date: todayStr() });
   const nextIdx = inst.current_step_index + 1;
@@ -840,6 +856,10 @@ function apprDoReject(instanceId, comment) {
   if (!requireEdit('aprobaciones')) return;
   const inst = DB.getById('approvalInstances', instanceId);
   if (!inst || !comment) return;
+  if (!_apprCanActOnStep(inst.steps[inst.current_step_index])) {
+    toast('Este paso debe resolverlo el aprobador asignado', 'error');
+    return;
+  }
   const steps = inst.steps.slice();
   steps[inst.current_step_index] = Object.assign({}, steps[inst.current_step_index], { status: 'rejected', comment, date: todayStr() });
   DB.update('approvalInstances', instanceId, { steps, status: 'rejected', updated_at: todayStr() });
@@ -854,7 +874,9 @@ function _apprAppendLog(docType, docId, entry) {
   if (!cfg) return;
   const doc = DB.getById(cfg.collection, docId);
   if (!doc) return;
-  const log = (doc.approval_log || []).concat([Object.assign({ date: todayStr(), user: 'Administrador' }, entry)]);
+  var actor = (window.APP_STATE && window.APP_STATE.currentUser &&
+               (window.APP_STATE.currentUser.name || window.APP_STATE.currentUser.email)) || 'Sistema';
+  const log = (doc.approval_log || []).concat([Object.assign({ date: todayStr(), user: actor }, entry)]);
   DB.update(cfg.collection, docId, { approval_log: log });
 }
 
