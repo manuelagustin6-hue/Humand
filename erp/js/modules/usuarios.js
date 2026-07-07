@@ -622,6 +622,16 @@ function canEdit(moduleId) {
   return perms[moduleId] === 'edit';
 }
 
+// Guarda de escritura: llamar al inicio de cada handler save*/delete*. Si el
+// usuario no tiene permiso de edición en el módulo, avisa y devuelve false para
+// abortar. (Refuerzo client-side; el control real vendrá con Supabase RLS.)
+function requireEdit(moduleId) {
+  if (canEdit(moduleId)) return true;
+  if (typeof toast === 'function') toast('No tenés permiso para modificar este módulo', 'error');
+  return false;
+}
+window.requireEdit = requireEdit;
+
 // =====================================================
 // LOGIN UI
 // =====================================================
@@ -811,6 +821,26 @@ function _doLoginLocal(email, password, supaUnavailable) {
       if (pwEl) pwEl.select();
       return;
     }
+  } else {
+    // Cuenta sin contraseña (semilla/bootstrap). ANTES: cualquier clave entraba
+    // como admin — escalada crítica. AHORA: el primer ingreso DEFINE la
+    // contraseña de la cuenta; los siguientes la exigen. Nunca se acepta login
+    // sin que se haya fijado una contraseña.
+    if (!password || password.length < 4) {
+      DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
+      _loginError('Esta cuenta aún no tiene contraseña. Definí una (mínimo 4 caracteres) en este primer ingreso.');
+      var pwEl0 = document.getElementById('login-password');
+      if (pwEl0) pwEl0.focus();
+      return;
+    }
+    var enc0;
+    try { enc0 = btoa(password); } catch(e) { enc0 = password; }
+    try {
+      DB.setCompany(foundCompanyId);
+      DB.update('users', foundUser.id, { password: enc0 });
+      foundUser.password = enc0;
+    } catch(e) {}
+    if (typeof toast === 'function') toast('Contraseña establecida para esta cuenta', 'success');
   }
 
   window.APP_STATE.activeCompany = foundCompanyId;

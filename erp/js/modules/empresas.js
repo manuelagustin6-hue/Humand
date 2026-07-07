@@ -178,6 +178,12 @@ function empNewCompany() {
           '<b>Impuestos aplicables:</b> <span id="emp-tax-hint-text"></span>' +
         '</div>' +
       '</div>' +
+      '<div class="form-group" style="grid-column:1/-1;">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">' +
+          '<input type="checkbox" id="emp-demo-data"> Cargar datos de demostración (proyectos, facturas, etc. de ejemplo)' +
+        '</label>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">Dejalo <b>sin tildar</b> para producción: la empresa arranca vacía (solo plan de cuentas, rubros y usuario admin).</div>' +
+      '</div>' +
     '</div>';
 
   openModal('Nueva Empresa', body, 'modal-lg',
@@ -224,19 +230,24 @@ function empSaveNewCompany() {
     created_at: now(),
   };
 
+  var loadDemo = !!(document.getElementById('emp-demo-data') || {}).checked;
+
   DB.saveCompanyRecord(company);
   var key = 'erp_company_' + company.id + '_v1';
   if (!localStorage.getItem(key)) {
     var prevId = DB._companyId;
     DB._companyId = company.id;
-    DB.init();
+    if (loadDemo) { DB.init(); }        // datos de ejemplo
+    else          { DB.initEmpty(); }   // empresa vacía (producción)
+    // Empujar el andamiaje a Supabase para que persista en otros dispositivos
+    if (_SUPA.online) DB._pushAllToSupabase(DB.get());
     DB._companyId = prevId;
   }
 
   closeModal();
   populateCompanySelector();
   empRenderTabEmpresas();
-  toast('Empresa creada correctamente', 'success');
+  toast(loadDemo ? 'Empresa creada con datos demo' : 'Empresa creada (vacía, lista para producción)', 'success');
 }
 
 function empEditCompany(id) {
