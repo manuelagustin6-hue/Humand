@@ -537,7 +537,34 @@ const DB = {
     return this.getAll(collection).find(function(x) { return x.id === id; }) || null;
   },
 
+  // Backstop de permisos (client-side): una cuenta de SOLO LECTURA (sin ningún
+  // permiso 'edit' en ningún módulo) no puede escribir en NINGUNA colección.
+  // Complementa los guards por handler y cubre toda la cola de módulos en un
+  // único punto. El control real vendrá con Supabase RLS.
+  _canWrite: function(collection) {
+    if (collection === 'auditLog') return true; // la traza siempre se registra
+    var u = window.APP_STATE && window.APP_STATE.currentUser;
+    if (!u) return true;                       // boot/login/dev: sin sesión aún
+    if (u.role === 'admin') return true;
+    if (typeof getEffectivePermissions !== 'function') return true;
+    var perms = getEffectivePermissions(u.role) || {};
+    for (var k in perms) { if (perms[k] === 'edit') return true; } // tiene edición en algún módulo
+    return false;                              // cuenta puramente de lectura
+  },
+
+  _denyWrite: function() {
+    var t = 0;
+    try { t = this._lastDenyToast || 0; } catch(e) {}
+    var nowMs = new Date().getTime();
+    if (nowMs - t > 1500) { // evita spamear el toast en handlers con varias escrituras
+      this._lastDenyToast = nowMs;
+      if (typeof toast === 'function') toast('No tenés permiso para modificar datos (cuenta de solo lectura)', 'error');
+    }
+    return null;
+  },
+
   insert(collection, record) {
+    if (!this._canWrite(collection)) return this._denyWrite();
     var db = this.get();
     if (!db[collection]) db[collection] = [];
     var item = Object.assign({}, record, { id: record.id || uuid(), created_at: now() });
@@ -554,6 +581,7 @@ const DB = {
   },
 
   update(collection, id, updates) {
+    if (!this._canWrite(collection)) return this._denyWrite();
     var db = this.get();
     var idx = (db[collection] || []).findIndex(function(x) { return x.id === id; });
     if (idx === -1) return null;
@@ -571,6 +599,7 @@ const DB = {
   },
 
   remove(collection, id) {
+    if (!this._canWrite(collection)) { this._denyWrite(); return; }
     var db = this.get();
     var removed = (db[collection] || []).find(function(x) { return x.id === id; }) || null;
     db[collection] = (db[collection] || []).filter(function(x) { return x.id !== id; });
