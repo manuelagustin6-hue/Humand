@@ -423,8 +423,14 @@ function ajustesDoWipe() {
     toast('Escribí BORRAR para confirmar', 'error');
     return;
   }
-  localStorage.removeItem(DB.KEY);
-  toast('Todos los datos eliminados. Recargando...', 'warning');
+  toast('Borrando datos (local y servidor)...', 'warning');
   closeModal();
-  setTimeout(function() { location.reload(); }, 1500);
+  // Borra local Y remoto (Supabase) para que el pull no re-hidrate los datos.
+  // keepScaffolding=true deja la empresa vacía pero usable (plan de cuentas,
+  // rubros, usuario admin), sin re-sembrar los ~499 registros demo.
+  Promise.resolve(DB.wipeCompanyData(true)).then(function() {
+    setTimeout(function() { location.reload(); }, 1200);
+  }).catch(function() {
+    setTimeout(function() { location.reload(); }, 1200);
+  });
 }

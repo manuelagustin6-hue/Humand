@@ -829,6 +829,59 @@ const DB = {
     _updateSyncBadge();
   },
 
+  // Estructura de empresa VACÍA para producción: misma forma que seed() pero sin
+  // los ~499 registros demo transaccionales. Conserva sólo el andamiaje mínimo
+  // para que la app sea usable: usuarios por defecto, plan de cuentas y rubros.
+  seedEmpty() {
+    var full = this.seed();
+    var keep = { accounts: true, rubros: true };
+    var out = {};
+    Object.keys(full).forEach(function(k) {
+      if (Array.isArray(full[k])) out[k] = keep[k] ? full[k] : [];
+      else out[k] = full[k];
+    });
+    out.users = this._defaultUsers();
+    return out;
+  },
+
+  // Inicializa la empresa activa vacía (sin datos demo).
+  initEmpty() {
+    var data = this.seedEmpty();
+    this.save(data);
+    return data;
+  },
+
+  // Borrado real de la empresa activa: vacía local Y remoto (Supabase), para que
+  // el pull no vuelva a hidratar los datos viejos. Deja la empresa como vacía.
+  wipeCompanyData: async function(keepScaffolding) {
+    var cid = this._companyId;
+    // Borrar en Supabase todas las colecciones actuales de esta empresa
+    if (_SUPA.online) {
+      var current = this.get();
+      var cols = Object.keys(current).filter(function(k) { return Array.isArray(current[k]); });
+      for (var c = 0; c < cols.length; c++) {
+        var col = cols[c];
+        var recs = current[col] || [];
+        for (var r = 0; r < recs.length; r++) {
+          if (recs[r] && recs[r].id != null) {
+            try { await _SUPA.del(cid, col, recs[r].id); } catch(e) {}
+          }
+        }
+      }
+    }
+    var data = keepScaffolding ? this.seedEmpty() : {};
+    this.save(data);
+    if (keepScaffolding && _SUPA.online) this._pushAllToSupabase(data);
+    try {
+      var pk = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]').filter(function(p){ return p.cid !== cid; });
+      var pd = JSON.parse(localStorage.getItem(this.PENDING_DEL_KEY) || '[]').filter(function(p){ return p.cid !== cid; });
+      localStorage.setItem(this.PENDING_KEY, JSON.stringify(pk));
+      localStorage.setItem(this.PENDING_DEL_KEY, JSON.stringify(pd));
+    } catch(e) {}
+    _updateSyncBadge();
+    return data;
+  },
+
   // ---- MULTI-COMPANY METHODS ----
   setCompany(id) {
     this._companyId = id;
