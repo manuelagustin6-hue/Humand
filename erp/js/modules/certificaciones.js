@@ -264,7 +264,7 @@ function openCertForm(id = null) {
   </div>
   <div class="form-group">
     <label class="form-label">% Fondo de Reparo</label>
-    <input class="form-control" id="cf2-ret-pct" type="number" min="0" max="20" value="${cert?.retention_pct || 5}" oninput="updateCertTotals()">
+    <input class="form-control" id="cf2-ret-pct" type="number" min="0" max="20" value="${cert?.retention_pct != null ? cert.retention_pct : 5}" oninput="updateCertTotals()">
   </div>
 </div>
 <div class="divider"></div>
@@ -337,7 +337,8 @@ function removeCertItem(i) {
 }
 
 function updateCertTotals() {
-  const retPct = parseFloat(document.getElementById('cf2-ret-pct')?.value) || 5;
+  const _r = parseFloat(document.getElementById('cf2-ret-pct')?.value);
+  const retPct = isNaN(_r) ? 5 : _r; // permitir 0% (antes 0 se convertía en 5)
   const el = document.getElementById('cert-totals');
   if (el) el.innerHTML = calcCertTotalsHtml(window._certItems.filter(Boolean), retPct);
 }
@@ -353,7 +354,8 @@ function saveCert(id) {
   const projectId = document.getElementById('cf2-project').value;
   if (!projectId) { toast('El proyecto es obligatorio', 'error'); return; }
   const items = window._certItems.filter(Boolean).filter(it => it.description);
-  const retPct = parseFloat(document.getElementById('cf2-ret-pct').value) || 5;
+  const _rp = parseFloat(document.getElementById('cf2-ret-pct').value);
+  const retPct = isNaN(_rp) ? 5 : _rp; // permitir 0%
   const subtotal = items.reduce((s,it) => s + (it.amount_period||0), 0);
   const retention = subtotal * retPct / 100;
 
@@ -451,7 +453,7 @@ function printCertificacion(id) {
     '</table>' +
     _printTotals([
       { label: 'Subtotal del Período', value: fmtMoney(cert.subtotal) },
-      { label: 'Fondo de Reparo (' + (cert.retention_pct || 5) + '%)', value: '- ' + fmtMoney(cert.retention_amount || 0), warn: true },
+      { label: 'Fondo de Reparo (' + (cert.retention_pct != null ? cert.retention_pct : 5) + '%)', value: '- ' + fmtMoney(cert.retention_amount || 0), warn: true },
       { label: 'Neto a Cobrar', value: fmtMoney(cert.net_amount), grand: true }
     ]) +
     (cert.notes ? '<div class="notes-box"><strong>Notas:</strong> ' + escapeHtml(cert.notes) + '</div>' : '') +

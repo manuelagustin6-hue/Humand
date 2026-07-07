@@ -46,9 +46,11 @@ function buildGanttView(projectId) {
   const pending = tasks.filter(t => t.status === 'pending').length;
   const avgProgress = Math.round(tasks.reduce((s,t) => s+(t.progress||0), 0) / tasks.length);
 
-  // Determine date range
-  const minDate = tasks.reduce((m, t) => t.start_date < m ? t.start_date : m, tasks[0].start_date);
-  const maxDate = tasks.reduce((m, t) => t.end_date > m ? t.end_date : m, tasks[0].end_date);
+  // Determine date range (sólo sobre tareas con fechas válidas — evita NaN/Invalid Date)
+  const datedTasks = tasks.filter(t => t.start_date && t.end_date);
+  const _rangeBase = datedTasks.length ? datedTasks : [{ start_date: todayStr(), end_date: todayStr() }];
+  const minDate = _rangeBase.reduce((m, t) => (t.start_date && t.start_date < m ? t.start_date : m), _rangeBase[0].start_date);
+  const maxDate = _rangeBase.reduce((m, t) => (t.end_date && t.end_date > m ? t.end_date : m), _rangeBase[0].end_date);
 
   const startD = new Date(minDate + 'T00:00:00');
   const endD = new Date(maxDate + 'T00:00:00');
@@ -258,6 +260,10 @@ function saveTask(id) {
   const projectId = document.getElementById('tf-project').value;
   const name = document.getElementById('tf-name').value.trim();
   if (!projectId || !name) { toast('Proyecto y nombre son obligatorios', 'error'); return; }
+  const startV = document.getElementById('tf-start').value;
+  const endV = document.getElementById('tf-end').value;
+  if (!startV || !endV) { toast('Las fechas de inicio y fin son obligatorias', 'error'); return; }
+  if (endV < startV) { toast('La fecha de fin no puede ser anterior a la de inicio', 'error'); return; }
 
   const deps = Array.from(document.querySelectorAll('#modal-body input[type="checkbox"]:checked')).map(c => c.value);
 

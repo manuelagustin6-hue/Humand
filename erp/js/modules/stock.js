@@ -417,7 +417,12 @@ function saveWarehouse(id) {
 }
 
 function deleteWarehouse(id) {
-  confirmDialog('¿Eliminar este depósito? Se perderán los movimientos asociados.', function() {
+  var movs = DB.getAll('stockMovements').filter(function(m) { return m.warehouse_id === id || m.dest_warehouse_id === id; }).length;
+  if (movs > 0) {
+    toast('No se puede eliminar: el depósito tiene ' + movs + ' movimiento(s). Transferí o dá de baja el stock primero.', 'error');
+    return;
+  }
+  confirmDialog('¿Eliminar este depósito?', function() {
     DB.remove('stockWarehouses', id);
     toast('Depósito eliminado', 'success');
     renderStock();
@@ -605,13 +610,23 @@ function saveMovement() {
     }
   }
 
+  // En transferencias el costo del destino debe ser el costo promedio del ORIGEN
+  // (no un valor cargado a mano que, si queda en 0, diluye el valor del inventario).
+  let unitCost = cost;
+  if (type === 'salida') {
+    unitCost = 0;
+  } else if (type === 'transferencia') {
+    const srcLevel = computeStockForPair(matId, whId, DB.getAll('stockMovements'));
+    unitCost = srcLevel.avgCost || cost || 0;
+  }
+
   const data = {
     date, type,
     material_id:       matId,
     warehouse_id:      whId,
     dest_warehouse_id: type === 'transferencia' ? destWhId : '',
     qty,
-    unit_cost:         (type === 'salida') ? 0 : cost,
+    unit_cost:         unitCost,
     ref_id:            refPo,
     ref_type:          refPo ? 'oc' : 'manual',
     notes

@@ -62,7 +62,7 @@ function renderSeguimientoContent(projectId) {
   const actualCosts = DB.getAll('actualCosts').filter(a => a.project_id === projectId);
   const pos = DB.getAll('purchaseOrders').filter(p => p.project_id === projectId && p.status !== 'cancelled');
 
-  const boqTotal = boqItems.reduce((s, b) => s + b.total, 0);
+  const boqTotal = boqItems.reduce((s, b) => s + (b.total || 0), 0);
   const actualTotal = actualCosts.reduce((s, a) => s + a.amount, 0);
   const poTotal = pos.reduce((s, p) => s + p.total, 0);
   const committed = actualTotal + poTotal;

@@ -200,7 +200,7 @@ function renderCollectionsTable(collections, invoices, projects) {
 
 // ---- OPEN INVOICES ----
 function renderOpenInvoices(invoices, collections, projects) {
-  const open = invoices.filter(i => ['sent','overdue','draft'].includes(i.status));
+  const open = invoices.filter(i => ['sent','overdue'].includes(i.status)); // criterio unificado con aging/KPIs (draft no es factura abierta)
   if (!open.length) return `<div class="empty-state"><i class="fas fa-check-circle" style="color:var(--success);opacity:1"></i><p>¡Todas las facturas están cobradas!</p></div>`;
 
   return `<div class="card"><div class="card-body" style="padding:0"><div class="table-wrap">

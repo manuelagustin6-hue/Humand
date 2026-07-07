@@ -51,8 +51,8 @@ function renderProjectCards(projects) {
     const tasks = DB.getAll('ganttTasks').filter(t => t.project_id === p.id);
     const progress = tasks.length ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length) : 0;
     const invoiced = DB.getAll('invoices').filter(i => i.project_id === p.id).reduce((s, i) => s + (i.total || 0), 0);
-    const daysLeft = daysBetween(todayStr(), p.end_date);
-    const daysLeftLabel = daysLeft > 0 ? `${daysLeft} días restantes` : daysLeft === 0 ? 'Vence hoy' : `${Math.abs(daysLeft)} días de atraso`;
+    const daysLeft = p.end_date ? daysBetween(todayStr(), p.end_date) : null;
+    const daysLeftLabel = daysLeft == null ? 'Sin fecha de fin' : daysLeft > 0 ? `${daysLeft} días restantes` : daysLeft === 0 ? 'Vence hoy' : `${Math.abs(daysLeft)} días de atraso`;
 
     return `
 <div class="project-card" onclick="openProjectDetail('${p.id}')">
@@ -128,8 +128,8 @@ function openProjectDetail(id) {
   const invoices = DB.getAll('invoices').filter(i => i.project_id === id);
   const totalInvoiced = invoices.reduce((s, i) => s + (i.total || 0), 0);
   const totalCollected = DB.getAll('collections').filter(c => c.project_id === id).reduce((s,c) => s+(c.amount || 0), 0);
-  const boqTotal = DB.getAll('boqItems').filter(b => b.project_id === id).reduce((s,b) => s+b.total, 0);
-  const actualTotal = DB.getAll('actualCosts').filter(a => a.project_id === id).reduce((s,a) => s+a.amount, 0);
+  const boqTotal = DB.getAll('boqItems').filter(b => b.project_id === id).reduce((s,b) => s+(b.total||0), 0);
+  const actualTotal = DB.getAll('actualCosts').filter(a => a.project_id === id).reduce((s,a) => s+(a.amount||0), 0);
 
   openModal(`Proyecto: ${p.name}`, `
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
