@@ -653,9 +653,19 @@ function saveInvoice(id) {
 }
 
 function markInvoicePaid(id) {
-  DB.update('invoices', id, { status: 'paid' });
-  toast('Factura marcada como cobrada', 'success');
-  renderFacturacion();
+  // "Marcar cobrada" ahora registra el cobro real (cuenta/método/importe), que a su
+  // vez marca la factura pagada al completarse e impacta Tesorería. Así Facturación y
+  // Cobranzas dejan de contradecirse.
+  if (typeof closeModal === 'function') closeModal();
+  setTimeout(function() {
+    if (typeof openCollectionForm === 'function') {
+      openCollectionForm(id);
+    } else {
+      DB.update('invoices', id, { status: 'paid' });
+      toast('Factura marcada como cobrada', 'success');
+      renderFacturacion();
+    }
+  }, 60);
 }
 
 function deleteInvoice(id) {

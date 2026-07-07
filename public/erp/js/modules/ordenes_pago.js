@@ -491,14 +491,39 @@ function markPOPaid(id) {
     return;
   }
   const o = DB.getById('paymentOrders', id);
+  if (!o) return;
+  if (o.status === 'paid') { toast('La orden ya está pagada', 'info'); return; }
   DB.update('paymentOrders', id, { status: 'paid' });
   // Mark all applied invoices as paid
-  if (o && o.applied_invoices && o.applied_invoices.length) {
+  if (o.applied_invoices && o.applied_invoices.length) {
     o.applied_invoices.forEach(function(inv) { DB.update('supplierInvoices', inv.id, { status: 'paid' }); });
-  } else if (o && o.supplier_invoice_id) {
+  } else if (o.supplier_invoice_id) {
     DB.update('supplierInvoices', o.supplier_invoice_id, { status: 'paid' });
   }
-  toast('Orden marcada como pagada', 'success');
+  // Impacto en Tesorería: egreso por el NETO pagado (las retenciones se retienen,
+  // no salen del banco al proveedor). Se genera sólo si hay cuenta bancaria asignada.
+  var net = (o.net_amount != null) ? o.net_amount : (o.gross_amount || 0);
+  if (o.account_id && net > 0) {
+    var supName = '';
+    try { var sup = DB.getById('suppliers', o.supplier_id); supName = sup ? (' — ' + sup.name) : ''; } catch(e) {}
+    DB.insert('treasuryTx', {
+      account_id:  o.account_id,
+      project_id:  o.project_id || '',
+      type:        'expense',
+      book:        'A',
+      category:    'Pago a proveedor',
+      description: 'Orden de Pago ' + (o.number || o.id) + supName,
+      amount:      net,
+      date:        o.date || todayStr(),
+      reference:   o.number || '',
+      source:      'payment_order',
+      source_id:   o.id,
+      auto_generated: true,
+    });
+    toast('Orden pagada y egreso registrado en Tesorería', 'success');
+  } else {
+    toast('Orden marcada como pagada (sin cuenta bancaria: no se registró egreso)', 'warning');
+  }
   renderOrdenesPago();
 }
 
