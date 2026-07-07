@@ -194,8 +194,8 @@ function _livaGetCompras(p, companyId) {
     rows.push(_livaComprasRow(n, n.type==='nc_rec'?'NC':'ND'));
   });
 
-  // Count excluded docs for display
-  const totalSI = DB.getAll('supplierInvoices').filter(si => _livaInPeriod(si.date, p)).length;
+  // Count excluded docs for display (filtrar por empresa igual que las filas)
+  const totalSI = DB.getAll('supplierInvoices').filter(si => _livaInPeriod(si.date, p) && (!companyId || si.company_id === companyId)).length;
   var excl = totalSI - rows.filter(r => r.docType === 'FAC').length;
 
   var sorted = rows.sort((a,b) => a.date.localeCompare(b.date));

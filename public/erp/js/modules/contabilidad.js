@@ -470,7 +470,7 @@ function renderAccountPlan(accounts) {
 // ---- JOURNAL ENTRY FORM ----
 function openJEForm(id = null) {
   const e = id ? DB.getById('journalEntries', id) : null;
-  const nextNum = `AS-${new Date().getFullYear()}-${String(DB.getAll('journalEntries').length + 1).padStart(3,'0')}`;
+  const nextNum = nextJournalNumber();
   const allAccounts = DB.getAll('accounts');
   const accounts = allAccounts.filter(a => !allAccounts.find(b => b.parent_id === a.id) || a.parent_id);
   const accountOptions = DB.getAll('accounts').map(a => `<option value="${a.code}" data-name="${a.name}">${a.code} — ${a.name}</option>`).join('');

@@ -1,5 +1,21 @@
 /* ===== MÓDULO: ASIENTOS AUTOMÁTICOS ===== */
 
+// Próximo número de asiento por AÑO calculado como max+1 sobre los existentes
+// (no length+1, que repite números al borrar o al mezclar auto+manual).
+function nextJournalNumber() {
+  var year = new Date().getFullYear();
+  var prefix = 'AS-' + year + '-';
+  var max = 0;
+  DB.getAll('journalEntries').forEach(function(e) {
+    var n = (e && e.number) || '';
+    if (n.indexOf(prefix) === 0) {
+      var num = parseInt(n.slice(prefix.length), 10);
+      if (!isNaN(num) && num > max) max = num;
+    }
+  });
+  return prefix + String(max + 1).padStart(4, '0');
+}
+
 var AJ_TYPES = [
   { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta a Cobrar (AR) — contraparte de cada rubro de venta', has_iva: true },
   { id: 'nc_emitida',          name: 'Nota de Credito Emitida',  desc: 'Al emitir nota de credito a cliente',   icon: 'fa-file-circle-minus',   default_side: 'debit',  side_label: 'Cuenta de Ventas (devolucion)' },
@@ -262,7 +278,7 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
       .replace(/\{amount\}/g, amount ? Number(amount).toLocaleString('es-AR') : '');
 
     var entries = DB.getAll('journalEntries');
-    var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
+    var nextNum = nextJournalNumber();
 
     var isDebit = (cfg.account_side === 'debit');
     var counterCode = opts.counterAccount || '';
@@ -318,7 +334,7 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
       .replace(/\{amount\}/g, total ? Number(total).toLocaleString('es-AR') : '');
 
     var entries = DB.getAll('journalEntries');
-    var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
+    var nextNum = nextJournalNumber();
     var isDebit = (cfg.account_side === 'debit');  // true = AR (fact_emitida), false = AP (fact_proveedor)
     var typeObj = AJ_TYPES.find(function(t) { return t.id === operationTypeId; });
 

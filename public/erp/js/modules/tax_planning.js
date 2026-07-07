@@ -466,7 +466,7 @@ function _tpProyectado(projId, ganRate, impGanPct, gastosFinancieros, wrap) {
     '</div>' +
 
     '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
-      _tpStatMini('Margen bruto', totalPresupuesto ? ((resultadoBruto/totIngresos||0)*100).toFixed(1)+'%' : '—', resultadoBruto>=0?'#22c55e':'#ef4444') +
+      _tpStatMini('Margen bruto', totIngresos ? ((resultadoBruto/totIngresos)*100).toFixed(1)+'%' : '—', resultadoBruto>=0?'#22c55e':'#ef4444') +
       _tpStatMini('Margen neto', totIngresos ? ((resultadoNeto/totIngresos||0)*100).toFixed(1)+'%' : '—', resultadoNeto>=0?'#2563eb':'#ef4444') +
       _tpStatMini('Ganancias estimadas', fmtMoney(estimGanancias), '#f59e0b') +
       _tpStatMini('Ejecutado vs. Presupuesto', totalPresupuesto ? (totalEjecutado/totalPresupuesto*100).toFixed(1)+'%' : '—', '#64748b') +

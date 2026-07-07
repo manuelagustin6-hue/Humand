@@ -72,7 +72,7 @@ function renderContractsListTab() {
 
   const active     = contracts.filter(c => c.status === 'active').length;
   const totalAmt   = contracts.reduce((s, c) => s + (c.total_amount || 0), 0);
-  const totalCert  = certs.filter(c => c.contract_id).reduce((s, c) => s + (c.subtotal || 0), 0);
+  const totalCert  = certs.filter(c => c.contract_id && c.status !== 'rejected').reduce((s, c) => s + (c.subtotal || 0), 0);
   const avancePct  = totalAmt > 0 ? totalCert / totalAmt * 100 : 0;
 
   return `
@@ -171,7 +171,7 @@ function filterContracts(q, project, status) {
 
 // ==== PLANILLA DE CERTIFICACIONES (previsión financiera) ====
 function renderCertScheduleTab() {
-  const certs     = DB.getAll('certificates').filter(c => c.contract_id);
+  const certs     = DB.getAll('certificates').filter(c => c.contract_id && c.status !== 'rejected');
   const contracts = DB.getAll('contracts');
   const projects  = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
@@ -1589,7 +1589,7 @@ function exportContracts() {
   exportXLSX('contratos.xlsx',
     ['Número', 'Proyecto', 'Contratista', 'Tipo', 'Inicio', 'Fin', 'Anticipo %', 'Fondo Reparo %', 'Forma Pago', 'Monto Contrato', 'Certificado', 'Estado'],
     contracts.map(function(c) {
-      const certified = certs.filter(function(cert) { return cert.contract_id === c.id; })
+      const certified = certs.filter(function(cert) { return cert.contract_id === c.id && cert.status !== 'rejected'; })
                              .reduce(function(s, cert) { return s + (cert.subtotal || 0); }, 0);
       return [
         c.number,
