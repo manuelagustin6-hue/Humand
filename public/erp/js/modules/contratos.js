@@ -1507,6 +1507,34 @@ function saveContractCert(contractId) {
   const hasPeriod = items.some(function(it) { return (it.quantity_period || 0) > 0; });
   if (!hasPeriod) { toast('Indicá la cantidad del período en al menos un ítem', 'error'); return; }
 
+  // Tope: el acumulado (anterior + período) no debe superar la cantidad contratada.
+  const over = items.filter(function(it) {
+    const qc = it.quantity_contract || 0;
+    const accum = (it.quantity_prev || 0) + (it.quantity_period || 0);
+    return qc > 0 && accum > qc + 0.001;
+  });
+  if (over.length) {
+    const detail = over.slice(0, 6).map(function(it) {
+      const accum = (it.quantity_prev || 0) + (it.quantity_period || 0);
+      return '• <b>' + escapeHtml(it.description || '(sin descripción)') + '</b>: ' +
+             fmtNum(accum) + ' acum. sobre ' + fmtNum(it.quantity_contract || 0) + ' contratado';
+    }).join('<br>') + (over.length > 6 ? '<br>…y ' + (over.length - 6) + ' más' : '');
+    confirmDialog(
+      '<b>' + over.length + ' ítem(es) superan la cantidad contratada</b> (avance &gt;100%):<br><br>' +
+      detail + '<br><br>Revisá el contrato o la certificación anterior. ¿Certificar igual de todos modos?',
+      function() { _doSaveContractCert(contractId); }
+    );
+    return;
+  }
+  _doSaveContractCert(contractId);
+}
+
+function _doSaveContractCert(contractId) {
+  const contract = DB.getById('contracts', contractId);
+  if (!contract) return;
+  const items = window._ccertItems.filter(Boolean).filter(function(it) { return it.description; });
+  if (!items.length) return;
+
   const retPct   = parseFloat(document.getElementById('ccf-ret-pct').value) || 0;
   const subtotal = items.reduce(function(s, it) { return s + (it.amount_period || 0); }, 0);
   const retention = subtotal * retPct / 100;
