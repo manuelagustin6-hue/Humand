@@ -12,11 +12,11 @@ function renderCertificaciones() {
 <div class="page-header">
   <div>
     <div class="page-title">Certificaciones de Obra</div>
-    <div class="page-subtitle">Control de avance y certificaciones por período</div>
+    <div class="page-subtitle">Todas las certificaciones del grupo. Se crean desde cada contrato.</div>
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="exportCertificates()"><i class="fas fa-download"></i> Exportar</button>
-    <button class="btn btn-primary" onclick="openCertForm()"><i class="fas fa-plus"></i> Nueva Certificación</button>
+    <button class="btn btn-primary" onclick="certGoToContracts()"><i class="fas fa-plus"></i> Nueva (desde Contrato)</button>
   </div>
 </div>
 
@@ -62,7 +62,7 @@ function renderCertificaciones() {
 }
 
 function buildCertTable(certs, projects) {
-  if (!certs.length) return '<div class="empty-state"><i class="fas fa-certificate"></i><p>No hay certificaciones. Creá la primera.</p></div>';
+  if (!certs.length) return '<div class="empty-state"><i class="fas fa-certificate"></i><p>No hay certificaciones. Se crean desde cada contrato (Contratos → abrí un contrato → Nueva Certificación).</p></div>';
 
   var ST_COLOR = {
     draft:    { color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0', label: 'Borrador' },
@@ -71,16 +71,22 @@ function buildCertTable(certs, projects) {
     rejected: { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5', label: 'Rechazado' },
   };
 
+  var contracts = DB.getAll('contracts');
   var sorted = certs.slice().sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
 
   var rows = sorted.map(function(c, idx) {
     var proj  = projects.find(function(p) { return p.id === c.project_id; });
+    var ctr   = contracts.find(function(x) { return x.id === c.contract_id; });
     var st    = ST_COLOR[c.status] || ST_COLOR.draft;
     var rowBg = idx % 2 === 0 ? '#ffffff' : '#f8f9fb';
+    var ctrCell = ctr
+      ? '<a href="#" onclick="event.stopPropagation();event.preventDefault();navigate(\'contratos\');setTimeout(function(){if(typeof openContractDetail===\'function\')openContractDetail(\'' + ctr.id + '\')},60)" style="color:#2563eb;font-size:12px">' + escapeHtml(ctr.number) + '</a>'
+      : '<span style="color:var(--danger);font-size:11px" title="Certificación sin contrato (dato viejo)">— sin contrato —</span>';
     return '<tr style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;cursor:pointer"' +
         ' onclick="viewCert(\'' + c.id + '\')"' +
         ' onmouseenter="this.style.background=\'#eef4ff\'" onmouseleave="this.style.background=\'' + rowBg + '\'">' +
       '<td style="padding:10px 12px"><strong style="color:#2563eb">' + escapeHtml(c.number) + '</strong></td>' +
+      '<td style="padding:10px 12px;font-size:12px">' + ctrCell + '</td>' +
       '<td style="padding:10px 12px;font-size:12px">' + escapeHtml(proj ? proj.name : '-') + '</td>' +
       '<td style="padding:10px 12px;font-size:11px;color:#64748b;white-space:nowrap">' + fmtDate(c.period_from) + ' — ' + fmtDate(c.period_to) + '</td>' +
       '<td style="padding:10px 12px;font-size:12px;white-space:nowrap">' + fmtDate(c.date) + '</td>' +
@@ -94,7 +100,6 @@ function buildCertTable(certs, projects) {
         '<div class="table-actions">' +
           '<button class="btn-ghost btn btn-sm" title="Ver" onclick="viewCert(\'' + c.id + '\')"><i class="fas fa-eye"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="PDF" onclick="printCertificacion(\'' + c.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
-          '<button class="btn-ghost btn btn-sm" title="Editar" onclick="openCertForm(\'' + c.id + '\')"><i class="fas fa-edit"></i></button>' +
           (c.status === 'pending' ?
             '<button class="btn btn-sm btn-success" onclick="approveCert(\'' + c.id + '\')"><i class="fas fa-check"></i></button>' +
             '<button class="btn btn-sm btn-danger" onclick="rejectCert(\'' + c.id + '\')"><i class="fas fa-times"></i></button>'
@@ -108,6 +113,7 @@ function buildCertTable(certs, projects) {
   return '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
     '<thead><tr style="background:#f8f9fb;border-bottom:2px solid #e2e8f0">' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">N° Cert.</th>' +
+      '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Contrato</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proyecto</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Período</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Fecha</th>' +
@@ -218,7 +224,16 @@ ${cert.status === 'pending' ? `
 `);
 }
 
+// Las certificaciones se crean SIEMPRE desde un contrato (modelo unificado).
+function certGoToContracts() {
+  if (typeof toast === 'function') toast('Las certificaciones se crean desde el contrato: entrá al contrato y usá "Nueva Certificación"', 'info');
+  if (typeof navigate === 'function') navigate('contratos');
+}
+
 function openCertForm(id = null) {
+  // Alta/edición standalone deshabilitada: redirige al flujo por contrato.
+  return certGoToContracts();
+  /* eslint-disable no-unreachable */
   window._certItems = [];
   const cert = id ? DB.getById('certificates', id) : null;
   const projects = DB.getAll('projects');
