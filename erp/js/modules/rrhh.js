@@ -2,24 +2,77 @@
 
 const RRHH_CATEGORIES = ['Oficial','Medio Oficial','Ayudante','Capataz','Jefe de Obra','Especialista','Operador de Equipos','Administrativo','Otro'];
 
-const RRHH_SUSS_DEF = {
-  emp_jubilacion: 11, emp_obra_social: 3, emp_ley19032: 3,
-  pat_jubilacion: 12.71, pat_obra_social: 6, pat_ley19032: 1.62,
-  pat_art: 2.5, pat_fondo_empleo: 1.5,
+// Cargas sociales por país (defaults editables). Cada componente: { label, pct }.
+// El usuario puede ajustar las alícuotas reales desde "Configurar cargas".
+const RRHH_SOCIAL_DEFAULTS = {
+  AR: {
+    id_label: 'CUIL',
+    employee: [
+      { label: 'Jubilación',       pct: 11 },
+      { label: 'Obra Social',      pct: 3 },
+      { label: 'Ley 19032 / PAMI', pct: 3 },
+    ],
+    employer: [
+      { label: 'Jubilación',        pct: 12.71 },
+      { label: 'Obra Social',       pct: 6 },
+      { label: 'Ley 19032 / PAMI',  pct: 1.62 },
+      { label: 'ART',               pct: 2.5 },
+      { label: 'Fondo Nac. Empleo', pct: 1.5 },
+    ],
+  },
+  UY: {
+    id_label: 'C.I.',
+    employee: [
+      { label: 'Montepío (BPS)', pct: 15 },
+      { label: 'FONASA',         pct: 4.5 },
+      { label: 'FRL',            pct: 0.1 },
+    ],
+    employer: [
+      { label: 'Montepío patronal (BPS)', pct: 7.5 },
+      { label: 'FONASA patronal',         pct: 5 },
+      { label: 'FRL',                     pct: 0.1 },
+    ],
+  },
+  US: {
+    id_label: 'SSN',
+    employee: [
+      { label: 'Social Security', pct: 6.2 },
+      { label: 'Medicare',        pct: 1.45 },
+    ],
+    employer: [
+      { label: 'Social Security', pct: 6.2 },
+      { label: 'Medicare',        pct: 1.45 },
+      { label: 'FUTA',            pct: 0.6 },
+    ],
+  },
 };
 
-function rrhhSussRates() {
+function rrhhCountry() {
   try {
-    const cfg = DB.getAll('rrhhConfig');
-    if (cfg.length) return Object.assign({}, RRHH_SUSS_DEF, cfg[0]);
+    var id = window.APP_STATE && window.APP_STATE.activeCompany;
+    var co = DB.getAllCompanies().find(function(c) { return c.id === id; });
+    return (co && co.country) || 'AR';
+  } catch(e) { return 'AR'; }
+}
+
+// Config de cargas sociales del país activo: override guardado (rrhhConfig por país)
+// o los defaults. Devuelve { country, id_label, employee[], employer[] }.
+function rrhhSocialConfig() {
+  var country = rrhhCountry();
+  var def = RRHH_SOCIAL_DEFAULTS[country] || RRHH_SOCIAL_DEFAULTS.AR;
+  try {
+    var saved = DB.getAll('rrhhConfig').find(function(c) { return c.country === country; });
+    if (saved && saved.employee && saved.employer) {
+      return { country: country, id_label: saved.id_label || def.id_label, employee: saved.employee, employer: saved.employer };
+    }
   } catch(e) {}
-  return Object.assign({}, RRHH_SUSS_DEF);
+  return { country: country, id_label: def.id_label, employee: def.employee.slice(), employer: def.employer.slice() };
 }
 
 function rrhhCalcDeductions(gross) {
-  const r = rrhhSussRates();
-  const empPct = r.emp_jubilacion + r.emp_obra_social + r.emp_ley19032;
-  const patPct = r.pat_jubilacion + r.pat_obra_social + r.pat_ley19032 + r.pat_art + r.pat_fondo_empleo;
+  const cfg = rrhhSocialConfig();
+  const empPct = (cfg.employee || []).reduce(function(s, c) { return s + (parseFloat(c.pct) || 0); }, 0);
+  const patPct = (cfg.employer || []).reduce(function(s, c) { return s + (parseFloat(c.pct) || 0); }, 0);
   return {
     emp_total_pct: empPct,
     pat_total_pct: patPct,
@@ -27,6 +80,62 @@ function rrhhCalcDeductions(gross) {
     pat_contribution: gross * patPct / 100,
     net: gross * (1 - empPct / 100),
   };
+}
+
+// ---- EDITOR DE CARGAS SOCIALES (por país) ----
+function _rrhhCfgRow(kind, i, c) {
+  return '<div id="rrhh-cfg-' + kind + '-row-' + i + '" style="display:grid;grid-template-columns:1fr 90px 34px;gap:6px;margin-bottom:6px;align-items:center">' +
+    '<input class="form-control" style="font-size:12px" placeholder="Concepto (ej. Jubilación)" value="' + escapeHtml(c.label || '') + '" oninput="rrhhCfgUpd(\'' + kind + '\',' + i + ',\'label\',this.value)">' +
+    '<input class="form-control" style="font-size:12px" type="number" min="0" step="0.01" value="' + (c.pct != null ? c.pct : 0) + '" oninput="rrhhCfgUpd(\'' + kind + '\',' + i + ',\'pct\',this.value)">' +
+    '<button class="btn-ghost btn danger" onclick="rrhhCfgDel(\'' + kind + '\',' + i + ')"><i class="fas fa-times"></i></button>' +
+  '</div>';
+}
+function _rrhhCfgList(kind) { return kind === 'emp' ? window._rrhhCfgEmp : window._rrhhCfgPat; }
+function _rrhhCfgRender() {
+  var e = document.getElementById('rrhh-cfg-emp'); if (e) e.innerHTML = (window._rrhhCfgEmp || []).map(function(c, i) { return c ? _rrhhCfgRow('emp', i, c) : ''; }).join('');
+  var p = document.getElementById('rrhh-cfg-pat'); if (p) p.innerHTML = (window._rrhhCfgPat || []).map(function(c, i) { return c ? _rrhhCfgRow('pat', i, c) : ''; }).join('');
+}
+function rrhhCfgAdd(kind) { var l = _rrhhCfgList(kind); l.push({ label: '', pct: 0 }); var el = document.getElementById('rrhh-cfg-' + kind); if (el) el.insertAdjacentHTML('beforeend', _rrhhCfgRow(kind, l.length - 1, l[l.length - 1])); }
+function rrhhCfgUpd(kind, i, f, v) { var l = _rrhhCfgList(kind); if (l[i]) l[i][f] = (f === 'pct' ? (parseFloat(v) || 0) : v); }
+function rrhhCfgDel(kind, i) { var l = _rrhhCfgList(kind); l[i] = null; var row = document.getElementById('rrhh-cfg-' + kind + '-row-' + i); if (row) row.remove(); }
+function rrhhCfgRestore() {
+  var def = RRHH_SOCIAL_DEFAULTS[rrhhCountry()] || RRHH_SOCIAL_DEFAULTS.AR;
+  window._rrhhCfgEmp = def.employee.map(function(c) { return { label: c.label, pct: c.pct }; });
+  window._rrhhCfgPat = def.employer.map(function(c) { return { label: c.label, pct: c.pct }; });
+  _rrhhCfgRender();
+}
+function openRrhhSocialConfig() {
+  if (typeof requireEdit === 'function' && !requireEdit('rrhh')) return;
+  var cfg = rrhhSocialConfig();
+  window._rrhhCfgEmp = (cfg.employee || []).map(function(c) { return { label: c.label, pct: c.pct }; });
+  window._rrhhCfgPat = (cfg.employer || []).map(function(c) { return { label: c.label, pct: c.pct }; });
+  openModal('Cargas Sociales — ' + cfg.country,
+    '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Alícuotas del país <b>' + cfg.country + '</b> (empresa activa). Editá o agregá los conceptos reales; se aplican a las liquidaciones de este país.</div>' +
+    '<div style="font-weight:600;font-size:13px;margin-bottom:6px">Descuentos del empleado</div>' +
+    '<div id="rrhh-cfg-emp">' + (window._rrhhCfgEmp.map(function(c, i) { return _rrhhCfgRow('emp', i, c); }).join('')) + '</div>' +
+    '<button class="btn btn-sm btn-secondary" onclick="rrhhCfgAdd(\'emp\')"><i class="fas fa-plus"></i> Concepto</button>' +
+    '<div style="font-weight:600;font-size:13px;margin:16px 0 6px">Cargas patronales</div>' +
+    '<div id="rrhh-cfg-pat">' + (window._rrhhCfgPat.map(function(c, i) { return _rrhhCfgRow('pat', i, c); }).join('')) + '</div>' +
+    '<button class="btn btn-sm btn-secondary" onclick="rrhhCfgAdd(\'pat\')"><i class="fas fa-plus"></i> Concepto</button>',
+    'modal-lg',
+    '<button class="btn btn-secondary" onclick="rrhhCfgRestore()">Restaurar defaults</button>' +
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="rrhhSaveSocialConfig()"><i class="fas fa-save"></i> Guardar</button>'
+  );
+}
+function rrhhSaveSocialConfig() {
+  if (typeof requireEdit === 'function' && !requireEdit('rrhh')) return;
+  var country = rrhhCountry();
+  var def = RRHH_SOCIAL_DEFAULTS[country] || RRHH_SOCIAL_DEFAULTS.AR;
+  var emp = (window._rrhhCfgEmp || []).filter(Boolean).filter(function(c) { return (c.label || '').trim(); });
+  var pat = (window._rrhhCfgPat || []).filter(Boolean).filter(function(c) { return (c.label || '').trim(); });
+  var rec = { country: country, id_label: def.id_label, employee: emp, employer: pat };
+  var existing = DB.getAll('rrhhConfig').find(function(c) { return c.country === country; });
+  if (existing) DB.update('rrhhConfig', existing.id, rec);
+  else DB.insert('rrhhConfig', rec);
+  toast('Cargas sociales de ' + country + ' guardadas', 'success');
+  closeModal();
+  renderRRHH();
 }
 
 function renderRRHH() {
@@ -117,6 +226,8 @@ function renderRRHH() {
   <div id="tab-rrhh-suss" class="tab-content">
     <div class="filter-bar mt-2">
       <input type="month" class="form-control" style="width:170px" id="rrhh-suss-period" value="${thisMonth}" onchange="rrhhRenderSuss()">
+      <span class="badge badge-blue" title="País de la empresa activa"><i class="fas fa-globe"></i> ${rrhhCountry()}</span>
+      <button class="btn btn-secondary btn-sm" onclick="openRrhhSocialConfig()"><i class="fas fa-sliders-h"></i> Configurar cargas</button>
       <button class="btn btn-secondary btn-sm" onclick="rrhhExportSuss()"><i class="fas fa-download"></i> Exportar SUSS</button>
     </div>
     <div id="rrhh-suss-content">${rrhhBuildSussContent(payrolls, employees, thisMonth)}</div>
@@ -133,7 +244,7 @@ function renderRRHH() {
 function rrhhBuildEmpTable(employees) {
   if (!employees.length) return `<div class="empty-state"><i class="fas fa-users"></i><p>No hay empleados. Agregá el primero.</p></div>`;
   return `<table><thead><tr>
-    <th>Legajo</th><th>Nombre</th><th>CUIL</th><th>Categoría</th><th>Cargo</th>
+    <th>Legajo</th><th>Nombre</th><th>${rrhhSocialConfig().id_label}</th><th>Categoría</th><th>Cargo</th>
     <th>Jornal / Sueldo</th><th>Tipo</th><th>Ingreso</th><th>Estado</th><th>Acciones</th>
   </tr></thead><tbody>
   ${employees.sort((a,b)=>a.name.localeCompare(b.name)).map(e => `<tr>
@@ -186,8 +297,8 @@ function openEmployeeForm(id = null) {
     <input class="form-control" id="emp-legajo" value="${e?.legajo||''}" placeholder="001">
   </div>
   <div class="form-group">
-    <label class="form-label">CUIL</label>
-    <input class="form-control" id="emp-cuil" value="${e?.cuil||''}" placeholder="20-12345678-9">
+    <label class="form-label">${rrhhSocialConfig().id_label}</label>
+    <input class="form-control" id="emp-cuil" value="${e?.cuil||''}" placeholder="Documento / ID fiscal">
   </div>
   <div class="form-group">
     <label class="form-label">DNI</label>
@@ -598,7 +709,7 @@ function openPayrollForm(id = null) {
     </select>
   </div>
 </div>
-<small style="color:var(--text-muted)">Tasas SUSS por defecto: 17% retenciones empleado / ~25.83% cargas patronales.</small>
+<small style="color:var(--text-muted)">${(function(){ var c=rrhhCalcDeductions(100); return 'Cargas ' + rrhhCountry() + ': ' + (Math.round(c.emp_total_pct*100)/100) + '% empleado / ' + (Math.round(c.pat_total_pct*100)/100) + '% patronal (editable en "Configurar cargas").'; })()}</small>
 `, '', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="savePayroll('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
@@ -655,8 +766,11 @@ function viewPayroll(id) {
   const p = DB.getById('rrhhPayroll', id);
   if (!p) return;
   const emp = DB.getById('rrhhEmployees', p.employee_id);
-  const r = rrhhSussRates();
+  const cfg = rrhhSocialConfig();
   const gr = p.gross_pay || 0;
+  const _rrhhRow = (c) => `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${escapeHtml(c.label || '')} (${c.pct}%)</span><span>${fmtMoney(gr * (parseFloat(c.pct) || 0) / 100)}</span></div>`;
+  const empRows = (cfg.employee || []).map(_rrhhRow).join('');
+  const patRows = (cfg.employer || []).map(_rrhhRow).join('');
 
   openModal(`Recibo — ${emp?.name||'?'} — ${p.period}`, `
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px">
@@ -665,9 +779,7 @@ function viewPayroll(id) {
     <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
       <span>Sueldo / Jornal bruto</span><strong>${fmtMoney(gr)}</strong></div>
     <h4 style="margin:12px 0 8px;font-size:14px">Descuentos Empleado</h4>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Jubilación (${r.emp_jubilacion}%)</span><span>${fmtMoney(gr*r.emp_jubilacion/100)}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Obra Social (${r.emp_obra_social}%)</span><span>${fmtMoney(gr*r.emp_obra_social/100)}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Ley 19032/PAMI (${r.emp_ley19032}%)</span><span>${fmtMoney(gr*r.emp_ley19032/100)}</span></div>
+    ${empRows}
     <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:2px solid var(--border);font-weight:bold">
       <span>Total descuentos</span><span style="color:var(--danger-text,#dc3545)">${fmtMoney(p.emp_deduction||0)}</span></div>
     <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:16px;font-weight:bold">
@@ -675,11 +787,7 @@ function viewPayroll(id) {
   </div>
   <div>
     <h4 style="margin-bottom:8px;font-size:14px">Cargas Patronales</h4>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Jubilación (${r.pat_jubilacion}%)</span><span>${fmtMoney(gr*r.pat_jubilacion/100)}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Obra Social (${r.pat_obra_social}%)</span><span>${fmtMoney(gr*r.pat_obra_social/100)}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Ley 19032/PAMI (${r.pat_ley19032}%)</span><span>${fmtMoney(gr*r.pat_ley19032/100)}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ART (${r.pat_art}%)</span><span>${fmtMoney(gr*r.pat_art/100)}</span></div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Fondo Empleo (${r.pat_fondo_empleo}%)</span><span>${fmtMoney(gr*r.pat_fondo_empleo/100)}</span></div>
+    ${patRows}
     <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:2px solid var(--border);font-weight:bold">
       <span>Total patronal</span><span style="color:var(--warning-text,#e59700)">${fmtMoney(p.pat_contribution||0)}</span></div>
     <div style="margin-top:12px;padding:10px;background:var(--bg-subtle,#f8f9fa);border-radius:6px">
@@ -718,7 +826,10 @@ function rrhhBuildSussContent(payrolls, employees, period) {
 
   const empMap = {};
   employees.forEach(e => empMap[e.id] = e);
-  const r = rrhhSussRates();
+  const cfg = rrhhSocialConfig();
+  const _pctRow = (c) => `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>${escapeHtml(c.label || '')}</span><strong>${c.pct}%</strong></div>`;
+  const empPctTotal = (cfg.employee || []).reduce((s, c) => s + (parseFloat(c.pct) || 0), 0);
+  const patPctTotal = (cfg.employer || []).reduce((s, c) => s + (parseFloat(c.pct) || 0), 0);
 
   const totGross = filtered.reduce((s,p)=>s+(p.gross_pay||0),0);
   const totEmp = filtered.reduce((s,p)=>s+(p.emp_deduction||0),0);
@@ -735,36 +846,29 @@ function rrhhBuildSussContent(payrolls, employees, period) {
   </div>
 
   <div class="card mb-2"><div class="card-header">
-    <span class="card-title"><i class="fas fa-percent text-primary"></i> Alícuotas SUSS Aplicadas</span>
+    <span class="card-title"><i class="fas fa-percent text-primary"></i> Alícuotas Aplicadas — ${cfg.country}</span>
   </div><div class="card-body">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:13px">
       <div>
         <h5 style="margin-bottom:8px">Aportes del Empleado</h5>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Jubilación</span><strong>${r.emp_jubilacion}%</strong></div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Obra Social</span><strong>${r.emp_obra_social}%</strong></div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Ley 19032 (PAMI)</span><strong>${r.emp_ley19032}%</strong></div>
+        ${(cfg.employee || []).map(_pctRow).join('')}
         <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--border);font-weight:bold">
-          <span>Total</span><span>${r.emp_jubilacion+r.emp_obra_social+r.emp_ley19032}%</span></div>
+          <span>Total</span><span>${Math.round(empPctTotal * 100) / 100}%</span></div>
       </div>
       <div>
         <h5 style="margin-bottom:8px">Contribuciones Patronales</h5>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Jubilación</span><strong>${r.pat_jubilacion}%</strong></div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Obra Social</span><strong>${r.pat_obra_social}%</strong></div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Ley 19032 (PAMI)</span><strong>${r.pat_ley19032}%</strong></div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ART</span><strong>${r.pat_art}%</strong></div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Fondo de Empleo</span><strong>${r.pat_fondo_empleo}%</strong></div>
+        ${(cfg.employer || []).map(_pctRow).join('')}
         <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--border);font-weight:bold">
-          <span>Total</span><span>${(r.pat_jubilacion+r.pat_obra_social+r.pat_ley19032+r.pat_art+r.pat_fondo_empleo).toFixed(2)}%</span></div>
+          <span>Total</span><span>${Math.round(patPctTotal * 100) / 100}%</span></div>
       </div>
     </div>
   </div></div>
 
   <div class="card"><div class="card-header">
-    <span class="card-title"><i class="fas fa-table text-primary"></i> Detalle SUSS por Empleado — ${period}</span>
+    <span class="card-title"><i class="fas fa-table text-primary"></i> Detalle por Empleado — ${period}</span>
   </div><div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr>
-      <th>Empleado</th><th>CUIL</th><th>Categoría</th><th>Bruto</th>
-      <th>Ap. Jubilación</th><th>Ap. Obra Social</th><th>Ap. PAMI</th>
+      <th>Empleado</th><th>${cfg.id_label}</th><th>Categoría</th><th>Bruto</th>
       <th>Tot. Aportes</th><th>Tot. Contribuciones</th><th>Costo Empleador</th>
     </tr></thead><tbody>
     ${filtered.map(p => {
@@ -775,9 +879,6 @@ function rrhhBuildSussContent(payrolls, employees, period) {
         <td style="font-size:12px">${emp?.cuil||'-'}</td>
         <td>${emp?`<span class="badge badge-blue">${emp.category}</span>`:'-'}</td>
         <td>${fmtMoney(gr)}</td>
-        <td>${fmtMoney(gr*r.emp_jubilacion/100)}</td>
-        <td>${fmtMoney(gr*r.emp_obra_social/100)}</td>
-        <td>${fmtMoney(gr*r.emp_ley19032/100)}</td>
         <td style="color:var(--danger-text,#dc3545)">${fmtMoney(p.emp_deduction||0)}</td>
         <td style="color:var(--warning-text,#e59700)">${fmtMoney(p.pat_contribution||0)}</td>
         <td><strong>${fmtMoney(gr+(p.pat_contribution||0))}</strong></td>
@@ -786,9 +887,6 @@ function rrhhBuildSussContent(payrolls, employees, period) {
     <tr style="font-weight:bold;border-top:2px solid var(--border);background:var(--bg-subtle,#f8f9fa)">
       <td colspan="3">TOTALES</td>
       <td>${fmtMoney(totGross)}</td>
-      <td>${fmtMoney(totGross*r.emp_jubilacion/100)}</td>
-      <td>${fmtMoney(totGross*r.emp_obra_social/100)}</td>
-      <td>${fmtMoney(totGross*r.emp_ley19032/100)}</td>
       <td>${fmtMoney(totEmp)}</td>
       <td>${fmtMoney(totPat)}</td>
       <td>${fmtMoney(totGross+totPat)}</td>
@@ -826,16 +924,19 @@ function rrhhExportSuss() {
   const payrolls = DB.getAll('rrhhPayroll').filter(p => p.period === period);
   const empMap = {};
   DB.getAll('rrhhEmployees').forEach(e => empMap[e.id] = e);
-  const r = rrhhSussRates();
-  exportXLSX(`suss_${period}.xlsx`,
-    ['Empleado','CUIL','Categoría','Bruto','Ap.Jubilacion','Ap.ObraSocial','Ap.PAMI','Tot.Aportes','Jub.Patronal','OS.Patronal','PAMI.Patronal','ART','FondoEmpleo','Tot.Patronal','CostoEmpleador'],
+  const cfg = rrhhSocialConfig();
+  const empCols = (cfg.employee || []).map(c => 'Emp: ' + c.label);
+  const patCols = (cfg.employer || []).map(c => 'Pat: ' + c.label);
+  const headers = ['Empleado', cfg.id_label, 'Categoría', 'Bruto']
+    .concat(empCols).concat(['Tot.Aportes']).concat(patCols).concat(['Tot.Patronal', 'CostoEmpleador']);
+  exportXLSX(`suss_${cfg.country}_${period}.xlsx`, headers,
     payrolls.map(p => {
       const e = empMap[p.employee_id];
-      const gr = p.gross_pay||0;
-      return [e?.name||'-',e?.cuil||'-',e?.category||'-',gr,
-        gr*r.emp_jubilacion/100,gr*r.emp_obra_social/100,gr*r.emp_ley19032/100,p.emp_deduction||0,
-        gr*r.pat_jubilacion/100,gr*r.pat_obra_social/100,gr*r.pat_ley19032/100,gr*r.pat_art/100,gr*r.pat_fondo_empleo/100,
-        p.pat_contribution||0,gr+(p.pat_contribution||0)];
+      const gr = p.gross_pay || 0;
+      const empVals = (cfg.employee || []).map(c => gr * (parseFloat(c.pct) || 0) / 100);
+      const patVals = (cfg.employer || []).map(c => gr * (parseFloat(c.pct) || 0) / 100);
+      return [e?.name || '-', e?.cuil || '-', e?.category || '-', gr]
+        .concat(empVals).concat([p.emp_deduction || 0]).concat(patVals).concat([p.pat_contribution || 0, gr + (p.pat_contribution || 0)]);
     })
   );
 }
