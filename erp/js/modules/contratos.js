@@ -367,15 +367,9 @@ function _cdpDashboard(contract, certs) {
   const totalCert = approved.reduce(function(s, c) { return s + (c.subtotal || 0); }, 0);
   const avance = contract.total_amount > 0 ? totalCert / contract.total_amount * 100 : 0;
   const recent = certs.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).slice(0, 4);
-  const accumByDesc = {};
-  approved.forEach(function(c) {
-    (c.items || []).forEach(function(it) {
-      var k = (it.description || '').trim();
-      accumByDesc[k] = (accumByDesc[k] || 0) + (it.quantity_period || 0);
-    });
-  });
+  const accumByItem = _certAccumByItem(approved);
   var partidasHtml = (contract.items || []).map(function(it) {
-    var accum = accumByDesc[(it.description || '').trim()] || 0;
+    var accum = accumByItem[_certItemKey(it)] || 0;
     var pct = it.quantity > 0 ? accum / it.quantity * 100 : 0;
     return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
       '<div style="min-width:180px;max-width:180px;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="' + (it.description || '') + '">' + (it.description || '-') + '</div>' +
@@ -428,13 +422,7 @@ function _cdpDashboard(contract, certs) {
 
 function _cdpPartidas(contract, certs) {
   const approved = certs.filter(function(c) { return c.status !== 'rejected'; });
-  const accumByDesc = {};
-  approved.forEach(function(c) {
-    (c.items || []).forEach(function(it) {
-      var k = (it.description || '').trim();
-      accumByDesc[k] = (accumByDesc[k] || 0) + (it.quantity_period || 0);
-    });
-  });
+  const accumByItem = _certAccumByItem(approved);
   if (!(contract.items || []).length) return '<div class="empty-state"><p>Sin partidas cargadas</p></div>';
   return '<div class="table-wrap"><table><thead><tr>' +
     '<th>Partida</th><th>Unidad</th><th class="text-right">Cant.Contrato</th><th class="text-right">Cant.Certif.</th>' +
@@ -442,7 +430,7 @@ function _cdpPartidas(contract, certs) {
   '</tr></thead><tbody>' +
   (contract.items || []).map(function(it) {
     var boqItem = it.boq_item_id ? DB.getById('boqItems', it.boq_item_id) : null;
-    var accum = accumByDesc[(it.description || '').trim()] || 0;
+    var accum = accumByItem[_certItemKey(it)] || 0;
     var pct = it.quantity > 0 ? accum / it.quantity * 100 : 0;
     return '<tr><td>' + it.description + '</td><td>' + it.unit + '</td>' +
       '<td class="number-cell text-right">' + fmtNum(it.quantity) + '</td>' +
@@ -844,13 +832,7 @@ function buildCronogramaHtml(contract, mode) {
   const certs = DB.getAll('certificates').filter(function(c) {
     return c.contract_id === contract.id && c.status !== 'rejected';
   });
-  const accumByDesc = {};
-  certs.forEach(function(c) {
-    (c.items || []).forEach(function(it) {
-      const k = (it.description || '').trim();
-      accumByDesc[k] = (accumByDesc[k] || 0) + (it.quantity_period || 0);
-    });
-  });
+  const accumByItem = _certAccumByItem(certs);
 
   const items = contract.items || [];
   if (!items.length) return '<div class="empty-state" style="padding:20px"><p>No hay partidas cargadas en el contrato.</p></div>';
@@ -869,7 +851,7 @@ function buildCronogramaHtml(contract, mode) {
     const leftPct  = clampVal((iStart - t0) / span * 100, 0, 100);
     const widthPct = clampVal((iEnd - iStart) / span * 100, 0, 100 - leftPct);
 
-    const accum   = accumByDesc[(it.description || '').trim()] || 0;
+    const accum   = accumByItem[_certItemKey(it)] || 0;
     const certPct = it.quantity > 0 ? clampVal(accum / it.quantity * 100, 0, 100) : 0;
 
     const iSpan    = (iEnd - iStart) || 1;
@@ -1079,7 +1061,8 @@ function openContractForm(id = null) {
     '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
     '<button class="btn btn-primary" onclick="saveContract(\'' + (id || '') + '\')"><i class="fas fa-save"></i> Guardar</button>'
   );
-  window._contractItems = items.map(function(it) { return Object.assign({}, it); });
+  // Backfill item_id estable en partidas legacy (para ligar certificaciones por id)
+  window._contractItems = items.map(function(it) { return Object.assign({ item_id: it.item_id || uuid() }, it); });
   window._contractCashflow = cashflow.map(function(r) { return Object.assign({}, r); });
   window._contractAdicionales = adicionales.map(function(a) { return Object.assign({}, a); });
   window._cronoDefaults = { start: (contract && contract.start_date) || todayStr(), end: (contract && contract.end_date) || addDays(todayStr(), 180) };
@@ -1105,7 +1088,7 @@ function contractItemRow(it, i, boqOpts) {
 
 window._contractItems = [];
 function addContractItem() {
-  const it = { description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '' };
+  const it = { item_id: uuid(), description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '' };
   window._contractItems.push(it);
   const i = window._contractItems.length - 1;
   const cont = document.getElementById('cont-items');
@@ -1145,7 +1128,7 @@ function cronoFormRow(it, i, defStart, defEnd) {
 }
 
 function updateContractItem(i, field, val) {
-  if (!window._contractItems[i]) window._contractItems[i] = { description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '' };
+  if (!window._contractItems[i]) window._contractItems[i] = { item_id: uuid(), description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '' };
   window._contractItems[i][field] = val;
   window._contractItems[i].total = (window._contractItems[i].quantity || 0) * (window._contractItems[i].unit_price || 0);
   const totEl = document.getElementById('coni-total-' + i);
@@ -1324,6 +1307,22 @@ function deleteContract(id) {
   });
 }
 
+// Clave estable de una partida: por id si existe, si no por descripción (compat. legacy).
+function _certItemKey(it) {
+  return (it && it.item_id) ? ('id:' + it.item_id) : ('d:' + (((it && it.description) || '').trim().toLowerCase()));
+}
+// Acumulado certificado por partida (excluye rechazadas), sumando quantity_period.
+function _certAccumByItem(certs) {
+  var acc = {};
+  (certs || []).forEach(function(c) {
+    (c.items || []).forEach(function(it) {
+      var k = _certItemKey(it);
+      acc[k] = (acc[k] || 0) + (it.quantity_period || 0);
+    });
+  });
+  return acc;
+}
+
 // ==== CERTIFICATE FORM FROM CONTRACT (con acumulado + Contabilidad A/B) ====
 function openContractCertForm(contractId) {
   const contract = DB.getById('contracts', contractId);
@@ -1331,17 +1330,14 @@ function openContractCertForm(contractId) {
   const proj     = DB.getById('projects', contract.project_id);
   const nextNum  = 'CERT-' + new Date().getFullYear() + '-' + String(DB.getAll('certificates').length + 1).padStart(3, '0');
 
-  // accumulated certified qty per partida from prior certs (exclude rejected)
+  // accumulated certified qty per partida from prior certs (exclude rejected), by stable item_id
   const priorCerts = DB.getAll('certificates').filter(c => c.contract_id === contractId && c.status !== 'rejected');
-  const accumByDesc = {};
-  priorCerts.forEach(c => (c.items || []).forEach(it => {
-    const k = (it.description || '').trim();
-    accumByDesc[k] = (accumByDesc[k] || 0) + (it.quantity_period || 0);
-  }));
+  const accum = _certAccumByItem(priorCerts);
 
   const certItems = (contract.items || []).map(function(it) {
-    const prev = accumByDesc[(it.description || '').trim()] || 0;
+    const prev = accum[_certItemKey(it)] || 0;
     return {
+      item_id:           it.item_id,
       description:       it.description,
       unit:              it.unit,
       quantity_contract: it.quantity,
