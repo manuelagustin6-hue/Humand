@@ -265,11 +265,15 @@ function renderContractDetail(id) {
   const avance = contract.total_amount > 0 ? certified / contract.total_amount * 100 : 0;
   const sCfg  = CONTRACT_STATUS[contract.status] || { label: contract.status || '-', cls: 'badge-gray' };
 
-  var btns = '<button class="btn btn-secondary" onclick="openContractForm(\'' + id + '\')"><i class="fas fa-edit"></i> Editar</button>';
-  if (contract.status === 'draft' || contract.status === 'rejected') {
+  // Un contrato sólo se edita en borrador/rechazado. Una vez enviado/aprobado/iniciado
+  // queda bloqueado (editarlo invalidaría la aprobación y el avance certificado).
+  var editable = (contract.status === 'draft' || contract.status === 'rejected');
+  var btns = editable
+    ? '<button class="btn btn-secondary" onclick="openContractForm(\'' + id + '\')"><i class="fas fa-edit"></i> Editar</button>'
+    : '';
+  if (editable) {
+    // Para iniciar hay que pasar por aprobación: en borrador sólo se puede enviar a aprobar.
     btns += '<button class="btn btn-warning" onclick="submitContractForApproval(\'' + id + '\')"><i class="fas fa-paper-plane"></i> Enviar a Aprobación</button>';
-    if ((contract.items || []).length > 0)
-      btns += '<button class="btn btn-success" onclick="startContract(\'' + id + '\')"><i class="fas fa-play"></i> Dar Inicio</button>';
   }
   if (contract.status === 'pending_approval') {
     btns += '<button class="btn btn-success" onclick="openApproveContractModal(\'' + id + '\')"><i class="fas fa-check"></i> Aprobar</button>';
@@ -790,8 +794,15 @@ function startContract(id) {
   const contract = DB.getById('contracts', id);
   if (!contract) return;
   if (!(contract.items || []).length) { toast('Cargá al menos una partida antes de iniciar el contrato', 'error'); return; }
-  confirmDialog('¿Dar inicio al contrato ' + contract.number + '? Una vez iniciado podrás cargar certificaciones.', function() {
-    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'started', comment: '', user: 'Administrador' }]);
+  // No se puede iniciar sin aprobación previa.
+  if (contract.status !== 'approved') {
+    toast('El contrato debe estar APROBADO antes de darle inicio. Enviálo a aprobación primero.', 'error');
+    return;
+  }
+  var actor = (window.APP_STATE && window.APP_STATE.currentUser &&
+               (window.APP_STATE.currentUser.name || window.APP_STATE.currentUser.email)) || 'Sistema';
+  confirmDialog('¿Dar inicio al contrato ' + contract.number + '? Una vez iniciado no se puede editar y podrás cargar certificaciones.', function() {
+    var log = (contract.approval_log || []).concat([{ date: todayStr(), action: 'started', comment: '', user: actor }]);
     DB.update('contracts', id, { status: 'active', started_date: todayStr(), approval_log: log });
     toast('Contrato iniciado — ya podés certificar', 'success');
     renderContractDetail(id);
@@ -913,6 +924,12 @@ function renderCronograma(contractId, mode) {
 // ---- CONTRACT FORM ----
 function openContractForm(id = null) {
   const contract  = id ? DB.getById('contracts', id) : null;
+  // Un contrato ya enviado/aprobado/iniciado no se edita (invalidaría aprobación y avance).
+  if (contract && !(contract.status === 'draft' || contract.status === 'rejected')) {
+    toast('Este contrato ya no se puede editar (' + (CONTRACT_STATUS[contract.status] ? CONTRACT_STATUS[contract.status].label : contract.status) + '). Sólo se edita en borrador.', 'error');
+    return;
+  }
+  const _stCfg = CONTRACT_STATUS[(contract && contract.status) || 'draft'] || { label: 'Borrador', cls: 'badge-gray' };
   const projects  = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
   const boqItems  = DB.getAll('boqItems');
@@ -942,12 +959,7 @@ function openContractForm(id = null) {
       '<div class="form-group"><label class="form-label">Número de Contrato</label>' +
         '<input class="form-control" id="cont-num" value="' + ((contract && contract.number) || nextNum) + '"></div>' +
       '<div class="form-group"><label class="form-label">Estado</label>' +
-        '<select class="form-control" id="cont-status">' +
-          '<option value="draft" ' + ((!contract || contract.status === 'draft') ? 'selected' : '') + '>Borrador</option>' +
-          '<option value="active" ' + ((contract && contract.status === 'active') ? 'selected' : '') + '>Activo</option>' +
-          '<option value="completed" ' + ((contract && contract.status === 'completed') ? 'selected' : '') + '>Completado</option>' +
-          '<option value="cancelled" ' + ((contract && contract.status === 'cancelled') ? 'selected' : '') + '>Cancelado</option>' +
-        '</select></div>' +
+        '<div style="font-size:12px;color:var(--text-muted);padding:8px 0"><span class="badge ' + _stCfg.cls + '">' + _stCfg.label + '</span> — lo maneja el flujo (Enviar a Aprobación → Aprobar → Dar Inicio).</div></div>' +
       '<div class="form-group"><label class="form-label">Proyecto *</label>' +
         '<select class="form-control" id="cont-project">' +
           '<option value="">Seleccionar...</option>' +
@@ -1279,7 +1291,9 @@ function saveContract(id) {
     project_id:            projectId,
     contractor_id:         contractorId,
     type:                  document.getElementById('cont-type').value,
-    status:                document.getElementById('cont-status').value,
+    // El estado lo maneja el flujo (borrador → aprobación → inicio). Al editar se
+    // conserva el estado actual; un contrato nuevo nace en borrador.
+    status:                id ? ((DB.getById('contracts', id) || {}).status || 'draft') : 'draft',
     start_date:            document.getElementById('cont-start').value,
     end_date:              document.getElementById('cont-end').value,
     notes:                 document.getElementById('cont-notes').value.trim(),
@@ -1342,9 +1356,14 @@ function openContractCertForm(contractId) {
   const accum = _certAccumByItem(priorCerts);
 
   const _frContract = contract.fondo_reparo_pct != null ? contract.fondo_reparo_pct : 5;
+  const _rubrosById = {};
+  DB.getAll('rubros').forEach(function(r) { _rubrosById[r.id] = r; });
   const certItems = (contract.items || []).map(function(it) {
     const prev = accum[_certItemKey(it)] || 0;
+    const _rub = it.rubro_id ? _rubrosById[it.rubro_id] : null;
     return {
+      rubro_id:          it.rubro_id || '',
+      rubro_name:        _rub ? (_rub.code + ' — ' + _rub.name) : '',
       item_id:           it.item_id,
       description:       it.description,
       unit:              it.unit,
@@ -1429,7 +1448,10 @@ function onContabTipoChange() {
 
 function ccertItemRow(it, i) {
   return '<div id="cci-row-' + i + '" style="display:grid;grid-template-columns:2.4fr 48px 70px 70px 70px 86px 90px 48px 58px 26px;gap:3px;margin-bottom:4px;align-items:center">' +
-    '<input class="form-control" style="font-size:11px" placeholder="Descripción" value="' + (it.description || '') + '" oninput="updateCCI(' + i + ',\'description\',this.value)">' +
+    '<div>' +
+      '<input class="form-control" style="font-size:11px" placeholder="Descripción" value="' + (it.description || '') + '" oninput="updateCCI(' + i + ',\'description\',this.value)">' +
+      (it.rubro_name ? '<div style="font-size:9px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(it.rubro_name) + '"><i class="fas fa-tag" style="font-size:8px"></i> ' + escapeHtml(it.rubro_name) + '</div>' : '') +
+    '</div>' +
     '<input class="form-control" style="font-size:11px" value="' + (it.unit || 'm²') + '" oninput="updateCCI(' + i + ',\'unit\',this.value)">' +
     '<input class="form-control" style="font-size:11px" type="number" min="0" value="' + (it.quantity_contract || 0) + '" oninput="updateCCI(' + i + ',\'quantity_contract\',+this.value)">' +
     '<input class="form-control" style="font-size:11px;background:#f1f5f9" readonly value="' + (it.quantity_prev || 0) + '" title="Certificado en períodos anteriores">' +
