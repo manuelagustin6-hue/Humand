@@ -678,6 +678,28 @@ function apprGetDocument(docType, docId) {
   return cfg ? DB.getById(cfg.collection, docId) : null;
 }
 
+// Siembra un flujo por defecto para certificaciones si no hay ninguno activo:
+// 1 paso con aprobador SELECCIONABLE entre los habilitados (admin / jefe de obra,
+// o todos los usuarios activos si no hay de esos roles). Así toda certificación
+// pasa por aprobación de entrada; el admin lo ajusta luego en Aprobaciones.
+function _apprEnsureDefaultCertWorkflow() {
+  var exists = DB.getAll('approvalWorkflows').some(function(wf) {
+    return wf.active !== false && wf.document_type === 'certificate';
+  });
+  if (exists) return;
+  var users = DB.getAll('users').filter(function(u) { return u.active; });
+  var pool = users.filter(function(u) { return u.role === 'admin' || u.role === 'project_manager'; }).map(function(u) { return u.id; });
+  if (!pool.length) pool = users.map(function(u) { return u.id; });
+  DB.insert('approvalWorkflows', {
+    name: 'Aprobación de Certificación',
+    document_type: 'certificate',
+    active: true,
+    priority: 1,
+    conditions: [],
+    steps: [{ step: 1, name: 'Aprobación de Certificación', selectable: true, eligible_user_ids: pool }],
+  });
+}
+
 function apprGetWorkflow(docType, docData) {
   const wfs = DB.getAll('approvalWorkflows')
     .filter(function(wf) { return wf.active !== false && wf.document_type === docType; })
@@ -726,6 +748,9 @@ function getApprovalInstance(docType, docId) {
 function submitForApproval(docType, docId, chosen) {
   const doc = apprGetDocument(docType, docId);
   if (!doc) { toast('Documento no encontrado', 'error'); return null; }
+
+  // Certificaciones: garantizar un flujo por defecto para que siempre haya aprobación.
+  if (docType === 'certificate') _apprEnsureDefaultCertWorkflow();
 
   const alreadyPending = DB.getAll('approvalInstances').find(function(i) {
     return i.document_type === docType && i.document_id === docId && i.status === 'pending';

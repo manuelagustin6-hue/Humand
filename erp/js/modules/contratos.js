@@ -999,8 +999,8 @@ function openContractForm(id = null) {
         '<button class="btn btn-sm btn-secondary" onclick="addContractItem()"><i class="fas fa-plus"></i> Agregar partida</button>' +
       '</div>' +
     '</div>' +
-    '<div style="display:grid;grid-template-columns:2fr 1.5fr 60px 85px 105px 105px 34px;gap:4px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted)">' +
-      '<span>Descripción</span><span>Rubro / Partida</span><span>Unidad</span><span>Cantidad</span><span>P.Unit.</span><span>Total</span><span></span>' +
+    '<div style="display:grid;grid-template-columns:2fr 1.3fr 52px 72px 92px 58px 92px 34px;gap:4px;margin-bottom:4px;font-size:10px;font-weight:600;color:var(--text-muted)">' +
+      '<span>Descripción</span><span>Rubro / Partida</span><span>Unidad</span><span>Cantidad</span><span>P.Unit.</span><span title="% Fondo de Reparo de la partida">F.Rep.%</span><span>Total</span><span></span>' +
     '</div>' +
     '<div id="cont-items">' +
       items.map(function(it, i) { return contractItemRow(it, i, boqOpts); }).join('') +
@@ -1062,7 +1062,11 @@ function openContractForm(id = null) {
     '<button class="btn btn-primary" onclick="saveContract(\'' + (id || '') + '\')"><i class="fas fa-save"></i> Guardar</button>'
   );
   // Backfill item_id estable en partidas legacy (para ligar certificaciones por id)
-  window._contractItems = items.map(function(it) { return Object.assign({ item_id: it.item_id || uuid() }, it); });
+  var _frDefault = (contract && contract.fondo_reparo_pct != null) ? contract.fondo_reparo_pct : 5;
+  window._contractItems = items.map(function(it) {
+    var base = { item_id: it.item_id || uuid(), retention_pct: (it.retention_pct != null ? it.retention_pct : _frDefault) };
+    return Object.assign(base, it, { item_id: it.item_id || base.item_id, retention_pct: (it.retention_pct != null ? it.retention_pct : _frDefault) });
+  });
   window._contractCashflow = cashflow.map(function(r) { return Object.assign({}, r); });
   window._contractAdicionales = adicionales.map(function(a) { return Object.assign({}, a); });
   window._cronoDefaults = { start: (contract && contract.start_date) || todayStr(), end: (contract && contract.end_date) || addDays(todayStr(), 180) };
@@ -1073,7 +1077,7 @@ function contractItemRow(it, i, boqOpts) {
   const rubros = DB.getAll('rubros').filter(r => r.active !== false).sort((a,b) => (a.code||'').localeCompare(b.code||''));
   const rubroOpts = '<option value="">— Sin rubro —</option>' +
     rubros.map(r => '<option value="' + r.id + '" ' + (it.rubro_id === r.id ? 'selected' : '') + '>' + r.code + ' — ' + r.name + '</option>').join('');
-  return '<div id="coni-row-' + i + '" style="display:grid;grid-template-columns:2fr 1.5fr 60px 85px 105px 105px 34px;gap:4px;margin-bottom:6px;align-items:center">' +
+  return '<div id="coni-row-' + i + '" style="display:grid;grid-template-columns:2fr 1.3fr 52px 72px 92px 58px 92px 34px;gap:4px;margin-bottom:6px;align-items:center">' +
     '<input class="form-control" style="font-size:12px" placeholder="Descripción de la tarea" value="' + (it.description || '') + '" oninput="updateContractItem(' + i + ',\'description\',this.value)">' +
     '<select class="form-control" style="font-size:11px" onchange="updateContractItem(' + i + ',\'rubro_id\',this.value)">' +
       rubroOpts +
@@ -1081,6 +1085,7 @@ function contractItemRow(it, i, boqOpts) {
     '<input class="form-control" style="font-size:12px" value="' + (it.unit || 'm²') + '" oninput="updateContractItem(' + i + ',\'unit\',this.value)">' +
     '<input class="form-control" style="font-size:12px" type="number" min="0" value="' + (it.quantity || 0) + '" oninput="updateContractItem(' + i + ',\'quantity\',+this.value)">' +
     '<input class="form-control" style="font-size:12px" type="number" min="0" value="' + (it.unit_price || 0) + '" oninput="updateContractItem(' + i + ',\'unit_price\',+this.value)">' +
+    '<input class="form-control" style="font-size:12px" type="number" min="0" max="100" step="0.5" title="% Fondo de Reparo de esta partida" value="' + (it.retention_pct != null ? it.retention_pct : 5) + '" oninput="updateContractItem(' + i + ',\'retention_pct\',+this.value)">' +
     '<input class="form-control" style="font-size:12px;background:#f8fafc" readonly id="coni-total-' + i + '" value="' + (it.total || 0) + '">' +
     '<button class="btn-ghost btn danger" onclick="removeContractItem(' + i + ')"><i class="fas fa-times"></i></button>' +
     '</div>';
@@ -1088,7 +1093,9 @@ function contractItemRow(it, i, boqOpts) {
 
 window._contractItems = [];
 function addContractItem() {
-  const it = { item_id: uuid(), description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '' };
+  var _fr = parseFloat((document.getElementById('cont-fondo') || {}).value);
+  if (isNaN(_fr)) _fr = 5;
+  const it = { item_id: uuid(), description: '', unit: 'm²', quantity: 0, unit_price: 0, total: 0, rubro_id: '', boq_item_id: '', retention_pct: _fr };
   window._contractItems.push(it);
   const i = window._contractItems.length - 1;
   const cont = document.getElementById('cont-items');
@@ -1334,6 +1341,7 @@ function openContractCertForm(contractId) {
   const priorCerts = DB.getAll('certificates').filter(c => c.contract_id === contractId && c.status !== 'rejected');
   const accum = _certAccumByItem(priorCerts);
 
+  const _frContract = contract.fondo_reparo_pct != null ? contract.fondo_reparo_pct : 5;
   const certItems = (contract.items || []).map(function(it) {
     const prev = accum[_certItemKey(it)] || 0;
     return {
@@ -1345,6 +1353,7 @@ function openContractCertForm(contractId) {
       quantity_period:   0,
       unit_price:        it.unit_price,
       amount_period:     0,
+      retention_pct:     (it.retention_pct != null ? it.retention_pct : _frContract),
       pct_complete:      it.quantity > 0 ? Math.round(prev / it.quantity * 1000) / 10 : 0,
     };
   });
@@ -1360,21 +1369,16 @@ function openContractCertForm(contractId) {
     '</div>' +
     '<div class="form-grid form-grid-2">' +
       '<div class="form-group"><label class="form-label">Número</label><input class="form-control" id="ccf-num" value="' + nextNum + '"></div>' +
-      '<div class="form-group"><label class="form-label">Estado</label>' +
-        '<select class="form-control" id="ccf-status">' +
-          '<option value="pending">Pendiente de Aprobación</option>' +
-          '<option value="draft">Borrador</option>' +
-        '</select></div>' +
+      '<div class="form-group"><label class="form-label">Aprobación</label>' +
+        '<div style="font-size:12px;color:var(--text-muted);padding:8px 0"><i class="fas fa-circle-info"></i> Al guardar entra al flujo de aprobación (elegís el aprobador habilitado).</div></div>' +
       '<div class="form-group"><label class="form-label">Fecha</label>' +
         '<input class="form-control" id="ccf-date" type="date" value="' + todayStr() + '"></div>' +
-      '<div class="form-group"><label class="form-label">Aprobado por</label>' +
-        '<input class="form-control" id="ccf-approver" placeholder="Director de Obra"></div>' +
       '<div class="form-group"><label class="form-label">Período Desde</label>' +
         '<input class="form-control" id="ccf-from" type="date"></div>' +
       '<div class="form-group"><label class="form-label">Período Hasta</label>' +
         '<input class="form-control" id="ccf-to" type="date" value="' + todayStr() + '"></div>' +
-      '<div class="form-group"><label class="form-label">% Fondo de Reparo</label>' +
-        '<input class="form-control" id="ccf-ret-pct" type="number" min="0" max="20" value="' + retDefault + '" oninput="updateContractCertTotals()"></div>' +
+      '<div class="form-group"><label class="form-label">Fondo de Reparo</label>' +
+        '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">Se aplica <b>por partida</b> (columna F.Rep% de cada ítem). Los ítems en 0% no retienen.</div></div>' +
       '<div class="form-group"><label class="form-label">Forma de Pago</label>' +
         formaPagoSelect('ccf-forma-pago', contract.forma_pago || 'Transferencia') + '</div>' +
     '</div>' +
@@ -1398,14 +1402,14 @@ function openContractCertForm(contractId) {
       '<strong style="font-size:13px">Ítems a Certificar (con acumulado)</strong>' +
       '<button class="btn btn-sm btn-secondary" onclick="addCCertItem()"><i class="fas fa-plus"></i> Ítem</button>' +
     '</div>' +
-    '<div style="display:grid;grid-template-columns:2.6fr 55px 80px 80px 80px 95px 100px 70px 26px;gap:3px;margin-bottom:4px;font-size:9px;font-weight:600;color:var(--text-muted)">' +
-      '<span>Descripción</span><span>Unid.</span><span>Cant.Contr.</span><span>Cert.Ant.</span><span>Período</span><span>P.Unit.</span><span>Monto</span><span>%Acum.</span><span></span>' +
+    '<div style="display:grid;grid-template-columns:2.4fr 48px 70px 70px 70px 86px 90px 48px 58px 26px;gap:3px;margin-bottom:4px;font-size:9px;font-weight:600;color:var(--text-muted)">' +
+      '<span>Descripción</span><span>Unid.</span><span>Cant.Contr.</span><span>Cert.Ant.</span><span>Período</span><span>P.Unit.</span><span>Monto</span><span title="% Fondo de Reparo">F.Rep%</span><span>%Acum.</span><span></span>' +
     '</div>' +
     '<div id="ccert-items">' +
       certItems.map(function(it, i) { return ccertItemRow(it, i); }).join('') +
     '</div>' +
     '<div id="ccert-totals" style="text-align:right;margin-top:10px;font-size:13px">' +
-      calcCCertTotalsHtml(certItems, retDefault, 'A', 100) +
+      calcCCertTotalsHtml(certItems, 'A', 100) +
     '</div>' +
     '<div class="form-group full mt-2"><label class="form-label">Notas</label>' +
       '<textarea class="form-control" id="ccf-notes" rows="2"></textarea></div>',
@@ -1424,7 +1428,7 @@ function onContabTipoChange() {
 }
 
 function ccertItemRow(it, i) {
-  return '<div id="cci-row-' + i + '" style="display:grid;grid-template-columns:2.6fr 55px 80px 80px 80px 95px 100px 70px 26px;gap:3px;margin-bottom:4px;align-items:center">' +
+  return '<div id="cci-row-' + i + '" style="display:grid;grid-template-columns:2.4fr 48px 70px 70px 70px 86px 90px 48px 58px 26px;gap:3px;margin-bottom:4px;align-items:center">' +
     '<input class="form-control" style="font-size:11px" placeholder="Descripción" value="' + (it.description || '') + '" oninput="updateCCI(' + i + ',\'description\',this.value)">' +
     '<input class="form-control" style="font-size:11px" value="' + (it.unit || 'm²') + '" oninput="updateCCI(' + i + ',\'unit\',this.value)">' +
     '<input class="form-control" style="font-size:11px" type="number" min="0" value="' + (it.quantity_contract || 0) + '" oninput="updateCCI(' + i + ',\'quantity_contract\',+this.value)">' +
@@ -1432,6 +1436,7 @@ function ccertItemRow(it, i) {
     '<input class="form-control" style="font-size:11px" type="number" min="0" value="' + (it.quantity_period || 0) + '" oninput="updateCCI(' + i + ',\'quantity_period\',+this.value)">' +
     '<input class="form-control" style="font-size:11px" type="number" min="0" value="' + (it.unit_price || 0) + '" oninput="updateCCI(' + i + ',\'unit_price\',+this.value)">' +
     '<input class="form-control" style="font-size:11px;background:#f8fafc" readonly id="cci-amount-' + i + '" value="' + (it.amount_period || 0) + '">' +
+    '<input class="form-control" style="font-size:11px" type="number" min="0" max="100" step="0.5" title="% Fondo de Reparo de la partida" value="' + (it.retention_pct != null ? it.retention_pct : 5) + '" oninput="updateCCI(' + i + ',\'retention_pct\',+this.value)">' +
     '<input class="form-control" style="font-size:11px;background:#f8fafc" readonly id="cci-pct-' + i + '" value="' + (it.pct_complete || 0) + '">' +
     '<button class="btn-ghost btn danger" onclick="removeCCI(' + i + ')"><i class="fas fa-times" style="font-size:10px"></i></button>' +
     '</div>';
@@ -1469,30 +1474,37 @@ function removeCCI(i) {
   updateContractCertTotals();
 }
 
+// Retención total = suma por ítem (monto del período × % de reparo de la partida).
+// Así los ítems con 0% no descuentan y cada partida aporta su propia retención.
+function _ccertRetention(items) {
+  return items.filter(Boolean).reduce(function(s, it) {
+    return s + ((it.amount_period || 0) * ((it.retention_pct != null ? it.retention_pct : 0) / 100));
+  }, 0);
+}
+
 function updateContractCertTotals() {
-  const retPct = parseFloat(document.getElementById('ccf-ret-pct') ? document.getElementById('ccf-ret-pct').value : 5) || 0;
   const tipo = document.getElementById('ccf-contab-tipo') ? document.getElementById('ccf-contab-tipo').value : 'A';
   let pctA = 100;
   if (tipo === 'B') pctA = 0;
   else if (tipo === 'AB') pctA = parseFloat(document.getElementById('ccf-pct-a') ? document.getElementById('ccf-pct-a').value : 50) || 0;
   const el = document.getElementById('ccert-totals');
-  if (el) el.innerHTML = calcCCertTotalsHtml(window._ccertItems.filter(Boolean), retPct, tipo, pctA);
+  if (el) el.innerHTML = calcCCertTotalsHtml(window._ccertItems.filter(Boolean), tipo, pctA);
 }
 
-function calcCCertTotalsHtml(items, retPct, tipo, pctA) {
-  retPct = retPct || 0;
+function calcCCertTotalsHtml(items, tipo, pctA) {
   const subtotal  = items.filter(Boolean).reduce(function(s, it) { return s + (it.amount_period || 0); }, 0);
-  const retention = subtotal * retPct / 100;
+  const retention = _ccertRetention(items);
   const net       = subtotal - retention;
+  const effPct    = subtotal > 0 ? (retention / subtotal * 100) : 0;
   const amountA   = subtotal * (pctA != null ? pctA : 100) / 100;
   const amountB   = subtotal - amountA;
   const contabLabel = tipo === 'AB'
     ? 'A: <strong>' + fmtMoney(amountA) + '</strong> (' + pctA + '%) / B: <strong>' + fmtMoney(amountB) + '</strong>'
     : (tipo === 'B' ? 'Todo B: <strong>' + fmtMoney(subtotal) + '</strong>' : 'Todo A: <strong>' + fmtMoney(subtotal) + '</strong>');
   return 'Subtotal: <strong>' + fmtMoney(subtotal) + '</strong> &nbsp;|&nbsp; ' +
-    'Fondo Reparo (' + retPct + '%): <strong class="text-warning">' + fmtMoney(retention) + '</strong> &nbsp;|&nbsp; ' +
+    'Fondo Reparo (' + (Math.round(effPct * 10) / 10) + '% ef.): <strong class="text-warning">' + fmtMoney(retention) + '</strong> &nbsp;|&nbsp; ' +
     '<strong style="font-size:15px;color:var(--primary)">Neto: ' + fmtMoney(net) + '</strong>' +
-    '<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Contabilidad → ' + contabLabel + '</div>';
+    '<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Retención por partida (% editable por ítem). Contabilidad → ' + contabLabel + '</div>';
 }
 
 function saveContractCert(contractId) {
@@ -1531,9 +1543,9 @@ function _doSaveContractCert(contractId) {
   const items = window._ccertItems.filter(Boolean).filter(function(it) { return it.description; });
   if (!items.length) return;
 
-  const retPct   = parseFloat(document.getElementById('ccf-ret-pct').value) || 0;
   const subtotal = items.reduce(function(s, it) { return s + (it.amount_period || 0); }, 0);
-  const retention = subtotal * retPct / 100;
+  const retention = _ccertRetention(items);        // suma por ítem (F.Rep% de cada partida)
+  const effPct    = subtotal > 0 ? (retention / subtotal * 100) : 0;
 
   const tipo = document.getElementById('ccf-contab-tipo').value;
   let pctA = 100;
@@ -1551,11 +1563,10 @@ function _doSaveContractCert(contractId) {
     number:           document.getElementById('ccf-num').value,
     project_id:       contract.project_id,
     contract_id:      contractId,
-    status:           document.getElementById('ccf-status').value,
+    status:           'draft',   // el estado real lo define el flujo de aprobación
     date:             document.getElementById('ccf-date').value,
     period_from:      document.getElementById('ccf-from').value,
     period_to:        document.getElementById('ccf-to').value,
-    approved_by:      document.getElementById('ccf-approver').value.trim(),
     forma_pago:       document.getElementById('ccf-forma-pago').value,
     contab_tipo:      tipo,
     contab_pct_a:     pctA,
@@ -1563,17 +1574,22 @@ function _doSaveContractCert(contractId) {
     amount_b:         amountB,
     items,
     subtotal,
-    retention_pct:    retPct,
+    retention_pct:    Math.round(effPct * 100) / 100,  // % efectivo (referencia)
     retention_amount: retention,
     net_amount:       subtotal - retention,
     notes:            document.getElementById('ccf-notes').value.trim(),
   };
 
-  DB.insert('certificates', data);
-  toast('Certificación creada correctamente', 'success');
+  const created = DB.insert('certificates', data);
   window._ccertItems = [];
   closeModal();
   renderContractDetail(contractId);
+  // Entra al flujo de aprobación parametrizado (elige aprobador entre habilitados).
+  if (created && typeof submitForApproval === 'function') {
+    submitForApproval('certificate', created.id);
+  } else {
+    toast('Certificación creada', 'success');
+  }
 }
 
 // ---- EXPORT CONTRACTS ----
