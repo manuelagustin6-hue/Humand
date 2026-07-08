@@ -184,7 +184,7 @@ function viewCert(id) {
   </tr></thead>
   <tbody>
     ${(cert.items||[]).map(it => `<tr>
-      <td>${it.description}</td>
+      <td>${escapeHtml(it.description||'')}${it.rubro_name ? `<div style="font-size:10px;color:var(--text-muted)"><i class="fas fa-tag" style="font-size:9px"></i> ${escapeHtml(it.rubro_name)}</div>` : ''}</td>
       <td class="text-center">${it.unit}</td>
       <td class="number-cell text-right">${fmtNum(it.quantity_contract)}</td>
       <td class="number-cell text-right">${fmtNum(it.quantity_period)}</td>
