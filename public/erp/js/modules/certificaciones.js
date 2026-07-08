@@ -101,8 +101,7 @@ function buildCertTable(certs, projects) {
           '<button class="btn-ghost btn btn-sm" title="Ver" onclick="viewCert(\'' + c.id + '\')"><i class="fas fa-eye"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="PDF" onclick="printCertificacion(\'' + c.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
           (c.status === 'pending' ?
-            '<button class="btn btn-sm btn-success" onclick="approveCert(\'' + c.id + '\')"><i class="fas fa-check"></i></button>' +
-            '<button class="btn btn-sm btn-danger" onclick="rejectCert(\'' + c.id + '\')"><i class="fas fa-times"></i></button>'
+            '<button class="btn-ghost btn btn-sm" title="Aprobar en el módulo Aprobaciones" onclick="navigate(\'aprobaciones\')"><i class="fas fa-clipboard-check"></i></button>'
           : '') +
           '<button class="btn-ghost btn btn-sm danger" title="Eliminar" onclick="deleteCert(\'' + c.id + '\')"><i class="fas fa-trash"></i></button>' +
         '</div>' +
@@ -218,8 +217,7 @@ ${cert.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted
 <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
 <button class="btn btn-secondary" onclick="printCertificacion('${cert.id}')"><i class="fas fa-file-pdf"></i> PDF</button>
 ${cert.status === 'pending' ? `
-  <button class="btn btn-danger" onclick="rejectCert('${cert.id}');closeModal()"><i class="fas fa-times"></i> Rechazar</button>
-  <button class="btn btn-success" onclick="approveCert('${cert.id}');closeModal()"><i class="fas fa-check"></i> Aprobar</button>
+  <button class="btn btn-primary" onclick="closeModal();navigate('aprobaciones')"><i class="fas fa-clipboard-check"></i> Ir a aprobar</button>
 ` : ''}
 `);
 }
