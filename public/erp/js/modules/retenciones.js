@@ -3,6 +3,18 @@
 // State for ARCA / historial filters
 window._retFilters = { q: '', dateFrom: '', dateTo: '', type: '' };
 
+// Base de cálculo por defecto según el tipo (Ganancias→neto, IVA→sobre el IVA, resto→bruto).
+function _retDefaultBase(type) {
+  var t = (type || '').toLowerCase();
+  if (t.indexOf('ganancia') !== -1) return 'neto';
+  if (t.indexOf('iva') !== -1) return 'iva';
+  return 'bruto';
+}
+// Base efectiva de una regla (respeta lo guardado, si no infiere por tipo).
+function retRuleBase(rule) {
+  return (rule && rule.base) || _retDefaultBase(rule && rule.type);
+}
+
 function renderRetenciones() {
   const retentions = DB.getAll('retentions');
   const paymentOrders = DB.getAll('paymentOrders');
@@ -320,7 +332,7 @@ function exportARCATxt() {
     var fecha = dd + mm + aa;
     var cuitRet = (r.supplier_cuit || '').replace(/[-\s]/g, '').padStart(11, '0');
     var denom   = (r.supplier || '').substring(0, 30);
-    var base    = (r.gross_amount || 0).toFixed(2).replace('.', ',');
+    var base    = ((r.base_amount != null ? r.base_amount : r.gross_amount) || 0).toFixed(2).replace('.', ',');
     var imp     = (r.amount || 0).toFixed(2).replace('.', ',');
     var nroComp = (r.order_number || '').padEnd(16, ' ').substring(0, 16);
     var rule = retRules[r.name] || {};
@@ -377,6 +389,18 @@ function openRetentionForm(id = null) {
     <input class="form-control" id="rt-rate" type="number" min="0" max="100" step="0.01" value="${r?.rate || ''}">
   </div>
   <div class="form-group">
+    <label class="form-label">Base de cálculo</label>
+    <select class="form-control" id="rt-base">
+      <option value="neto"  ${(r?.base||_retDefaultBase(r?.type))==='neto'?'selected':''}>Neto (sin IVA) — ej. Ganancias</option>
+      <option value="bruto" ${(r?.base||_retDefaultBase(r?.type))==='bruto'?'selected':''}>Bruto (con IVA)</option>
+      <option value="iva"   ${(r?.base||_retDefaultBase(r?.type))==='iva'?'selected':''}>Sobre el IVA — ej. Ret. IVA</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Mínimo no imponible <small style="font-weight:400;color:var(--text-muted)">(monto no sujeto)</small></label>
+    <input class="form-control" id="rt-min" type="number" min="0" step="0.01" value="${r?.min_amount != null ? r.min_amount : ''}" placeholder="0">
+  </div>
+  <div class="form-group">
     <label class="form-label">Aplica a</label>
     <select class="form-control" id="rt-applies">
       <option value="payment" ${r?.applies_to==='payment'||!r?'selected':''}>Pago a proveedor</option>
@@ -428,6 +452,8 @@ function saveRetention(id) {
 
   const data = {
     name, type, rate,
+    base: (document.getElementById('rt-base')?.value || _retDefaultBase(type)),
+    min_amount: parseFloat(document.getElementById('rt-min')?.value) || 0,
     applies_to: document.getElementById('rt-applies').value,
     active: document.getElementById('rt-active').value === 'true',
     codigo_impuesto: (document.getElementById('rt-cod-imp')?.value || '').trim() || _siCodImpuesto(name),

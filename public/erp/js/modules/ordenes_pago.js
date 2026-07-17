@@ -303,6 +303,10 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
     <label class="form-label">Importe Bruto *</label>
     <input class="form-control" id="op-gross" type="text" inputmode="decimal" value="${o?.gross_amount ? numFmt(o.gross_amount) : ''}" onfocus="var n=numParse(this.value);this.value=n?n:''" onblur="this.value=numFmt(numParse(this.value));recalcPORetentions()" oninput="recalcPORetentions()">
   </div>
+  <div class="form-group">
+    <label class="form-label">Neto gravado <small style="font-weight:400;color:var(--text-muted)">(sin IVA — base de Ganancias)</small></label>
+    <input class="form-control" id="op-net" type="text" inputmode="decimal" value="${o?.net_gravado ? numFmt(o.net_gravado) : ''}" placeholder="Si vacío = bruto" onfocus="var n=numParse(this.value);this.value=n?n:''" onblur="this.value=numFmt(numParse(this.value));recalcPORetentions()" oninput="recalcPORetentions()">
+  </div>
 </div>
 <div class="divider"></div>
 <div style="font-size:13px;font-weight:600;margin-bottom:8px">Medios de Pago</div>
@@ -312,8 +316,8 @@ function openPaymentOrderForm(id = null, prefillSIId = null) {
 <div style="font-size:13px;font-weight:600;margin-bottom:8px">Retenciones a Aplicar</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="op-retentions">
   ${retentions.map(r => `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;background:var(--bg);padding:8px;border-radius:6px">
-    <input type="checkbox" value="${r.id}" data-name="${r.name}" data-rate="${r.rate}" ${(o?.retentions||[]).find(x=>x.retention_id===r.id)?'checked':''} onchange="recalcPORetentions()">
-    <span><strong>${r.name}</strong> — ${r.rate}%</span>
+    <input type="checkbox" value="${r.id}" data-name="${escapeHtml(r.name)}" data-rate="${r.rate}" data-base="${(typeof retRuleBase==='function'?retRuleBase(r):(r.base||'bruto'))}" data-min="${r.min_amount||0}" ${(o?.retentions||[]).find(x=>x.retention_id===r.id)?'checked':''} onchange="recalcPORetentions()">
+    <span><strong>${escapeHtml(r.name)}</strong> — ${r.rate}% <span style="color:var(--text-muted)">(${(typeof retRuleBase==='function'?retRuleBase(r):(r.base||'bruto'))})</span></span>
   </label>`).join('')}
 </div>
 <div id="op-totals" style="text-align:right;margin-top:12px;font-size:13px">
@@ -408,23 +412,46 @@ function _pmRowTypeChange(sel) {
   if (dateEl) { dateEl.title = t === 'check' ? 'Fecha cheque' : 'Fecha acreditación'; dateEl.style.display = t === 'cash' ? 'none' : ''; }
 }
 
-function recalcPORetentions() {
-  const gross = numParse(document.getElementById('op-gross')?.value);
+// Lee bruto/neto del form y calcula cada retención según su BASE (neto/bruto/iva)
+// y su mínimo no imponible (se retiene sólo sobre el excedente del mínimo).
+function _poReadRetentions() {
+  const gross = numParse(document.getElementById('op-gross')?.value) || 0;
+  let net = numParse((document.getElementById('op-net') || {}).value) || 0;
+  if (!net) net = gross;                 // sin neto discriminado → base = bruto
+  const iva = Math.max(0, gross - net);
   const selected = Array.from(document.querySelectorAll('#op-retentions input[type="checkbox"]:checked'));
-  const retentions = selected.map(cb => ({
-    retention_id: cb.value,
-    name: cb.dataset.name,
-    rate: parseFloat(cb.dataset.rate),
-    amount: gross * parseFloat(cb.dataset.rate) / 100
-  }));
+  const retentions = selected.map(cb => {
+    const rate = parseFloat(cb.dataset.rate) || 0;
+    const base = cb.dataset.base || 'bruto';
+    const min  = parseFloat(cb.dataset.min) || 0;
+    const baseAmt = base === 'neto' ? net : (base === 'iva' ? iva : gross);
+    const taxable = Math.max(0, baseAmt - min);   // mínimo no sujeto a retención
+    return {
+      retention_id: cb.value,
+      name: cb.dataset.name,
+      rate: rate,
+      base: base,
+      base_amount: Math.round(baseAmt * 100) / 100,
+      min_amount: min,
+      amount: taxable > 0 ? Math.round(taxable * rate) / 100 : 0,
+    };
+  });
+  return { gross, net, iva, retentions };
+}
+
+function recalcPORetentions() {
+  const r = _poReadRetentions();
   const el = document.getElementById('op-totals');
-  if (el) el.innerHTML = calcPOTotalsHtml(gross, retentions);
+  if (el) el.innerHTML = calcPOTotalsHtml(r.gross, r.retentions);
 }
 
 function calcPOTotalsHtml(gross, retentions) {
   const totalRet = retentions.reduce((s,r) => s + (r.amount||0), 0);
   const net = gross - totalRet;
-  return `Bruto: <strong>${fmtMoney(gross)}</strong> &nbsp;|&nbsp; Retenciones: <strong class="text-warning">${fmtMoney(totalRet)}</strong> &nbsp;|&nbsp; <strong style="font-size:15px;color:var(--primary)">Neto: ${fmtMoney(net)}</strong>`;
+  const detail = retentions.filter(r => r.amount > 0).map(r =>
+    `<div style="font-size:11px;color:var(--text-muted)">${escapeHtml(r.name)}: ${r.rate}% s/ ${r.base} de ${fmtMoney(r.base_amount)}${r.min_amount ? ' (mín. ' + fmtMoney(r.min_amount) + ')' : ''} = ${fmtMoney(r.amount)}</div>`
+  ).join('');
+  return `${detail}<div style="margin-top:4px">Bruto: <strong>${fmtMoney(gross)}</strong> &nbsp;|&nbsp; Retenciones: <strong class="text-warning">${fmtMoney(totalRet)}</strong> &nbsp;|&nbsp; <strong style="font-size:15px;color:var(--primary)">Neto a pagar: ${fmtMoney(net)}</strong></div>`;
 }
 
 function savePaymentOrder(id) {
@@ -433,14 +460,10 @@ function savePaymentOrder(id) {
   const gross = numParse(document.getElementById('op-gross').value);
   if (!supplierId || !concept || !gross) { toast('Proveedor, concepto e importe son obligatorios', 'error'); return; }
 
-  const selected = Array.from(document.querySelectorAll('#op-retentions input[type="checkbox"]:checked'));
-  const retentions = selected.map(cb => ({
-    retention_id: cb.value,
-    name: cb.dataset.name,
-    rate: parseFloat(cb.dataset.rate),
-    amount: gross * parseFloat(cb.dataset.rate) / 100
-  }));
-  const totalRet = retentions.reduce((s,r) => s + r.amount, 0);
+  const _ret = _poReadRetentions();
+  const retentions = _ret.retentions;
+  const totalRet = retentions.reduce((s,r) => s + (r.amount || 0), 0);
+  const netGravado = _ret.net;
 
   // Collect applied invoices from checkboxes
   const appliedInvCBs = Array.from(document.querySelectorAll('#op-inv-wrap input[name="op-inv-cb"]:checked'));
@@ -472,6 +495,7 @@ function savePaymentOrder(id) {
     payment_methods: paymentMethods,
     concept,
     gross_amount: gross,
+    net_gravado: netGravado,
     retentions,
     total_retentions: totalRet,
     net_amount: gross - totalRet,
