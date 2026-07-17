@@ -117,7 +117,7 @@ function renderBOQ(projectId) {
   setTimeout(() => {
     const ctx = document.getElementById('boq-cat-chart');
     if (ctx && Object.keys(catTotals).length) {
-      new Chart(ctx, {
+      safeChart(ctx, {
         type: 'pie',
         data: {
           labels: Object.keys(catTotals),

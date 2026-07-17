@@ -1,22 +1,76 @@
 /* ===== DATABASE LAYER (localStorage) ===== */
 const DB = {
   KEY: 'erp_construccion_v1',
+  _cache: null,
 
   get() {
+    // Serve from the in-memory cache to avoid re-parsing the whole store on
+    // every read (getAll/getById are called inside render loops).
+    if (this._cache) return this._cache;
+
+    let data;
     try {
       const raw = localStorage.getItem(this.KEY);
-      return raw ? JSON.parse(raw) : this.init();
-    } catch { return this.init(); }
+      data = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      // Corrupted JSON in storage — recover by re-seeding instead of crashing.
+      console.error('DB: stored data is corrupted, re-seeding.', e);
+      data = null;
+    }
+
+    if (!data || typeof data !== 'object') {
+      this._cache = this.seed();
+      this._persist();
+      return this._cache;
+    }
+
+    // Backfill any collection added after this store was first written, so a
+    // schema that grew over time never returns `undefined` to a module.
+    const defaults = this.seed();
+    let changed = false;
+    for (const key of Object.keys(defaults)) {
+      if (!(key in data)) { data[key] = defaults[key]; changed = true; }
+    }
+
+    this._cache = data;
+    if (changed) this._persist();
+    return this._cache;
+  },
+
+  // Write the current cache to localStorage, tolerating quota/availability
+  // failures so the in-memory session keeps working.
+  _persist() {
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify(this._cache));
+      return true;
+    } catch (e) {
+      console.error('DB: could not persist to localStorage.', e);
+      if (typeof toast === 'function') {
+        const full = e && (e.name === 'QuotaExceededError' || e.code === 22);
+        toast(full
+          ? 'Almacenamiento lleno: los cambios no se guardarán de forma permanente.'
+          : 'No se pudieron guardar los cambios de forma permanente.', 'warning');
+      }
+      return false;
+    }
   },
 
   save(data) {
-    localStorage.setItem(this.KEY, JSON.stringify(data));
+    this._cache = data;
+    return this._persist();
   },
 
   init() {
-    const data = this.seed();
-    this.save(data);
-    return data;
+    this._cache = this.seed();
+    this._persist();
+    return this._cache;
+  },
+
+  // Wipe all data and rebuild from seed (recovery / demo reset).
+  reset() {
+    this._cache = null;
+    try { localStorage.removeItem(this.KEY); } catch (e) { /* ignore */ }
+    return this.get();
   },
 
   // ---- CRUD helpers ----

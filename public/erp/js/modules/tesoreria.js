@@ -166,7 +166,7 @@ function renderCashflowChartTesoreria(txs) {
   const expense = months.map(m => txs.filter(t => t.type==='expense' && t.date?.startsWith(m.key)).reduce((s,t) => s+t.amount, 0));
   const net = income.map((v,i) => v - expense[i]);
 
-  new Chart(ctx, {
+  safeChart(ctx, {
     type: 'bar',
     data: {
       labels: months.map(m => m.label),

@@ -1,5 +1,18 @@
 /* ===== UTILITIES ===== */
 
+// ---- HTML ESCAPING ----
+// Neutralize user-supplied text before it is placed inside innerHTML, so a
+// stray quote or angle bracket in a name/description can't break the render.
+function escapeHtml(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ---- FORMATTERS ----
 function fmtMoney(n, currency = 'ARS') {
   if (n == null || isNaN(n)) return '$0';
@@ -13,13 +26,17 @@ function fmtNum(n) {
 
 function fmtDate(d) {
   if (!d) return '-';
-  const dt = new Date(d + 'T00:00:00');
+  // Accept both plain dates ('2025-03-10') and full ISO datetimes.
+  const dt = /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d + 'T00:00:00') : new Date(d);
+  if (isNaN(dt.getTime())) return '-';
   return dt.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function fmtDatetime(d) {
   if (!d) return '-';
-  return new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '-';
+  return dt.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function fmtPct(n) {
@@ -60,13 +77,13 @@ const STATUS_MAP = {
 };
 
 function statusBadge(status) {
-  const s = STATUS_MAP[status] || { label: status, cls: 'badge-gray' };
+  const s = STATUS_MAP[status] || { label: escapeHtml(status), cls: 'badge-gray' };
   return `<span class="badge ${s.cls}">${s.label}</span>`;
 }
 
 function projectTypeBadge(type) {
   const map = { residential: 'Residencial', commercial: 'Comercial', industrial: 'Industrial', infrastructure: 'Infraestructura' };
-  return `<span class="badge badge-blue">${map[type] || type}</span>`;
+  return `<span class="badge badge-blue">${map[type] || escapeHtml(type)}</span>`;
 }
 
 // ---- MODAL ----
@@ -94,7 +111,7 @@ function toast(msg, type = 'info') {
   const icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-circle', info: 'fa-info-circle' };
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${msg}</span>`;
+  el.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${escapeHtml(msg)}</span>`;
   document.getElementById('toast-wrap').appendChild(el);
   setTimeout(() => el.remove(), 3500);
 }
@@ -114,7 +131,7 @@ function populateProjectSelector() {
   const sel = document.getElementById('global-project');
   const projects = DB.getAll('projects');
   sel.innerHTML = '<option value="">Todos los proyectos</option>' +
-    projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    projects.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
 }
 
 function setActiveProject(pid) {
@@ -213,6 +230,27 @@ function todayStr() {
 
 function isOverdue(dueDateStr) {
   return dueDateStr && dueDateStr < todayStr();
+}
+
+// ---- CHARTS ----
+// Wrap Chart.js so a failed/blocked CDN load (offline, ad-blocker, CDN outage)
+// degrades to a placeholder instead of throwing and breaking the whole view.
+function safeChart(canvas, config) {
+  if (!canvas) return null;
+  if (typeof Chart === 'undefined') {
+    const note = document.createElement('div');
+    note.className = 'chart-unavailable';
+    note.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;min-height:120px;color:var(--text-muted);font-size:12px;text-align:center;padding:20px';
+    note.innerHTML = '<span><i class="fas fa-chart-bar" style="font-size:20px;opacity:.5"></i><br>Gráfico no disponible</span>';
+    if (canvas.replaceWith) canvas.replaceWith(note);
+    return null;
+  }
+  try {
+    return new Chart(canvas, config);
+  } catch (e) {
+    console.error('Chart render failed:', e);
+    return null;
+  }
 }
 
 // ---- DEBOUNCE ----

@@ -38,20 +38,41 @@ function navigate(module) {
     try {
       mod.render();
     } catch (e) {
-      content.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error al cargar módulo: ${e.message}</p></div>`;
+      content.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error al cargar módulo: ${escapeHtml(e.message)}</p></div>`;
       console.error(e);
     }
   }, 60);
 }
 
+// ---- GLOBAL ERROR HANDLING ----
+// Surface uncaught errors (e.g. thrown inside onclick handlers or modals, which
+// are outside navigate()'s try/catch) instead of leaving the UI silently broken.
+window.addEventListener('error', (e) => {
+  console.error('Uncaught error:', e.error || e.message);
+  if (typeof toast === 'function') toast('Ocurrió un error inesperado.', 'error');
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('Unhandled promise rejection:', e.reason);
+  if (typeof toast === 'function') toast('Ocurrió un error inesperado.', 'error');
+});
+
 // ---- INIT ----
 document.addEventListener('DOMContentLoaded', () => {
-  // Force seed if empty
-  DB.get();
+  try {
+    // Force seed if empty
+    DB.get();
 
-  // Populate project selector
-  populateProjectSelector();
+    // Populate project selector
+    populateProjectSelector();
 
-  // Navigate to dashboard
-  navigate('dashboard');
+    // Navigate to dashboard
+    navigate('dashboard');
+  } catch (e) {
+    console.error('Init failed:', e);
+    const content = document.getElementById('content');
+    if (content) {
+      content.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>No se pudo iniciar la aplicación. Recargá la página.</p></div>`;
+    }
+  }
 });

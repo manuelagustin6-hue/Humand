@@ -183,7 +183,7 @@ function buildMonthlySpend(actualCosts) {
 function renderCatChart(catData) {
   const ctx = document.getElementById('seg-cat-chart');
   if (!ctx) return;
-  new Chart(ctx, {
+  safeChart(ctx, {
     type: 'bar',
     data: {
       labels: catData.map(c => c.cat),
@@ -210,7 +210,7 @@ function renderMonthlyChart(monthlyData) {
   let cum = 0;
   monthlyData.forEach(m => { cum += m.amount; cumulative.push(cum); });
 
-  new Chart(ctx, {
+  safeChart(ctx, {
     type: 'line',
     data: {
       labels: monthlyData.map(m => m.label),

@@ -215,7 +215,7 @@ function renderProjectsChart(projects) {
   const statusCount = { active: 0, planning: 0, completed: 0, paused: 0 };
   projects.forEach(p => { if (statusCount[p.status] !== undefined) statusCount[p.status]++; });
 
-  new Chart(ctx, {
+  safeChart(ctx, {
     type: 'doughnut',
     data: {
       labels: ['Activos', 'Planificación', 'Completados', 'Pausados'],
@@ -241,7 +241,7 @@ function renderCashflowChart(invoices, collections) {
   const billed = months.map(m => invoices.filter(i => i.date && i.date.startsWith(m.key)).reduce((s,i) => s + i.total, 0));
   const collected = months.map(m => collections.filter(c => c.date && c.date.startsWith(m.key)).reduce((s,c) => s + c.amount, 0));
 
-  new Chart(ctx, {
+  safeChart(ctx, {
     type: 'bar',
     data: {
       labels: months.map(m => m.label),

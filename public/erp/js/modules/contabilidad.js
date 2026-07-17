@@ -283,7 +283,7 @@ function renderResultsChart(accounts, entries) {
   const revAccounts = accounts.filter(a => a.type==='revenue' && a.parent_id);
   const expAccounts = accounts.filter(a => a.type==='expense' && a.parent_id);
 
-  new Chart(ctx, {
+  safeChart(ctx, {
     type: 'bar',
     data: {
       labels: [...revAccounts.map(a => a.name), ...expAccounts.map(a => a.name)],
