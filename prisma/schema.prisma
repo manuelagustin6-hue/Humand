@@ -23,6 +23,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -31,6 +32,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -60,6 +63,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  @@index([managerId])
+  @@index([department])
+  @@index([role])
+  @@index([name])
+
   accounts             Account[]
   sessions             Session[]
   posts                Post[]
@@ -85,6 +93,10 @@ model Post {
   likes     Like[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@index([authorId])
+  @@index([pinned, createdAt])
+  @@index([createdAt])
 }
 
 model Comment {
@@ -95,6 +107,9 @@ model Comment {
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
+  @@index([postId, createdAt])
+  @@index([authorId])
 }
 
 model Like {
@@ -106,6 +121,7 @@ model Like {
   createdAt DateTime @default(now())
 
   @@unique([postId, userId])
+  @@index([userId])
 }
 
 model Event {
@@ -120,6 +136,8 @@ model Event {
   createdById String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([startDate])
 }
 
 model Document {
@@ -133,6 +151,9 @@ model Document {
   uploadedById String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([category, createdAt])
+  @@index([createdAt])
 }
 
 model Recognition {
@@ -144,6 +165,10 @@ model Recognition {
   receivedById String
   receivedBy   User     @relation("ReceivedBy", fields: [receivedById], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
+
+  @@index([givenById])
+  @@index([receivedById])
+  @@index([createdAt])
 }
 
 model LeaveRequest {
@@ -160,6 +185,10 @@ model LeaveRequest {
   approvedBy    User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([requestedById])
+  @@index([approvedById])
+  @@index([status, createdAt])
 }
 
 model Channel {
@@ -182,6 +211,7 @@ model ChannelMember {
   joinedAt  DateTime @default(now())
 
   @@unique([channelId, userId])
+  @@index([userId])
 }
 
 model Message {
@@ -193,6 +223,9 @@ model Message {
   sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([channelId, createdAt])
+  @@index([senderId])
 }
 
 model Salary {
@@ -206,4 +239,6 @@ model Salary {
   breakdown   String?
   fileUrl     String?
   createdAt   DateTime @default(now())
+
+  @@index([userId, period])
 }

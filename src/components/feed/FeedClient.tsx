@@ -40,6 +40,8 @@ export default function FeedClient({ currentUserId, currentUserRole }: { current
   const { data: session } = useSession();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [newContent, setNewContent] = useState("");
   const [posting, setPosting] = useState(false);
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
@@ -52,8 +54,19 @@ export default function FeedClient({ currentUserId, currentUserRole }: { current
   async function fetchPosts() {
     const res = await fetch("/api/posts");
     const data = await res.json();
-    setPosts(data);
+    setPosts(data.posts ?? []);
+    setNextCursor(data.nextCursor ?? null);
     setLoading(false);
+  }
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const res = await fetch(`/api/posts?cursor=${encodeURIComponent(nextCursor)}`);
+    const data = await res.json();
+    setPosts((prev) => [...prev, ...(data.posts ?? [])]);
+    setNextCursor(data.nextCursor ?? null);
+    setLoadingMore(false);
   }
 
   async function handlePost() {
@@ -265,6 +278,19 @@ export default function FeedClient({ currentUserId, currentUserRole }: { current
             </div>
           );
         })
+      )}
+
+      {nextCursor && (
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50 px-4 py-2"
+          >
+            {loadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
+            {tc("loadMore")}
+          </button>
+        </div>
       )}
     </div>
   );

@@ -13,6 +13,7 @@
   },
   "common": {
     "loading": "Loading...",
+    "loadMore": "Load more",
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",

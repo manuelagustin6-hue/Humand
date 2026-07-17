@@ -13,6 +13,7 @@
   },
   "common": {
     "loading": "Cargando...",
+    "loadMore": "Cargar más",
     "save": "Guardar",
     "cancel": "Cancelar",
     "delete": "Eliminar",
