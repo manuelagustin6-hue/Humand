@@ -583,6 +583,7 @@ const DB = {
     var db = this.get();
     if (!db[collection]) db[collection] = [];
     var item = Object.assign({}, record, { id: record.id || uuid(), created_at: now() });
+    if (item._rev == null) item._rev = 1;   // versión para control de concurrencia
     db[collection].push(item);
     this.save(db);
     var self = this;
@@ -595,12 +596,42 @@ const DB = {
     return item;
   },
 
-  update(collection, id, updates) {
+  // Revisión actual (para control optimista de concurrencia). null si no existe.
+  getRev: function(collection, id) {
+    var r = this.getById(collection, id);
+    return r ? (r._rev != null ? r._rev : null) : null;
+  },
+
+  // Registro de revisiones base para el control de concurrencia en formularios.
+  // markEdit() al abrir un form de edición; takeEditExpect() al guardar. Si otro
+  // usuario tocó el registro en el medio, update({expectRev}) devuelve __conflict.
+  _editBase: {},
+  markEdit: function(collection, id) {
+    if (id != null) this._editBase[collection + ':' + id] = this.getRev(collection, id);
+  },
+  takeEditExpect: function(collection, id) {
+    var k = collection + ':' + id;
+    var v = this._editBase[k];
+    delete this._editBase[k];   // tras un conflicto, el reintento fuerza la escritura
+    return v;
+  },
+
+  // opts.expectRev: si se pasa y el registro fue modificado por otro usuario
+  // desde que se abrió el editor (realtime ya actualizó la copia local), NO se
+  // pisa y se devuelve { __conflict:true, current }. Retrocompatible: sin opts
+  // se comporta igual que antes.
+  update(collection, id, updates, opts) {
     if (!this._canWrite(collection)) return this._denyWrite();
     var db = this.get();
     var idx = (db[collection] || []).findIndex(function(x) { return x.id === id; });
     if (idx === -1) return null;
-    db[collection][idx] = Object.assign({}, db[collection][idx], updates, { updated_at: now() });
+    var cur = db[collection][idx];
+    if (opts && opts.expectRev != null && cur._rev != null && cur._rev !== opts.expectRev) {
+      if (typeof toast === 'function') toast('Otro usuario modificó este registro mientras lo editabas. Se actualizaron los datos: revisá y volvé a guardar.', 'error');
+      return { __conflict: true, current: cur };
+    }
+    var nextRev = (cur._rev || 1) + 1;
+    db[collection][idx] = Object.assign({}, cur, updates, { updated_at: now(), _rev: nextRev });
     this.save(db);
     var updated = db[collection][idx];
     var self = this;

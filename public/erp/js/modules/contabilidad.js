@@ -470,6 +470,7 @@ function renderAccountPlan(accounts) {
 // ---- JOURNAL ENTRY FORM ----
 function openJEForm(id = null) {
   const e = id ? DB.getById('journalEntries', id) : null;
+  DB.markEdit('journalEntries', id);   // control de concurrencia: revisión base al abrir
   const nextNum = nextJournalNumber();
   const allAccounts = DB.getAll('accounts');
   const accounts = allAccounts.filter(a => !allAccounts.find(b => b.parent_id === a.id) || a.parent_id);
@@ -630,7 +631,11 @@ function saveJE(id) {
     lines,
   };
 
-  if (id) { DB.update('journalEntries', id, data); toast('Asiento actualizado', 'success'); }
+  if (id) {
+    var _r = DB.update('journalEntries', id, data, { expectRev: DB.takeEditExpect('journalEntries', id) });
+    if (_r && _r.__conflict) return;   // otro usuario lo cambió; DB avisó, reintento fuerza
+    toast('Asiento actualizado', 'success');
+  }
   else { DB.insert('journalEntries', data); toast('Asiento creado', 'success'); }
 
   window._jeLines = [];

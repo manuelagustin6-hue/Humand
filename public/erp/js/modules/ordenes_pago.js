@@ -215,6 +215,7 @@ ${o.status === 'pending' ? `<button class="btn btn-success" onclick="markPOPaid(
 
 function openPaymentOrderForm(id = null, prefillSIId = null) {
   const o = id ? DB.getById('paymentOrders', id) : null;
+  DB.markEdit('paymentOrders', id);   // control de concurrencia: revisión base al abrir
   const suppliers = DB.getAll('suppliers');
   const projects = DB.getAll('projects');
   const accounts = DB.getAll('bankAccounts');
@@ -503,7 +504,11 @@ function savePaymentOrder(id) {
     notes: document.getElementById('op-notes').value.trim(),
   };
 
-  if (id) { DB.update('paymentOrders', id, data); toast('Orden actualizada', 'success'); }
+  if (id) {
+    var _r = DB.update('paymentOrders', id, data, { expectRev: DB.takeEditExpect('paymentOrders', id) });
+    if (_r && _r.__conflict) return;   // otro usuario la cambió; DB avisó, reintento fuerza
+    toast('Orden actualizada', 'success');
+  }
   else { DB.insert('paymentOrders', data); toast('Orden creada', 'success'); }
   closeModal();
   renderOrdenesPago();
