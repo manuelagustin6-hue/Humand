@@ -929,6 +929,7 @@ function openContractForm(id = null) {
     toast('Este contrato ya no se puede editar (' + (CONTRACT_STATUS[contract.status] ? CONTRACT_STATUS[contract.status].label : contract.status) + '). Sólo se edita en borrador.', 'error');
     return;
   }
+  DB.markEdit('contracts', id);   // control de concurrencia: revisión base al abrir
   const _stCfg = CONTRACT_STATUS[(contract && contract.status) || 'draft'] || { label: 'Borrador', cls: 'badge-gray' };
   const projects  = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
@@ -1310,7 +1311,11 @@ function saveContract(id) {
   };
 
   var savedId;
-  if (id) { DB.update('contracts', id, data); toast('Contrato actualizado', 'success'); savedId = id; }
+  if (id) {
+    var _r = DB.update('contracts', id, data, { expectRev: DB.takeEditExpect('contracts', id) });
+    if (_r && _r.__conflict) return;   // otro usuario lo cambió; DB avisó, reintento fuerza
+    toast('Contrato actualizado', 'success'); savedId = id;
+  }
   else    { var nc = DB.insert('contracts', data); toast('Contrato creado', 'success'); savedId = nc.id; }
 
   window._contractItems = [];

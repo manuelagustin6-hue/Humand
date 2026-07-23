@@ -676,6 +676,7 @@ function openPOForm(id) {
   id = (id != null && id !== '') ? id : null;
   try {
   const po = id ? DB.getById('purchaseOrders', id) : null;
+  DB.markEdit('purchaseOrders', id);   // control de concurrencia: revisión base al abrir
   const projects = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
   const items = po ? (po.items || []) : [{ description: '', unit: 'un', quantity: 1, unit_price: 0, total: 0 }];
@@ -856,7 +857,11 @@ function savePO(id) {
     total: subtotal + tax,
   };
 
-  if (id) { DB.update('purchaseOrders', id, data); toast('OC actualizada', 'success'); }
+  if (id) {
+    var _r = DB.update('purchaseOrders', id, data, { expectRev: DB.takeEditExpect('purchaseOrders', id) });
+    if (_r && _r.__conflict) { window._poItems = []; return; }   // otro usuario la cambió
+    toast('OC actualizada', 'success');
+  }
   else { DB.insert('purchaseOrders', data); toast('OC creada', 'success'); }
 
   window._poItems = [];

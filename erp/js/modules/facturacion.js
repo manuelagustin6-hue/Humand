@@ -226,6 +226,7 @@ ${collections.length ? `
 
 function openInvoiceForm(id = null) {
   const inv = id ? DB.getById('invoices', id) : null;
+  DB.markEdit('invoices', id);   // control de concurrencia: revisión base al abrir
   const projects = DB.getAll('projects');
   const items = inv?.items || [{ description: '', unit: 'Global', quantity: 1, unit_price: 0, total: 0, tax_rate: 21 }];
   const _fcountry = (typeof fiscalCountry === 'function') ? fiscalCountry() : 'AR';
@@ -638,7 +639,11 @@ function saveInvoice(id) {
     total: subtotal + tax,
   };
 
-  if (id) { DB.update('invoices', id, data); toast('Factura actualizada', 'success'); }
+  if (id) {
+    var _r = DB.update('invoices', id, data, { expectRev: DB.takeEditExpect('invoices', id) });
+    if (_r && _r.__conflict) return;   // otro usuario la cambió; DB avisó, reintento fuerza
+    toast('Factura actualizada', 'success');
+  }
   else { DB.insert('invoices', data); toast('Factura creada', 'success'); }
 
   // Generate journal entry from imputacion lines
