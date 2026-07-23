@@ -57,22 +57,37 @@ window.addEventListener('unhandledrejection', (e) => {
   if (typeof toast === 'function') toast('Ocurrió un error inesperado.', 'error');
 });
 
+function showAppLoading() {
+  const content = document.getElementById('content');
+  if (content) content.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:60vh"><i class="fas fa-spinner fa-spin" style="font-size:28px;color:var(--text-muted)"></i></div>';
+}
+
+// Load data and render the app. Reused after a successful login.
+async function startApp() {
+  showAppLoading();
+  await DB.bootstrap();
+  reflectDataMode();
+  populateProjectSelector();
+  navigate('dashboard');
+}
+
 // ---- INIT ----
 document.addEventListener('DOMContentLoaded', async () => {
   const content = document.getElementById('content');
-  content.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:60vh"><i class="fas fa-spinner fa-spin" style="font-size:28px;color:var(--text-muted)"></i></div>';
+  showAppLoading();
   try {
-    // Connect to the backend (Supabase if configured, else localStorage).
-    await DB.bootstrap();
-
-    // Reflect the active data source in the sidebar footer.
-    reflectDataMode();
-
-    // Populate project selector
-    populateProjectSelector();
-
-    // Navigate to dashboard
-    navigate('dashboard');
+    // In Supabase mode, require a valid session before loading any data
+    // (RLS blocks reads until the user is authenticated).
+    if (DB.isSupabaseConfigured()) {
+      DB.initClient();
+      const session = await DB.getSession();
+      if (!session) { showLogin(); return; }
+      // Handle sign-out / token loss (e.g. from another tab).
+      DB._sb.auth.onAuthStateChange((event) => {
+        if (event === 'SIGNED_OUT') showLogin();
+      });
+    }
+    await startApp();
   } catch (e) {
     console.error('Init failed:', e);
     if (content) {

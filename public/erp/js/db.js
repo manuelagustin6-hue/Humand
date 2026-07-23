@@ -15,22 +15,69 @@ const DB = {
   mode: 'local',   // 'local' | 'supabase'
   _sb: null,       // Supabase client
 
-  // ---- BOOTSTRAP (async, called once on startup) ----
-  async bootstrap() {
+  _authUser: null,
+
+  // ---- CLIENT / AUTH ----
+  isSupabaseConfigured() {
     const cfg = window.ERP_CONFIG || {};
-    if (cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase && window.supabase.createClient) {
+    return !!(cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase && window.supabase.createClient);
+  },
+
+  initClient() {
+    if (this._sb) return true;
+    if (!this.isSupabaseConfigured()) return false;
+    const cfg = window.ERP_CONFIG;
+    try {
+      this._sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+      return true;
+    } catch (e) {
+      console.error('Supabase client init failed:', e);
+      this._sb = null;
+      return false;
+    }
+  },
+
+  async getSession() {
+    if (!this._sb) return null;
+    try {
+      const { data } = await this._sb.auth.getSession();
+      this._authUser = data.session ? data.session.user : null;
+      return data.session || null;
+    } catch (e) {
+      console.error('getSession failed:', e);
+      return null;
+    }
+  },
+
+  async signIn(email, password) {
+    if (!this._sb) throw new Error('Supabase no está configurado');
+    const { data, error } = await this._sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    this._authUser = data.user;
+    return data;
+  },
+
+  async signOut() {
+    if (this._sb) { try { await this._sb.auth.signOut(); } catch (e) { console.error(e); } }
+    this._authUser = null;
+  },
+
+  currentUser() { return this._authUser || null; },
+
+  // ---- BOOTSTRAP (async, called once on startup, after auth) ----
+  async bootstrap() {
+    if (!this._sb) this.initClient();
+    if (this._sb) {
       try {
-        this._sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
-        await this._loadFromSupabase(cfg);
+        await this._loadFromSupabase(window.ERP_CONFIG || {});
         this.mode = 'supabase';
         this._subscribeRealtime();
         return this.mode;
       } catch (e) {
-        console.error('Supabase init failed, falling back to local storage.', e);
+        console.error('Supabase load failed, falling back to local storage.', e);
         if (typeof toast === 'function') {
-          toast('No se pudo conectar a la base de datos; usando modo local.', 'warning');
+          toast('No se pudo cargar la base de datos; usando modo local.', 'warning');
         }
-        this._sb = null;
       }
     }
     // Local fallback (also the default when no credentials are configured).

@@ -27,8 +27,21 @@ function openSettings() {
         <span style="color:var(--text-muted)">${escapeHtml(k)}</span><strong>${fmtNum(v)}</strong></div>`)
     .join('');
 
+  const user = (typeof DB.currentUser === 'function') ? DB.currentUser() : null;
+  const userSection = (DB.mode === 'supabase' && user) ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;background:var(--bg);border-radius:var(--radius-sm)">
+        <div style="font-size:13px;overflow:hidden;text-overflow:ellipsis">
+          <i class="fas fa-user-circle" style="color:var(--primary)"></i> ${escapeHtml(user.email || 'Usuario')}
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="logout()">
+          <i class="fas fa-right-from-bracket"></i> Cerrar sesión
+        </button>
+      </div>` : '';
+
   openModal('Configuración y datos', `
     <div style="display:flex;flex-direction:column;gap:20px">
+
+      ${userSection}
 
       <div>
         <h4 style="font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">

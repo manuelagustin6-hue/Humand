@@ -33,20 +33,32 @@ window.ERP_CONFIG = {
 };
 ```
 
-Al recargar, la app se conecta a Supabase automáticamente. En la barra lateral,
-bajo el usuario, verás **"En línea"** (verde) cuando está usando la base
+Al recargar, la app pide **login** y luego se conecta a Supabase. En la barra
+lateral, bajo el usuario, verás **"En línea"** (verde) cuando está usando la base
 compartida, o **"Local"** cuando usa el navegador.
+
+### 4. Crear los usuarios (login)
+Con la **Opción A** de seguridad (la default), cada persona entra con email y
+contraseña. Para darlos de alta:
+
+1. En Supabase: **Authentication → Users → Add user**.
+2. Cargá email + contraseña (marcá *Auto Confirm User* para que pueda entrar sin
+   confirmar el mail).
+3. Repetí para los 50-80 usuarios (o usá *Invite* para que ellos definan su clave).
+
+> Para evitar que cualquiera se registre solo, en **Authentication → Providers →
+> Email** dejá **desactivado** "Enable Signups". Así solo entran los usuarios que
+> vos das de alta.
+
+Cerrar sesión: botón **⚙️ Configuración → Cerrar sesión**.
 
 ## Seguridad (importante)
 
 El `schema.sql` deja activa por defecto la **Opción A**: solo usuarios
-autenticados (login con Supabase Auth) pueden leer/escribir. Para un piloto
-rápido interno podés usar la **Opción B** (anon key sin login), pero en ese caso
-los datos quedan accesibles para cualquiera que tenga la URL — usala solo en un
-despliegue privado. El detalle está comentado en `schema.sql`.
-
-> **Próxima fase sugerida:** agregar login con Supabase Auth en el ERP para
-> cerrar el acceso con la Opción A y tener usuarios/roles reales.
+autenticados (login con Supabase Auth) pueden leer/escribir. Es la recomendada
+para uso real. La **Opción B** (anon key sin login) es solo para un piloto rápido
+en red privada — deja los datos accesibles a cualquiera con la URL. El detalle
+está comentado en `schema.sql`.
 
 ## Cómo funciona (resumen técnico)
 

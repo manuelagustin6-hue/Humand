@@ -16,6 +16,13 @@ const withPWA = withPWAInit({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The product is the ConstructERP (served statically from public/erp). Make it
+  // the landing page; the root URL opens the ERP instead of the RRHH intranet.
+  async redirects() {
+    return [
+      { source: "/", destination: "/erp/index.html", permanent: false },
+    ];
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "api.dicebear.com" },

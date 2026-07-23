@@ -1,11 +1,11 @@
 {
-  "name": "HA RRHH",
-  "short_name": "HA RRHH",
-  "description": "Plataforma interna de HA RRHH",
-  "start_url": "/",
+  "name": "ConstructERP",
+  "short_name": "ConstructERP",
+  "description": "Gestión integral de obras de construcción",
+  "start_url": "/erp/index.html",
   "display": "standalone",
-  "background_color": "#1e40af",
-  "theme_color": "#1e40af",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
   "orientation": "portrait-primary",
   "icons": [
     {
