@@ -111,6 +111,30 @@ var _SUPA = {
     } catch(e) { return { error: { message: e.message } }; }
   },
 
+  // Membresía (RLS): otorga/actualiza acceso de un usuario a una empresa por email.
+  // Llama al RPC erp_grant_membership (solo admins). Fire-and-forget y tolerante:
+  // si el SQL de RLS todavía no se aplicó, falla en silencio sin romper el alta.
+  grantMembership: function(email, companyId, role) {
+    if (!this.session) return;   // sin sesión JWT no hay a quién atribuir el permiso
+    try {
+      fetch(this.URL + '/rest/v1/rpc/erp_grant_membership', {
+        method: 'POST', headers: this.hdrs(),
+        body: JSON.stringify({ p_email: email, p_company: companyId, p_role: role || 'viewer' })
+      }).catch(function() {});
+    } catch(e) {}
+  },
+
+  // Membresía (RLS): revoca el acceso de un usuario a una empresa (baja/borrado).
+  revokeMembership: function(email, companyId) {
+    if (!this.session) return;
+    try {
+      fetch(this.URL + '/rest/v1/rpc/erp_revoke_membership', {
+        method: 'POST', headers: this.hdrs(),
+        body: JSON.stringify({ p_email: email, p_company: companyId })
+      }).catch(function() {});
+    } catch(e) {}
+  },
+
   // Pull ALL records for a company → returns { collection: [records] }
   pull: async function(companyId) {
     var ctrl = new AbortController();

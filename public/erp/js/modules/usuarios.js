@@ -351,6 +351,9 @@ function saveUser(id) {
   if (id) {
     DB.update('users', id, data);
     toast('Usuario actualizado', 'success');
+    // Sincronizar acceso server-side (RLS): rol/escritura o baja si se desactivó.
+    if (data.active === false) _SUPA.revokeMembership(email, DB._companyId);
+    else                       _SUPA.grantMembership(email, DB._companyId, data.role);
   } else {
     DB.insert('users', { ...data, last_login: null });
     // Register in Supabase Auth for cross-device login
@@ -358,6 +361,9 @@ function saveUser(id) {
       var co = DB._companyId;
       _SUPA.signUp(email, pin, { company_id: co, role: data.role, name: data.name })
         .then(function(res) {
+          // Otorgar membresía server-side (RLS). Best-effort: si el SQL de RLS no
+          // está aplicado o la sesión de admin se reemplazó, se resiembra con el PASO 2.
+          _SUPA.grantMembership(email, co, data.role);
           if (res.error) {
             var msg = (res.error.message || '').toLowerCase();
             if (msg.indexOf('already registered') !== -1 || msg.indexOf('user_already_exists') !== -1) {
@@ -385,7 +391,13 @@ function saveUser(id) {
 
 function toggleUser(id, active) {
   if (!requireEdit('usuarios')) return;
+  var u = DB.getById('users', id);
   DB.update('users', id, { active });
+  // Sincronizar acceso server-side (RLS): baja = revocar; alta = re-otorgar.
+  if (u && u.email) {
+    if (active) _SUPA.grantMembership(u.email, DB._companyId, u.role);
+    else        _SUPA.revokeMembership(u.email, DB._companyId);
+  }
   toast(`Usuario ${active ? 'activado' : 'desactivado'}`, active ? 'success' : 'warning');
   renderUsuarios();
 }
@@ -393,6 +405,8 @@ function toggleUser(id, active) {
 function deleteUser(id) {
   if (!requireEdit('usuarios')) return;
   confirmDialog('¿Eliminar este usuario?', () => {
+    var u = DB.getById('users', id);
+    if (u && u.email) _SUPA.revokeMembership(u.email, DB._companyId);   // revocar acceso (RLS)
     DB.remove('users', id);
     toast('Usuario eliminado', 'warning');
     renderUsuarios();
