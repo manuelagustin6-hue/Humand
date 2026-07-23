@@ -104,6 +104,30 @@ begin
 end;
 $$;
 
+-- RPC: el usuario autenticado se auto-otorga su membresía a partir de los
+-- usuarios ya cargados en la app (match por email). Seguro: solo concede acceso
+-- a las empresas donde su email ya figura como usuario ACTIVO. Se llama desde la
+-- app en cada login para que la cobertura de membresías se complete sola.
+create or replace function public.erp_self_membership()
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_email text; v_count int := 0;
+begin
+  select email into v_email from auth.users where id = auth.uid();
+  if v_email is null then return 0; end if;
+  insert into public.erp_membership (user_id, company_id, role, can_write)
+  select auth.uid(), d.company_id,
+         coalesce(nullif(d.data->>'role',''),'viewer'),
+         coalesce(nullif(d.data->>'role',''),'viewer') <> 'viewer'
+  from public.erp_data d
+  where d.collection = 'users' and d.deleted = false
+    and lower(d.data->>'email') = lower(v_email)
+    and coalesce((d.data->>'active')::boolean, true) = true
+  on conflict (user_id, company_id)
+  do update set role = excluded.role, can_write = excluded.can_write;
+  get diagnostics v_count = row_count;
+  return v_count;
+end; $$;
+
 -- RPC: un admin revoca la membresía de alguien (baja/eliminación de usuario).
 create or replace function public.erp_revoke_membership(p_email text, p_company text)
 returns text language plpgsql security definer set search_path = public as $$
