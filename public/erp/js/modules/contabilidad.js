@@ -472,6 +472,7 @@ function openJEForm(id = null) {
   const e = id ? DB.getById('journalEntries', id) : null;
   DB.markEdit('journalEntries', id);   // control de concurrencia: revisión base al abrir
   const nextNum = nextJournalNumber();
+  window._jeAutoNum = id ? null : nextNum;   // marca "número autogenerado" (no tocado a mano)
   const allAccounts = DB.getAll('accounts');
   const accounts = allAccounts.filter(a => !allAccounts.find(b => b.parent_id === a.id) || a.parent_id);
   const accountOptions = DB.getAll('accounts').map(a => `<option value="${a.code}" data-name="${a.name}">${a.code} — ${a.name}</option>`).join('');
@@ -584,7 +585,7 @@ function updateJEBalance() {
   }
 }
 
-function saveJE(id) {
+async function saveJE(id) {
   const description = document.getElementById('je-desc').value.trim();
   if (!description) { toast('La descripción es obligatoria', 'error'); return; }
 
@@ -623,8 +624,18 @@ function saveJE(id) {
     return;
   }
 
+  // Número correlativo ATÓMICO server-side para asientos nuevos autogenerados
+  // (evita que dos usuarios simultáneos saquen el mismo AS-AAAA-NNN).
+  let jeNumber = document.getElementById('je-num').value;
+  if (!id && window._jeAutoNum && jeNumber === window._jeAutoNum) {
+    const _year = new Date().getFullYear();
+    const _floor = parseInt(String(window._jeAutoNum).split('-').pop(), 10) || 1;
+    const _seq = await DB.nextNumber('journal:' + _year, _floor);
+    jeNumber = 'AS-' + _year + '-' + String(_seq).padStart(3, '0');
+  }
+
   const data = {
-    number: document.getElementById('je-num').value,
+    number: jeNumber,
     date: document.getElementById('je-date').value,
     description,
     status: document.getElementById('je-status').value,

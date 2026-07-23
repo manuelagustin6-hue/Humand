@@ -124,6 +124,24 @@ var _SUPA = {
     } catch(e) {}
   },
 
+  // Numeración server-side: devuelve (Promise) el próximo número correlativo y
+  // ATÓMICO para un stream ('invoice', 'journal:2026', …) vía el RPC
+  // erp_next_number. floorSeq es el piso (máximo local + 1). Si no hay conexión
+  // o el RPC no está, cae a floorSeq — la app sigue funcionando offline.
+  nextNumber: async function(key, floorSeq) {
+    var floor = floorSeq || 1;
+    if (!_SUPA.online || !_SUPA.session) return floor;
+    try {
+      var res = await fetch(this.URL + '/rest/v1/rpc/erp_next_number', {
+        method: 'POST', headers: _SUPA.hdrs(),
+        body: JSON.stringify({ p_company: this._companyId, p_key: key, p_min: floor })
+      });
+      if (!res.ok) return floor;
+      var v = await res.json();
+      return (typeof v === 'number' && v >= floor) ? v : floor;
+    } catch (e) { return floor; }
+  },
+
   // Membresía (RLS): el usuario autenticado se auto-otorga su membresía según
   // los usuarios ya cargados en la app (match por email). Se llama en cada login
   // con sesión JWT para que la cobertura se complete sola. No-op sin el RPC.
