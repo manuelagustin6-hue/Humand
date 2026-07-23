@@ -232,6 +232,7 @@ function openInvoiceForm(id = null) {
   const _fcountry = (typeof fiscalCountry === 'function') ? fiscalCountry() : 'AR';
   const _fseq = DB.getAll('invoices').length + 1;
   const nextNum = (typeof fiscalNextIssued === 'function') ? fiscalNextIssued(_fcountry, _fseq) : `0001-${String(_fseq).padStart(8,'0')}`;
+  window._invAutoNum = id ? null : nextNum;   // marca "número autogenerado" (no tocado a mano)
   const _finfo = (typeof fiscalFormatInfo === 'function') ? fiscalFormatInfo(_fcountry) : { hint: '' };
   const source = inv?.source || 'manual';
   const imputacion = inv?.imputacion || [];
@@ -582,7 +583,7 @@ function _invUpdateNumHint() {
 }
 
 // ---- SAVE ----
-function saveInvoice(id) {
+async function saveInvoice(id) {
   const projectId = document.getElementById('if-project').value;
   const clientName = document.getElementById('if-client').value.trim();
   if (!projectId || !clientName) { toast('Proyecto y cliente son obligatorios', 'error'); return; }
@@ -606,9 +607,18 @@ function saveInvoice(id) {
 
   const invType = document.getElementById('if-type').value;
 
-  // Validar formato del número de comprobante para comprobantes fiscales (Contabilidad A)
+  // Número de comprobante. Si es una factura NUEVA con el número autogenerado
+  // (no lo tocó a mano), pedimos un correlativo ATÓMICO al servidor para que dos
+  // usuarios simultáneos nunca dupliquen. Si lo editó a mano, respetamos su valor.
   let invNumber = document.getElementById('if-num').value.trim();
-  if (typeof fiscalIsLegalType === 'function' && fiscalIsLegalType(invType)) {
+  const _invIsAuto = (!id && window._invAutoNum && invNumber === window._invAutoNum);
+  if (_invIsAuto) {
+    const _fc = (typeof fiscalCountry === 'function') ? fiscalCountry() : 'AR';
+    const _seq = await DB.nextNumber('invoice', DB.getAll('invoices').length + 1);
+    invNumber = (typeof fiscalNextIssued === 'function')
+      ? fiscalNextIssued(_fc, _seq) : `0001-${String(_seq).padStart(8, '0')}`;
+  } else if (typeof fiscalIsLegalType === 'function' && fiscalIsLegalType(invType)) {
+    // Validar formato del comprobante fiscal (Contabilidad A) para números manuales
     const norm = fiscalNormalizeNumber(invNumber, fiscalCountry());
     if (!norm.ok) { toast(norm.message, 'error'); return; }
     invNumber = norm.value;
