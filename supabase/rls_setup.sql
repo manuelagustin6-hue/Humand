@@ -200,10 +200,17 @@ order by m.company_id, au.email;
 
 
 -- ============================================================================
---  PASO 4 — Activar RLS sobre erp_data  (⚠️  ESTE es el que "prende" la seguridad)
+--  PASO 4 — CIERRE FINAL: aislamiento real sobre erp_data
+--  (⚠️  ESTE es el que "prende" la seguridad de verdad)
+--
+--  ⛔ NO correr hasta que TODOS los usuarios activos estén migrados a Auth y con
+--     membresía:  membresias  ==  usuarios_activos_app  (ver consulta de avance).
+--     Este bloque borra las policies permisivas que hoy dejan entrar por la clave
+--     anon / a cualquier autenticado; si alguien no tiene membresía, pierde acceso.
 -- ============================================================================
 alter table public.erp_data enable row level security;
 
+-- 4a) Crear (o recrear) las policies de aislamiento por membresía.
 drop policy if exists erp_data_select on public.erp_data;
 drop policy if exists erp_data_insert on public.erp_data;
 drop policy if exists erp_data_update on public.erp_data;
@@ -221,6 +228,23 @@ create policy erp_data_update on public.erp_data
 
 create policy erp_data_delete on public.erp_data
   for delete using (public.erp_can_write(company_id));
+
+-- 4b) Borrar las policies VIEJAS permisivas (el agujero real que encontramos).
+--     anon_read_temp: la clave pública podía leer todo.
+--     auth_*: cualquier autenticado escribía/leía de cualquier empresa.
+--     company_isolation: aislamiento anterior por metadata del JWT (lo reemplaza
+--     el modelo de membresías). Si en tu proyecto tienen otros nombres, ajustá.
+drop policy if exists anon_read_temp    on public.erp_data;
+drop policy if exists auth_select       on public.erp_data;
+drop policy if exists auth_insert       on public.erp_data;
+drop policy if exists auth_update       on public.erp_data;
+drop policy if exists auth_delete       on public.erp_data;
+drop policy if exists company_isolation on public.erp_data;
+
+-- 4c) Verificar que queden SOLO las 4 mías:
+--   select policyname, cmd from pg_policies
+--   where schemaname='public' and tablename='erp_data' order by policyname;
+--   → deben aparecer exactamente: erp_data_select/insert/update/delete
 
 
 -- ============================================================================
