@@ -124,6 +124,18 @@ var _SUPA = {
     } catch(e) {}
   },
 
+  // Membresía (RLS): el usuario autenticado se auto-otorga su membresía según
+  // los usuarios ya cargados en la app (match por email). Se llama en cada login
+  // con sesión JWT para que la cobertura se complete sola. No-op sin el RPC.
+  selfMembership: function() {
+    if (!this.session) return;
+    try {
+      fetch(this.URL + '/rest/v1/rpc/erp_self_membership', {
+        method: 'POST', headers: this.hdrs(), body: '{}'
+      }).catch(function() {});
+    } catch(e) {}
+  },
+
   // Membresía (RLS): revoca el acceso de un usuario a una empresa (baja/borrado).
   revokeMembership: function(email, companyId) {
     if (!this.session) return;

@@ -779,6 +779,7 @@ function _afterSupaLogin(session, email) {
   // CRITICAL: set _SUPA.session so all subsequent DB operations use the JWT
   // Without this, upserts fire with the anon key → RLS rejects them → data lost on refresh
   _SUPA.session = session;
+  _SUPA.selfMembership();   // completa la membresía (RLS) según los usuarios de la app
 
   var meta = (session.user && session.user.user_metadata) || {};
   var companyId = meta.company_id || window.APP_STATE.activeCompany || 'comp-001';
@@ -866,6 +867,38 @@ function _doLoginLocal(email, password, supaUnavailable) {
   try { localStorage.setItem('erp_active_company', foundCompanyId); } catch(e) {}
   var remEl = document.getElementById('login-remember');
   completeLogin(foundUser.id, !!(remEl && remEl.checked));
+
+  // Migración gradual a Supabase Auth: si esta cuenta todavía entra por login
+  // local, la provisionamos en Auth con la misma contraseña. Es el requisito para
+  // la seguridad server-side (RLS): a futuro autentica de verdad y sus escrituras
+  // salen con JWT (hoy, sin sesión, la nube las rechaza y quedan solo locales).
+  if (!supaUnavailable && _SUPA.online && password) {
+    _provisionSupaAuth(email, password, foundUser, foundCompanyId);
+  }
+}
+
+// Crea (o reconcilia) la cuenta de Supabase Auth de un usuario que venía entrando
+// por login local, en segundo plano y sin bloquear. Al obtener sesión: siembra su
+// membresía y recarga con JWT para que las escrituras salgan autenticadas.
+function _provisionSupaAuth(email, password, dbUser, companyId) {
+  try {
+    var meta = { company_id: companyId, role: (dbUser && dbUser.role) || 'viewer', name: (dbUser && dbUser.name) || '' };
+    function _adopt(session) {
+      if (!session) return;
+      _SUPA.session = session;
+      _SUPA.selfMembership();
+      try { DB.load(); } catch(e) {}   // repull con JWT (escrituras autenticadas)
+    }
+    function _trySignIn() {
+      _SUPA.signIn(email, password).then(function(r2) {
+        if (r2 && r2.data && r2.data.session) _adopt(r2.data.session);
+      }).catch(function() {});
+    }
+    _SUPA.signUp(email, password, meta).then(function(res) {
+      if (res && res.data && res.data.session) _adopt(res.data.session);  // confirmación off
+      else _trySignIn();   // ya existía, o quedó pendiente de confirmar por email
+    }).catch(function() { _trySignIn(); });
+  } catch(e) {}
 }
 
 function completeLogin(uid, remember) {
