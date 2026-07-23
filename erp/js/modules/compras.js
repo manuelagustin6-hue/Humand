@@ -1470,7 +1470,7 @@ function prefillSIFromPO(poId) {
         impLines.map(function(l, i) { return buildSiImpRow(l, i, rubros); }).join('');
     }
     const totEl = document.getElementById('si-imp-totals');
-    if (totEl) totEl.innerHTML = calcSiImpTotalsHtml(impLines, parseFloat(subEl && subEl.value) || 0);
+    if (totEl) totEl.innerHTML = calcSiImpTotalsHtml(impLines, numParse(subEl && subEl.value) || 0);
   }
 }
 
@@ -1853,7 +1853,7 @@ function calcSiImpTotalsHtml(lines, netoOverride) {
   var imputado = valid.reduce(function(s, l) { return s + (l.amount || 0); }, 0);
   var neto = (netoOverride !== undefined && netoOverride !== null) ? netoOverride : (function() {
     var el = document.getElementById('si-subtotal');
-    return el ? (parseFloat(el.value) || 0) : 0;
+    return el ? (numParse(el.value) || 0) : 0;
   })();
   if (!valid.length) {
     if (neto > 0) return '<span style="color:var(--warning,#f59e0b)"><i class="fas fa-exclamation-triangle"></i> Sin imputar — Neto a imputar: <strong>' + fmtMoney(neto) + '</strong></span>';
