@@ -740,15 +740,17 @@ function doLogin() {
       // Full Supabase Auth session — reload data with JWT
       _afterSupaLogin(result.data.session, email);
 
-    } else if (result.error) {
-      var errMsg = (result.error.message || '').toLowerCase();
-      // Email not yet confirmed in Supabase Auth
-      if (errMsg.indexOf('not confirmed') !== -1 || errMsg.indexOf('email_not_confirmed') !== -1) {
-        _btnBusy(false);
-        _loginError('Confirmá tu email: revisá tu casilla de correo y hacé clic en el enlace de activación que te enviamos.');
-        return;
-      }
-      // Check if user exists in localStorage (not yet migrated to Supabase Auth)
+    } else {
+      // signIn no devolvió sesión: error de credenciales, o cuenta pendiente de
+      // confirmar por email (con "Confirm email" encendido, la migración crea la
+      // cuenta pero Auth no deja entrar hasta confirmar). No error + sin sesión
+      // también = pendiente de confirmación.
+      var errMsg = ((result.error && result.error.message) || '').toLowerCase();
+      var notConfirmed = !result.error
+        || errMsg.indexOf('not confirmed') !== -1
+        || errMsg.indexOf('email_not_confirmed') !== -1;
+      // Nunca dejar al usuario afuera: si existe local con contraseña válida, entra
+      // por login local (la cuenta Auth puede estar pendiente de confirmar).
       var localExists = _loginScanCompanyIds().some(function(cid) {
         DB.setCompany(cid);
         return (DB.getAll('users') || []).some(function(u) { return (u.email||'').toLowerCase() === email && u.active; });
@@ -756,16 +758,13 @@ function doLogin() {
       _btnBusy(false);
       if (localExists) {
         _doLoginLocal(email, password, false);
+      } else if (notConfirmed) {
+        _loginError('Confirmá tu email: revisá tu casilla de correo y hacé clic en el enlace de activación que te enviamos. (O pedile al admin que desactive la confirmación por email.)');
       } else {
         _loginError(errMsg.indexOf('invalid login credentials') !== -1
           ? 'Email o contraseña incorrectos'
-          : (result.error.message || 'Error de autenticación'));
+          : ((result.error && result.error.message) || 'Error de autenticación'));
       }
-
-    } else {
-      // No error AND no session = email pending confirmation
-      _btnBusy(false);
-      _loginError('Confirmá tu email: revisá tu casilla de correo y hacé clic en el enlace de activación que te enviamos.');
     }
   }).catch(function() {
     // Network error: Supabase unreachable
