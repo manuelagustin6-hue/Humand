@@ -58,10 +58,15 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 // ---- INIT ----
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:60vh"><i class="fas fa-spinner fa-spin" style="font-size:28px;color:var(--text-muted)"></i></div>';
   try {
-    // Force seed if empty
-    DB.get();
+    // Connect to the backend (Supabase if configured, else localStorage).
+    await DB.bootstrap();
+
+    // Reflect the active data source in the sidebar footer.
+    reflectDataMode();
 
     // Populate project selector
     populateProjectSelector();
@@ -70,9 +75,20 @@ document.addEventListener('DOMContentLoaded', () => {
     navigate('dashboard');
   } catch (e) {
     console.error('Init failed:', e);
-    const content = document.getElementById('content');
     if (content) {
       content.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>No se pudo iniciar la aplicación. Recargá la página.</p></div>`;
     }
   }
 });
+
+// Small badge under the user footer so it's clear whether data is shared
+// (Supabase) or local to this browser.
+function reflectDataMode() {
+  const footer = document.querySelector('.sidebar-footer .user-info .user-role');
+  if (!footer) return;
+  if (DB.mode === 'supabase') {
+    footer.innerHTML = 'Super Admin · <span style="color:var(--success,#10b981)"><i class="fas fa-circle" style="font-size:7px"></i> En línea</span>';
+  } else {
+    footer.innerHTML = 'Super Admin · <span style="color:var(--text-muted)"><i class="fas fa-circle" style="font-size:7px"></i> Local</span>';
+  }
+}

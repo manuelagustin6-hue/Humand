@@ -1,12 +1,153 @@
-/* ===== DATABASE LAYER (localStorage) ===== */
+/* ===== DATABASE LAYER =====
+ * Two interchangeable backends behind one synchronous API so the 11 modules
+ * never change:
+ *   - 'local'    : per-browser localStorage (single user).
+ *   - 'supabase' : shared Postgres — multi-user, concurrent, real-time.
+ *
+ * In both modes reads are served synchronously from an in-memory cache that is
+ * loaded once at bootstrap(). Writes update the cache immediately (optimistic)
+ * and are persisted to the active backend.
+ */
 const DB = {
   KEY: 'erp_construccion_v1',
+  TABLE: 'erp_records',
   _cache: null,
+  mode: 'local',   // 'local' | 'supabase'
+  _sb: null,       // Supabase client
+
+  // ---- BOOTSTRAP (async, called once on startup) ----
+  async bootstrap() {
+    const cfg = window.ERP_CONFIG || {};
+    if (cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase && window.supabase.createClient) {
+      try {
+        this._sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+        await this._loadFromSupabase(cfg);
+        this.mode = 'supabase';
+        this._subscribeRealtime();
+        return this.mode;
+      } catch (e) {
+        console.error('Supabase init failed, falling back to local storage.', e);
+        if (typeof toast === 'function') {
+          toast('No se pudo conectar a la base de datos; usando modo local.', 'warning');
+        }
+        this._sb = null;
+      }
+    }
+    // Local fallback (also the default when no credentials are configured).
+    this.mode = 'local';
+    this.get(); // seeds if empty
+    return this.mode;
+  },
+
+  async _loadFromSupabase(cfg) {
+    const all = {};
+    let from = 0;
+    const page = 1000;
+    // Page through the table so large datasets load fully.
+    while (true) {
+      const { data, error } = await this._sb
+        .from(this.TABLE)
+        .select('collection,id,data')
+        .range(from, from + page - 1);
+      if (error) throw error;
+      for (const row of (data || [])) {
+        (all[row.collection] = all[row.collection] || []).push({ ...row.data, id: row.id });
+      }
+      if (!data || data.length < page) break;
+      from += page;
+    }
+
+    const isEmpty = Object.keys(all).length === 0;
+    if (isEmpty && cfg.seedOnEmpty) {
+      // First run against an empty DB: publish the demo dataset once.
+      const seeded = this.seed();
+      this._cache = seeded;
+      await this._remoteReplaceAll(seeded);
+    } else {
+      // Ensure every known collection exists so modules never see undefined.
+      const defaults = this.seed();
+      for (const k of Object.keys(defaults)) if (!(k in all)) all[k] = [];
+      this._cache = all;
+    }
+  },
+
+  // ---- REMOTE WRITE HELPERS (fire-and-forget, optimistic UI) ----
+  _remoteError(e) {
+    console.error('Supabase write failed:', e);
+    if (typeof toast === 'function') toast('No se pudo guardar en la base de datos', 'error');
+  },
+
+  _remoteUpsert(collection, item) {
+    if (this.mode !== 'supabase' || !this._sb) return;
+    this._sb.from(this.TABLE)
+      .upsert({ collection, id: item.id, data: item, updated_at: new Date().toISOString() })
+      .then(({ error }) => { if (error) this._remoteError(error); });
+  },
+
+  _remoteDelete(collection, id) {
+    if (this.mode !== 'supabase' || !this._sb) return;
+    this._sb.from(this.TABLE).delete().match({ collection, id })
+      .then(({ error }) => { if (error) this._remoteError(error); });
+  },
+
+  async _remoteReplaceAll(data) {
+    if (!this._sb) return;
+    const rows = [];
+    for (const collection of Object.keys(data)) {
+      for (const item of (data[collection] || [])) {
+        rows.push({ collection, id: item.id, data: item, updated_at: new Date().toISOString() });
+      }
+    }
+    if (!rows.length) return;
+    // Upsert in chunks to stay within request limits.
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await this._sb.from(this.TABLE).upsert(rows.slice(i, i + 500));
+      if (error) throw error;
+    }
+  },
+
+  // ---- REALTIME (keep every browser's cache in sync) ----
+  _subscribeRealtime() {
+    try {
+      this._sb.channel('erp_records_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: this.TABLE },
+            payload => this._applyRealtime(payload))
+        .subscribe();
+    } catch (e) {
+      console.error('Realtime subscription failed (data still works, refresh to see others\' changes):', e);
+    }
+  },
+
+  _applyRealtime(payload) {
+    if (!this._cache) return;
+    const n = payload.new, o = payload.old;
+    const coll = (n && n.collection) || (o && o.collection);
+    if (!coll) return;
+    const arr = this._cache[coll] = this._cache[coll] || [];
+    if (payload.eventType === 'DELETE') {
+      this._cache[coll] = arr.filter(x => x.id !== (o && o.id));
+    } else if (n) {
+      const item = { ...n.data, id: n.id };
+      const idx = arr.findIndex(x => x.id === item.id);
+      if (idx === -1) arr.push(item); else arr[idx] = item;
+    }
+    // Refresh the view to reflect other users' changes, but never interrupt a
+    // user mid-edit (an open modal).
+    const modalOpen = (document.getElementById('modal-overlay') || {}).style
+      && document.getElementById('modal-overlay').style.display === 'flex';
+    if (modalOpen) return;
+    if (typeof populateProjectSelector === 'function') populateProjectSelector();
+    if (typeof navigate === 'function' && window.APP_STATE) navigate(window.APP_STATE.currentModule);
+  },
 
   get() {
     // Serve from the in-memory cache to avoid re-parsing the whole store on
     // every read (getAll/getById are called inside render loops).
     if (this._cache) return this._cache;
+
+    // In Supabase mode the cache is populated by bootstrap(); never fall back to
+    // localStorage seeding here (that would diverge from the shared database).
+    if (this.mode === 'supabase') { this._cache = {}; return this._cache; }
 
     let data;
     try {
@@ -57,6 +198,10 @@ const DB = {
 
   save(data) {
     this._cache = data;
+    if (this.mode === 'supabase') {
+      this._remoteReplaceAll(data).catch(e => this._remoteError(e));
+      return true;
+    }
     return this._persist();
   },
 
@@ -68,6 +213,12 @@ const DB = {
 
   // Wipe all data and rebuild from seed (recovery / demo reset).
   reset() {
+    if (this.mode === 'supabase') {
+      const seeded = this.seed();
+      this._cache = seeded;
+      this._remoteReplaceAll(seeded).catch(e => this._remoteError(e));
+      return this._cache;
+    }
     this._cache = null;
     try { localStorage.removeItem(this.KEY); } catch (e) { /* ignore */ }
     return this.get();
@@ -85,7 +236,9 @@ const DB = {
     if (!db[collection]) db[collection] = [];
     const item = { ...record, id: uuid(), created_at: now() };
     db[collection].push(item);
-    this.save(db);
+    this._cache = db;
+    if (this.mode === 'supabase') this._remoteUpsert(collection, item);
+    else this._persist();
     return item;
   },
 
@@ -93,15 +246,20 @@ const DB = {
     const db = this.get();
     const idx = (db[collection] || []).findIndex(x => x.id === id);
     if (idx === -1) return null;
-    db[collection][idx] = { ...db[collection][idx], ...updates, updated_at: now() };
-    this.save(db);
-    return db[collection][idx];
+    const item = { ...db[collection][idx], ...updates, updated_at: now() };
+    db[collection][idx] = item;
+    this._cache = db;
+    if (this.mode === 'supabase') this._remoteUpsert(collection, item);
+    else this._persist();
+    return item;
   },
 
   remove(collection, id) {
     const db = this.get();
     db[collection] = (db[collection] || []).filter(x => x.id !== id);
-    this.save(db);
+    this._cache = db;
+    if (this.mode === 'supabase') this._remoteDelete(collection, id);
+    else this._persist();
   },
 
   // ---- SEED DATA ----
