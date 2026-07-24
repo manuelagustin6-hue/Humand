@@ -5,6 +5,7 @@
 //   _contaCompanyId '' = Todas las razones sociales     | <companyId>
 window._contaProject   = '';
 window._contaCompanyId = '';
+window._contaBook      = '';   // '' = A y B | 'A' = Contabilidad A (formal) | 'B'
 
 // Barra de scope: Proyecto (eje primario, con "General") + Razón social (filtro).
 function _contaScopeBar() {
@@ -18,6 +19,11 @@ function _contaScopeBar() {
     projList.map(function(p) { return '<option value="' + p.id + '"' + (p.id === window._contaProject ? ' selected' : '') + '>' + escapeHtml(p.name || '(sin nombre)') + '</option>'; }).join('');
   var coOpts = '<option value="">Todas las razones sociales</option>' +
     companies.map(function(c) { return '<option value="' + c.id + '"' + (c.id === window._contaCompanyId ? ' selected' : '') + '>' + escapeHtml(c.legalName || c.name) + '</option>'; }).join('');
+  var bk = window._contaBook || '';
+  var bookOpts =
+    '<option value="">Contabilidad A y B</option>' +
+    '<option value="A"' + (bk === 'A' ? ' selected' : '') + '>Solo Contabilidad A</option>' +
+    '<option value="B"' + (bk === 'B' ? ' selected' : '') + '>Solo Contabilidad B</option>';
 
   return '<div class="conta-company-bar" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">' +
     '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-diagram-project" style="color:var(--primary)"></i>' +
@@ -26,13 +32,29 @@ function _contaScopeBar() {
     '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-city" style="color:var(--primary)"></i>' +
       '<span class="conta-company-label">Razón Social</span>' +
       '<select class="form-control conta-company-sel" onchange="contaSetCompany(this.value)">' + coOpts + '</select></div>' +
+    '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-book-open" style="color:var(--primary)"></i>' +
+      '<span class="conta-company-label">Libro</span>' +
+      '<select class="form-control conta-company-sel" onchange="contaSetBook(this.value)">' + bookOpts + '</select></div>' +
     '</div>';
+}
+
+// Re-renderiza el módulo de contabilidad ACTUAL (Diario, Sumas, Balance, etc.).
+function _contaRerender() {
+  var mod = window.APP_STATE && window.APP_STATE.currentModule;
+  if (window.MODULES && window.MODULES[mod] && typeof window.MODULES[mod].render === 'function') {
+    try { window.MODULES[mod].render(); return; } catch(e) {}
+  }
+  renderContabilidad();
 }
 
 function contaSetProject(id) {
   window._contaProject = id || '';
-  var mod = window.APP_STATE && window.APP_STATE.currentModule;
-  if (mod === 'conta_mayores') renderContaMayores(); else renderContabilidad();
+  _contaRerender();
+}
+
+function contaSetBook(v) {
+  window._contaBook = v || '';
+  _contaRerender();
 }
 
 function contaSetCompany(id) {
@@ -40,8 +62,7 @@ function contaSetCompany(id) {
   // Al elegir una razón social puntual la ponemos como empresa activa (para que
   // "Nuevo Asiento" opere sobre ella). En "Todas" se conserva la activa.
   if (id) { DB.setCompany(id); if (window.APP_STATE) window.APP_STATE.activeCompany = id; }
-  var mod = window.APP_STATE && window.APP_STATE.currentModule;
-  if (mod === 'conta_mayores') renderContaMayores(); else renderContabilidad();
+  _contaRerender();
 }
 
 // Asientos consolidados (todas las razones sociales) filtrados por el scope activo.
@@ -49,6 +70,7 @@ function _contaScopedEntries() {
   var entries = DB.getAllConsolidated('journalEntries');
   if (window._contaCompanyId) entries = entries.filter(function(e) { return e._company_id === window._contaCompanyId; });
   if (window._contaProject)   entries = entries.filter(function(e) { return (e.project_id || '') === window._contaProject; });
+  if (window._contaBook)      entries = entries.filter(function(e) { return (e.book || 'A') === window._contaBook; });
   return entries;
 }
 // Plan de cuentas del scope: de la razón social elegida, o consolidado (dedupe por código).
@@ -636,6 +658,13 @@ function openJEForm(id = null) {
     <label class="form-label">Razón social (contraparte)</label>
     <input class="form-control" id="je-counterparty" value="${e?.counterparty?escapeHtml(e.counterparty):''}" placeholder="Cliente / proveedor (opcional)">
   </div>
+  <div class="form-group">
+    <label class="form-label">Libro (Contabilidad)</label>
+    <select class="form-control" id="je-book">
+      <option value="A" ${(!e || (e.book||'A')==='A')?'selected':''}>Contabilidad A (formal)</option>
+      <option value="B" ${e && e.book==='B'?'selected':''}>Contabilidad B</option>
+    </select>
+  </div>
 </div>
 <div class="divider"></div>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -775,6 +804,7 @@ async function saveJE(id) {
     project_id:   (document.getElementById('je-project')  || {}).value || '',
     currency:     (document.getElementById('je-currency') || {}).value || '',
     counterparty: ((document.getElementById('je-counterparty') || {}).value || '').trim(),
+    book:         (document.getElementById('je-book') || {}).value || 'A',
     lines,
   };
 

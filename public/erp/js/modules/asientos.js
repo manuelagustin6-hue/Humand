@@ -306,6 +306,7 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
       auto_generated: true,
       operation_type: operationTypeId,
       project_id:   opts.project_id || '',    // dimensiones para filtrar Contabilidad
+      book:         opts.book || 'A',
       currency:     opts.currency || '',
       counterparty: opts.counterparty || '',
       lines: isDebit ? [mainLine, counterLine] : [counterLine, mainLine],
@@ -410,6 +411,7 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
       auto_generated: true,
       operation_type: operationTypeId,
       project_id:   opts.project_id || '',    // dimensiones para filtrar Contabilidad
+      book:         opts.book || 'A',
       currency:     opts.currency || '',
       counterparty: opts.counterparty || '',
       lines: lines,
