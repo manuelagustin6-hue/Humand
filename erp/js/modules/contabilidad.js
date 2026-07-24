@@ -212,22 +212,41 @@ function _jeRefresh() {
   if (sum) sum.innerHTML = _jeSummaryHtml(entries);
 }
 
+// Opciones de moneda: monedas configuradas + las presentes en asientos.
+function _jeCurrencyOptions() {
+  var set = {};
+  (typeof DB.getAllCurrencies==='function'?DB.getAllCurrencies():[]).forEach(function(c){ if(c && c.code) set[c.code]=true; });
+  _jeDistinct('currency').forEach(function(c){ set[c]=true; });
+  return Object.keys(set).sort();
+}
+// Opciones de razón social: contrapartes en asientos + proveedores + clientes de facturas.
+function _jePartyOptions() {
+  var set = {};
+  _jeDistinct('counterparty').forEach(function(p){ set[p]=true; });
+  DB.getAll('suppliers').forEach(function(s){ var n=((s.name||s.legal_name||'')+'').trim(); if(n) set[n]=true; });
+  DB.getAll('invoices').forEach(function(i){ var n=((i.client_name||'')+'').trim(); if(n) set[n]=true; });
+  return Object.keys(set).sort(function(a,b){ return a.localeCompare(b); });
+}
+
 function renderJournal(entries) {
-  var currencies = _jeDistinct('currency');
-  var parties    = _jeDistinct('counterparty');
+  var currencies = _jeCurrencyOptions();
+  var parties    = _jePartyOptions();
+  var f          = window._jeFilters;
   var filtered   = _jeApplyFilters();
   return `
 <div class="filter-bar">
   <div class="search-input-wrap">
     <i class="fas fa-search"></i>
-    <input type="text" placeholder="Buscar asiento..." oninput="window._jeFilters.q=this.value.toLowerCase(); _jeRefresh()">
+    <input type="text" placeholder="Buscar asiento..." value="${f.q?escapeHtml(f.q):''}" oninput="window._jeFilters.q=this.value.toLowerCase(); _jeRefresh()">
   </div>
-  <input type="date" class="form-control" style="width:140px" title="Desde" oninput="window._jeFilters.from=this.value; _jeRefresh()">
-  <input type="date" class="form-control" style="width:140px" title="Hasta" oninput="window._jeFilters.to=this.value; _jeRefresh()">
-  ${currencies.length ? `<select class="form-control" style="width:140px" onchange="window._jeFilters.currency=this.value; _jeRefresh()">
-    <option value="">Toda moneda</option>${currencies.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>` : ''}
-  ${parties.length ? `<select class="form-control" style="width:200px" onchange="window._jeFilters.counterparty=this.value; _jeRefresh()">
-    <option value="">Toda razón social</option>${parties.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}</select>` : ''}
+  <input type="date" class="form-control" style="width:140px" title="Desde" value="${f.from||''}" oninput="window._jeFilters.from=this.value; _jeRefresh()">
+  <input type="date" class="form-control" style="width:140px" title="Hasta" value="${f.to||''}" oninput="window._jeFilters.to=this.value; _jeRefresh()">
+  <select class="form-control" style="width:150px" title="Moneda de origen" onchange="window._jeFilters.currency=this.value; _jeRefresh()">
+    <option value="">Toda moneda</option>${currencies.map(c=>`<option value="${escapeHtml(c)}" ${f.currency===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+  </select>
+  <select class="form-control" style="width:210px" title="Razón social" onchange="window._jeFilters.counterparty=this.value; _jeRefresh()">
+    <option value="">Toda razón social</option>${parties.map(p=>`<option value="${escapeHtml(p)}" ${f.counterparty===p?'selected':''}>${escapeHtml(p)}</option>`).join('')}
+  </select>
 </div>
 <div id="je-summary">${_jeSummaryHtml(filtered)}</div>
 <div id="je-list">
