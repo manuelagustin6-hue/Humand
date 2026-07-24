@@ -251,19 +251,51 @@ function usrBuildRolesList() {
 }
 
 // ---- USER FORM ----
+// Reúne los proyectos de TODAS las empresas (usuarios globales → acceso por obra
+// entre razones sociales). Lee cada blob de empresa de localStorage + la activa.
+function _allProjectsAcrossCompanies() {
+  var companies = {};
+  try { (DB.getAllCompanies() || []).forEach(function(c) { companies[c.id] = c.name || c.id; }); } catch (e) {}
+  var out = [], seen = {};
+  function collect(cid, projects) {
+    (projects || []).forEach(function(p) {
+      if (!p || !p.id || seen[p.id]) return;
+      seen[p.id] = true;
+      out.push({ id: p.id, name: p.name, client: p.client, companyName: companies[cid] || cid });
+    });
+  }
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key && /^erp_company_.+_v1$/.test(key)) {
+        var cid = key.replace('erp_company_', '').replace(/_v1$/, '');
+        try { collect(cid, JSON.parse(localStorage.getItem(key)).projects); } catch (e) {}
+      }
+    }
+  } catch (e) {}
+  collect(DB._companyId, DB.getAll('projects'));   // la activa, con datos frescos del cache
+  return out;
+}
+
 function openUserForm(id = null) {
   const u = id ? DB.getById('users', id) : null;
   const roles = usrGetAllRoles();
-  const projects = DB.getAll('projects');
+  const projects = _allProjectsAcrossCompanies();
   const userProjIds = (u && u.project_ids && u.project_ids.length) ? u.project_ids : null;
   const accessMode = userProjIds ? 'specific' : 'all';
 
-  const projCheckboxes = projects.map(function(p) {
-    var checked = !userProjIds || userProjIds.indexOf(p.id) !== -1 ? 'checked' : '';
-    return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg);border-radius:6px;cursor:pointer">' +
-      '<input type="checkbox" class="usr-proj-cb" value="' + p.id + '" ' + checked + '>' +
-      '<span><strong>' + escapeHtml(p.name) + '</strong>' + (p.client ? ' <span style="color:var(--text-muted)">— ' + escapeHtml(p.client) + '</span>' : '') + '</span>' +
-      '</label>';
+  // Checkboxes agrupados por razón social (empresa)
+  const _byCompany = {};
+  projects.forEach(function(p) { (_byCompany[p.companyName] = _byCompany[p.companyName] || []).push(p); });
+  const projCheckboxes = Object.keys(_byCompany).sort().map(function(cn) {
+    return '<div style="grid-column:1/-1;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-top:8px">' + escapeHtml(cn) + '</div>' +
+      _byCompany[cn].map(function(p) {
+        var checked = !userProjIds || userProjIds.indexOf(p.id) !== -1 ? 'checked' : '';
+        return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg);border-radius:6px;cursor:pointer">' +
+          '<input type="checkbox" class="usr-proj-cb" value="' + p.id + '" ' + checked + '>' +
+          '<span><strong>' + escapeHtml(p.name) + '</strong>' + (p.client ? ' <span style="color:var(--text-muted)">— ' + escapeHtml(p.client) + '</span>' : '') + '</span>' +
+          '</label>';
+      }).join('');
   }).join('');
 
   openModal(u ? 'Editar Usuario' : 'Nuevo Usuario',
@@ -295,11 +327,12 @@ function openUserForm(id = null) {
       '</div>' +
     '</div>' +
     '<div class="divider" style="margin:14px 0"></div>' +
-    '<div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="fas fa-building" style="color:var(--primary);margin-right:6px"></i>Acceso a Proyectos</div>' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:4px"><i class="fas fa-diagram-project" style="color:var(--primary);margin-right:6px"></i>Acceso a Proyectos</div>' +
+    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">El usuario accede a <strong>todas las empresas</strong> (razones sociales). Acá restringís a qué <strong>obras</strong> puede entrar.</div>' +
     '<div style="display:flex;flex-direction:column;gap:6px">' +
       '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
         '<input type="radio" name="usr-proj-mode" value="all" id="usr-proj-all"' + (accessMode==='all' ? ' checked' : '') + ' onchange="usrToggleProjMode(this.value)">' +
-        '<span>Todos los proyectos <span style="color:var(--text-muted);font-size:11px">(sin restricción)</span></span>' +
+        '<span>Todas las obras <span style="color:var(--text-muted);font-size:11px">(sin restricción)</span></span>' +
       '</label>' +
       '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
         '<input type="radio" name="usr-proj-mode" value="specific" id="usr-proj-specific"' + (accessMode==='specific' ? ' checked' : '') + ' onchange="usrToggleProjMode(this.value)">' +
@@ -773,25 +806,18 @@ function doLogin() {
   });
 }
 
-// Encuentra la empresa donde `email` es un usuario ACTIVO. Prefiere `preferred`;
-// si ahí no figura, escanea las empresas disponibles (localStorage/global). Así el
-// login por Auth no deja al usuario en una empresa ajena (con rol viewer).
-function _resolveUserCompany(email, preferred) {
-  var e = (email || '').toLowerCase();
-  // Lee el blob de la empresa directo de localStorage (sin DB.setCompany/init,
-  // para no sembrar datos demo en empresas vacías al escanear).
-  function activeIn(cid) {
-    try {
-      var raw = localStorage.getItem('erp_company_' + cid + '_v1');
-      if (!raw) return false;
-      var data = JSON.parse(raw);
-      return (data.users || []).some(function(u) { return (u.email || '').toLowerCase() === e && u.active; });
-    } catch (x) { return false; }
-  }
-  if (preferred && activeIn(preferred)) return preferred;
-  var ids = (typeof _loginScanCompanyIds === 'function') ? _loginScanCompanyIds() : [];
-  for (var i = 0; i < ids.length; i++) { if (activeIn(ids[i])) return ids[i]; }
-  return preferred;   // no se encontró en ninguna: quedarse con la preferida
+// Elige una empresa activa VÁLIDA. Como los usuarios son globales (acceso a todas
+// las empresas), no hace falta buscar al usuario por empresa: alcanza con abrir una
+// empresa real (la preferida, la última usada, o la primera disponible).
+function _pickActiveCompany(preferred) {
+  var companies = [];
+  try { companies = DB.getAllCompanies() || []; } catch (e) {}
+  function valid(cid) { return !!cid && companies.some(function(c) { return c.id === cid; }); }
+  if (valid(preferred)) return preferred;
+  var last = ''; try { last = localStorage.getItem('erp_active_company') || ''; } catch (e) {}
+  if (valid(last)) return last;
+  if (companies.length) return companies[0].id;
+  return preferred || 'comp-001';
 }
 
 // Called after a successful Supabase signIn
@@ -802,11 +828,10 @@ function _afterSupaLogin(session, email) {
   _SUPA.selfMembership();   // completa la membresía (RLS) según los usuarios de la app
 
   var meta = (session.user && session.user.user_metadata) || {};
-  // Elegir la empresa donde el usuario es un usuario ACTIVO real. Preferimos la de
-  // la metadata, pero si ahí no figura, escaneamos las empresas para no dejarlo
-  // como "viewer/solo lectura" en una empresa a la que no pertenece.
+  // Usuarios globales: el usuario existe una sola vez y accede a todas las empresas.
+  // Solo elegimos una empresa activa válida para abrir.
   var candidate = meta.company_id || window.APP_STATE.activeCompany || 'comp-001';
-  var companyId = _resolveUserCompany(email, candidate);
+  var companyId = _pickActiveCompany(candidate);
   DB.setCompany(companyId);
   window.APP_STATE.activeCompany = companyId;
   try { localStorage.setItem('erp_active_company', companyId); } catch(e) {}
@@ -833,17 +858,12 @@ function _afterSupaLogin(session, email) {
 
 // Local auth fallback (used when user is not yet in Supabase Auth)
 function _doLoginLocal(email, password, supaUnavailable) {
-  var companyIds = _loginScanCompanyIds();
-  var foundUser = null;
-  var foundCompanyId = null;
-  var allEmails = [];
-
-  for (var i = 0; i < companyIds.length; i++) {
-    var users = _loginEnsureUsers(companyIds[i]);
-    users.forEach(function(u) { if (u.email) allEmails.push(u.email); });
-    var match = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; });
-    if (match) { foundUser = match; foundCompanyId = companyIds[i]; break; }
-  }
+  // Usuarios GLOBALES: se busca en el store global (acceso a todas las empresas),
+  // no por empresa. La empresa activa se elige aparte (última usada / primera).
+  var users = DB.getAll('users');
+  var foundUser = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; }) || null;
+  var foundCompanyId = _pickActiveCompany(window.APP_STATE && window.APP_STATE.activeCompany);
+  var allEmails = users.filter(function(u) { return u.active && u.email; }).map(function(u) { return u.email; });
 
   if (!foundUser) {
     DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
