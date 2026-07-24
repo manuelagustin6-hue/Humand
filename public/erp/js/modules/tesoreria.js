@@ -104,7 +104,7 @@ function renderTxTable(txs, accounts, projects) {
   <button class="btn btn-secondary" onclick="exportTx()"><i class="fas fa-download"></i> Exportar</button>
 </div>
 <div class="card"><div class="card-body" style="padding:0"><div class="table-wrap" id="tx-table-wrap">
-  ${buildTxRows(sorted, accounts, projects)}
+  ${paginateHtml('tx-table-wrap', sorted, rows => buildTxRows(rows, accounts, projects), { perPage: 20 })}
 </div></div></div>`;
 }
 
@@ -143,7 +143,7 @@ function filterTx(q, type) {
   if (f.q) txs = txs.filter(t => t.description.toLowerCase().includes(f.q) || (t.category||'').toLowerCase().includes(f.q));
   if (f.type) txs = txs.filter(t => t.type === f.type);
   const wrap = document.getElementById('tx-table-wrap');
-  if (wrap) wrap.innerHTML = buildTxRows(txs.sort((a,b)=>b.date.localeCompare(a.date)), DB.getAll('bankAccounts'), DB.getAll('projects'));
+  if (wrap) wrap.innerHTML = paginateHtml('tx-table-wrap', txs.sort((a,b)=>b.date.localeCompare(a.date)), rows => buildTxRows(rows, DB.getAll('bankAccounts'), DB.getAll('projects')), { perPage: 20 });
 }
 
 function renderCashflowView(txs) {

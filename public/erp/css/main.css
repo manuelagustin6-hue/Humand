@@ -712,3 +712,35 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   color: var(--text-light);
   margin-top: 18px;
 }
+
+/* ===== PAGINATION ===== */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  grid-column: 1 / -1; /* span the full row when used inside a card grid */
+}
+.pager-info { font-size: 12px; color: var(--text-muted); }
+.pager-btns { display: flex; align-items: center; gap: 4px; }
+.pager-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+.pager-btn:hover:not(:disabled):not(.active) { background: var(--bg); border-color: var(--text-light); }
+.pager-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.pager-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pager-ellipsis { padding: 0 4px; color: var(--text-light); font-size: 13px; }

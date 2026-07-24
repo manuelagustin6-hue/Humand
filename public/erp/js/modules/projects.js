@@ -37,7 +37,7 @@ function renderProjects() {
 </div>
 
 <div id="projects-grid" class="grid-auto">
-  ${renderProjectCards(projects)}
+  ${paginateHtml('projects-grid', projects, renderProjectCards, { perPage: 12 })}
 </div>
   `;
 
@@ -116,7 +116,7 @@ function filterProjects(q, status, type) {
   if (f.type) projects = projects.filter(p => p.type === f.type);
 
   const grid = document.getElementById('projects-grid');
-  if (grid) grid.innerHTML = renderProjectCards(projects);
+  if (grid) grid.innerHTML = paginateHtml('projects-grid', projects, renderProjectCards, { perPage: 12 });
 }
 
 function openProjectDetail(id) {

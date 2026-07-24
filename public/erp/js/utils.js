@@ -211,6 +211,63 @@ class Paginator {
   }
 }
 
+// ---- REUSABLE TABLE PAGINATION ----
+// Plugs into the existing "buildXRows(items)" pattern with minimal changes:
+//   <div id="po-table-wrap">${paginateHtml('po-table-wrap', pos, rows => buildPORows(rows, ...))}</div>
+// and on filter re-render:
+//   wrap.innerHTML = paginateHtml('po-table-wrap', filtered, rows => buildPORows(rows, ...));
+// The page controls call tableGoto(), which re-slices the stored dataset — so
+// only one page of rows is ever in the DOM, no matter how many records exist.
+const _tableState = {};
+
+function paginateHtml(containerId, items, rowBuilder, opts = {}) {
+  const perPage = opts.perPage || 15;
+  const prev = _tableState[containerId];
+  const totalPages = Math.max(1, Math.ceil(items.length / perPage));
+  const page = (prev && opts.keepPage) ? Math.min(prev.page, totalPages) : 1;
+  _tableState[containerId] = { page, items, rowBuilder, perPage };
+  return _tablePageHtml(containerId);
+}
+
+function _tablePageHtml(containerId) {
+  const st = _tableState[containerId];
+  if (!st) return '';
+  const totalPages = Math.max(1, Math.ceil(st.items.length / st.perPage));
+  st.page = Math.min(Math.max(1, st.page), totalPages);
+  const start = (st.page - 1) * st.perPage;
+  const pageItems = st.items.slice(start, start + st.perPage);
+  return st.rowBuilder(pageItems) + _pagerHtml(containerId, st.items.length, st.page, totalPages, st.perPage);
+}
+
+function tableGoto(containerId, n) {
+  const st = _tableState[containerId];
+  if (!st) return;
+  st.page = n;
+  const wrap = document.getElementById(containerId);
+  if (wrap) wrap.innerHTML = _tablePageHtml(containerId);
+}
+
+function _pagerHtml(containerId, total, page, totalPages, perPage) {
+  if (totalPages <= 1) return '';
+  const from = (page - 1) * perPage + 1;
+  const to = Math.min(total, page * perPage);
+  const mk = (n, label, disabled, active) =>
+    `<button class="pager-btn${active ? ' active' : ''}" ${disabled ? 'disabled' : ''} onclick="tableGoto('${containerId}',${n})">${label}</button>`;
+  const win = 5;
+  let startP = Math.max(1, page - 2);
+  let endP = Math.min(totalPages, startP + win - 1);
+  startP = Math.max(1, endP - win + 1);
+  let btns = mk(page - 1, '<i class="fas fa-chevron-left"></i>', page <= 1, false);
+  if (startP > 1) { btns += mk(1, '1', false, page === 1); if (startP > 2) btns += '<span class="pager-ellipsis">…</span>'; }
+  for (let n = startP; n <= endP; n++) btns += mk(n, n, false, n === page);
+  if (endP < totalPages) { if (endP < totalPages - 1) btns += '<span class="pager-ellipsis">…</span>'; btns += mk(totalPages, totalPages, false, page === totalPages); }
+  btns += mk(page + 1, '<i class="fas fa-chevron-right"></i>', page >= totalPages, false);
+  return `<div class="pager">
+    <span class="pager-info">${from}-${to} de ${fmtNum(total)}</span>
+    <div class="pager-btns">${btns}</div>
+  </div>`;
+}
+
 // ---- DATE HELPERS ----
 function addDays(dateStr, days) {
   const d = new Date(dateStr + 'T00:00:00');

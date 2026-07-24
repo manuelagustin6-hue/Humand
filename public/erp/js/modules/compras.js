@@ -65,7 +65,7 @@ function renderPOTable() {
 <div class="card">
   <div class="card-body" style="padding:0">
     <div class="table-wrap" id="po-table-wrap">
-      ${buildPORows(pos, projects, suppliers)}
+      ${paginateHtml('po-table-wrap', pos, rows => buildPORows(rows, projects, suppliers))}
     </div>
   </div>
 </div>`;
@@ -112,7 +112,7 @@ function filterPOs(q, status) {
   });
   if (f.status) pos = pos.filter(po => po.status === f.status);
   const wrap = document.getElementById('po-table-wrap');
-  if (wrap) wrap.innerHTML = buildPORows(pos, DB.getAll('projects'), suppliers);
+  if (wrap) wrap.innerHTML = paginateHtml('po-table-wrap', pos, rows => buildPORows(rows, DB.getAll('projects'), suppliers));
 }
 
 function viewPO(id) {
@@ -355,7 +355,7 @@ function renderSuppliersTable() {
 <div class="card">
   <div class="card-body" style="padding:0">
     <div class="table-wrap" id="suppliers-table-wrap">
-      ${buildSupplierRows(suppliers)}
+      ${paginateHtml('suppliers-table-wrap', suppliers, buildSupplierRows)}
     </div>
   </div>
 </div>`;
@@ -388,7 +388,7 @@ function filterSuppliers(q) {
   let sups = DB.getAll('suppliers');
   if (q) sups = sups.filter(s => s.name.toLowerCase().includes(q) || s.cuit.includes(q) || s.contact.toLowerCase().includes(q));
   const wrap = document.getElementById('suppliers-table-wrap');
-  if (wrap) wrap.innerHTML = buildSupplierRows(sups);
+  if (wrap) wrap.innerHTML = paginateHtml('suppliers-table-wrap', sups, buildSupplierRows);
 }
 
 function openSupplierForm(id = null) {

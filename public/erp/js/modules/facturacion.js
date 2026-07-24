@@ -58,7 +58,7 @@ function renderFacturacion() {
 <div class="card">
   <div class="card-body" style="padding:0">
     <div class="table-wrap" id="inv-table-wrap">
-      ${buildInvoiceRows(invoices, projects, collections)}
+      ${paginateHtml('inv-table-wrap', invoices, rows => buildInvoiceRows(rows, projects, collections))}
     </div>
   </div>
 </div>
@@ -112,7 +112,7 @@ function filterInvoices(q, status, project) {
   if (f.status) invs = invs.filter(i => i.status === f.status);
   if (f.project) invs = invs.filter(i => i.project_id === f.project);
   const wrap = document.getElementById('inv-table-wrap');
-  if (wrap) wrap.innerHTML = buildInvoiceRows(invs, DB.getAll('projects'), DB.getAll('collections'));
+  if (wrap) wrap.innerHTML = paginateHtml('inv-table-wrap', invs, rows => buildInvoiceRows(rows, DB.getAll('projects'), DB.getAll('collections')));
 }
 
 function viewInvoice(id) {

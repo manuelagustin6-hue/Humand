@@ -53,14 +53,14 @@ function renderJournal(entries) {
   <input type="date" class="form-control" style="width:140px" placeholder="Hasta" oninput="filterJE(undefined, undefined, this.value)">
 </div>
 <div id="je-list">
-  ${buildJEList(entries)}
+  ${paginateHtml('je-list', entries.slice().sort((a,b) => b.date.localeCompare(a.date)), buildJEList, { perPage: 10 })}
 </div>`;
 }
 
 function buildJEList(entries) {
   if (!entries.length) return `<div class="empty-state"><i class="fas fa-book"></i><p>No hay asientos contables</p></div>`;
 
-  return entries.slice().sort((a,b) => b.date.localeCompare(a.date)).map(e => {
+  return entries.map(e => {
     const totalDebit = e.lines.reduce((s,l) => s + (l.debit||0), 0);
     const totalCredit = e.lines.reduce((s,l) => s + (l.credit||0), 0);
     return `
@@ -117,7 +117,7 @@ function filterJE(q, from, to) {
   if (from) entries = entries.filter(e => e.date >= from);
   if (to) entries = entries.filter(e => e.date <= to);
   const list = document.getElementById('je-list');
-  if (list) list.innerHTML = buildJEList(entries);
+  if (list) list.innerHTML = paginateHtml('je-list', entries.sort((a,b) => b.date.localeCompare(a.date)), buildJEList, { perPage: 10 });
 }
 
 // ---- BALANCE SHEET ----
