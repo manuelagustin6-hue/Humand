@@ -226,10 +226,16 @@ function importCuentasDesdeExcel(input) {
 // ---- JOURNAL ----
 window._jeFilters = { q:'', from:'', to:'', currency:'', counterparty:'' };
 
+// Moneda efectiva de un asiento: la propia, o la de su razón social (empresa).
+function _jeCur(e) { return (e && (e.currency || e._company_currency)) || ''; }
+
 // Valores distintos presentes en los asientos consolidados (para poblar selectores).
 function _jeDistinct(field) {
   var seen = {};
-  DB.getAllConsolidated('journalEntries').forEach(function(e){ var v = ((e && e[field]) || '').trim(); if (v) seen[v] = true; });
+  DB.getAllConsolidated('journalEntries').forEach(function(e){
+    var v = (field === 'currency') ? _jeCur(e) : (((e && e[field]) || '') + '');
+    v = (v || '').trim(); if (v) seen[v] = true;
+  });
   return Object.keys(seen).sort();
 }
 
@@ -241,7 +247,7 @@ function _jeApplyFilters() {
   if (f.q)  entries = entries.filter(e => (e.number||'').toLowerCase().includes(f.q) || (e.description||'').toLowerCase().includes(f.q));
   if (f.from) entries = entries.filter(e => (e.date||'') >= f.from);
   if (f.to)   entries = entries.filter(e => (e.date||'') <= f.to);
-  if (f.currency)     entries = entries.filter(e => (e.currency||'') === f.currency);
+  if (f.currency)     entries = entries.filter(e => _jeCur(e) === f.currency);
   if (f.counterparty) entries = entries.filter(e => (e.counterparty||'') === f.counterparty);
   return entries;
 }
@@ -250,7 +256,7 @@ function _jeApplyFilters() {
 function _jeSummaryHtml(entries) {
   var byCur = {};
   entries.forEach(function(e){
-    var cur = (e.currency||'').trim() || '—';
+    var cur = _jeCur(e) || '—';
     var deb = (e.lines||[]).reduce(function(s,l){ return s + (l.debit||0); }, 0);
     byCur[cur] = (byCur[cur] || 0) + deb;
   });
@@ -260,7 +266,7 @@ function _jeSummaryHtml(entries) {
     keys.map(function(c){
       return '<div class="card" style="padding:8px 14px;min-width:120px">' +
         '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px">' + escapeHtml(c) + '</div>' +
-        '<div style="font-size:15px;font-weight:700">' + fmtMoney(byCur[c]) + '</div></div>';
+        '<div style="font-size:15px;font-weight:700">' + fmtMoney(byCur[c], c === '—' ? undefined : c) + '</div></div>';
     }).join('') + '</div>';
 }
 
@@ -275,7 +281,7 @@ function _jeRefresh() {
 // Opciones de moneda: monedas configuradas + las presentes en asientos.
 function _jeCurrencyOptions() {
   var set = {};
-  (typeof DB.getAllCurrencies==='function'?DB.getAllCurrencies():[]).forEach(function(c){ if(c && c.code) set[c.code]=true; });
+  (typeof DB.getAllCurrencies==='function'?DB.getAllCurrencies():[]).forEach(function(c){ if(c && c.id) set[c.id]=true; });
   _jeDistinct('currency').forEach(function(c){ set[c]=true; });
   return Object.keys(set).sort();
 }
@@ -320,6 +326,7 @@ function buildJEList(entries) {
   return entries.slice().sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(e => {
     const totalDebit = (e.lines||[]).reduce((s,l) => s + (l.debit||0), 0);
     const totalCredit = (e.lines||[]).reduce((s,l) => s + (l.credit||0), 0);
+    const _cur = _jeCur(e);
     return `
 <div class="card mb-2" id="je-${e.id}">
   <div class="card-header" style="cursor:pointer" onclick="toggleJE('${e.id}')">
@@ -329,9 +336,9 @@ function buildJEList(entries) {
       <span style="flex:1;font-size:13px">${e.description}</span>
       ${(!window._contaCompanyId && e._company_name) ? `<span class="badge badge-blue" style="font-weight:500" title="Razón social">${escapeHtml(e._company_name)}</span>` : ''}
       ${e.counterparty ? `<span class="badge badge-gray" style="font-weight:500" title="Contraparte">${escapeHtml(e.counterparty)}</span>` : ''}
-      ${e.currency ? `<span class="badge" style="background:var(--bg);color:var(--text-muted)" title="Moneda de origen">${escapeHtml(e.currency)}</span>` : ''}
+      ${_cur ? `<span class="badge" style="background:var(--bg);color:var(--text-muted)" title="Moneda">${escapeHtml(_cur)}</span>` : ''}
       ${statusBadge(e.status)}
-      <span class="badge badge-blue">${fmtMoney(totalDebit)}</span>
+      <span class="badge badge-blue">${fmtMoney(totalDebit, _cur || undefined)}</span>
     </div>
     <div style="display:flex;gap:6px">
       <button class="btn-ghost btn btn-sm" onclick="event.stopPropagation(); openJEForm('${e.id}')"><i class="fas fa-edit"></i></button>
@@ -651,7 +658,7 @@ function openJEForm(id = null) {
     <label class="form-label">Moneda de origen</label>
     <select class="form-control" id="je-currency">
       <option value="">— Sin especificar —</option>
-      ${(typeof DB.getAllCurrencies==='function'?DB.getAllCurrencies():[]).map(c=>`<option value="${c.code}" ${e?.currency===c.code?'selected':''}>${escapeHtml(c.code)}${c.name?' — '+escapeHtml(c.name):''}</option>`).join('')}
+      ${(typeof DB.getAllCurrencies==='function'?DB.getAllCurrencies():[]).map(c=>`<option value="${c.id}" ${e?.currency===c.id?'selected':''}>${escapeHtml(c.id)}${c.name?' — '+escapeHtml(c.name):''}</option>`).join('')}
     </select>
   </div>
   <div class="form-group">
