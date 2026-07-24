@@ -619,14 +619,14 @@ const DB = {
   // aparecen hasta visitarlas / pullearlas; ver ensureAllCompaniesLoaded.)
   getAllConsolidated: function(collection) {
     if (collection === 'users') return this._globalUsers();
-    var names = {};
-    try { (this.getAllCompanies() || []).forEach(function(c) { names[c.id] = c.legalName || c.name || c.id; }); } catch(e) {}
+    var names = {}, curr = {};
+    try { (this.getAllCompanies() || []).forEach(function(c) { names[c.id] = c.legalName || c.name || c.id; curr[c.id] = c.currency || 'ARS'; }); } catch(e) {}
     var out = [], active = this._companyId, self = this;
     function push(cid, data) {
       if (data && Array.isArray(data[collection])) {
-        var nm = names[cid] || cid;
+        var nm = names[cid] || cid, cu = curr[cid] || 'ARS';
         data[collection].forEach(function(rec) {
-          out.push(Object.assign({}, rec, { _company_id: cid, _company_name: nm }));
+          out.push(Object.assign({}, rec, { _company_id: cid, _company_name: nm, _company_currency: cu }));
         });
       }
     }
