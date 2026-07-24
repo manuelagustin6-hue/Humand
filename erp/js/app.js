@@ -423,8 +423,9 @@ function populateCompanySelector() {
   var companies = DB.getAllCompanies();
   var activeId  = window.APP_STATE.activeCompany || 'comp-001';
   var flags = { AR: '🇦🇷', UY: '🇺🇾', US: '🇺🇸', CL: '🇨🇱', BR: '🇧🇷' };
-  var allOption = '<option value=""' + (activeId === '' ? ' selected' : '') + '>🌐 Todas las empresas</option>';
-  sel.innerHTML = allOption + companies.map(function(c) {
+  // Nota: no hay opción "Todas las empresas" — la app opera una razón social por vez
+  // (los datos son por empresa). Para consolidado multi-empresa haría falta una vista aparte.
+  sel.innerHTML = companies.map(function(c) {
     var flag = flags[c.country] || '🏢';
     var label = flag + ' ' + (c.legalName || c.name);
     return '<option value="' + c.id + '"' + (c.id === activeId ? ' selected' : '') + '>' + label + '</option>';
