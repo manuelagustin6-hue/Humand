@@ -773,6 +773,27 @@ function doLogin() {
   });
 }
 
+// Encuentra la empresa donde `email` es un usuario ACTIVO. Prefiere `preferred`;
+// si ahí no figura, escanea las empresas disponibles (localStorage/global). Así el
+// login por Auth no deja al usuario en una empresa ajena (con rol viewer).
+function _resolveUserCompany(email, preferred) {
+  var e = (email || '').toLowerCase();
+  // Lee el blob de la empresa directo de localStorage (sin DB.setCompany/init,
+  // para no sembrar datos demo en empresas vacías al escanear).
+  function activeIn(cid) {
+    try {
+      var raw = localStorage.getItem('erp_company_' + cid + '_v1');
+      if (!raw) return false;
+      var data = JSON.parse(raw);
+      return (data.users || []).some(function(u) { return (u.email || '').toLowerCase() === e && u.active; });
+    } catch (x) { return false; }
+  }
+  if (preferred && activeIn(preferred)) return preferred;
+  var ids = (typeof _loginScanCompanyIds === 'function') ? _loginScanCompanyIds() : [];
+  for (var i = 0; i < ids.length; i++) { if (activeIn(ids[i])) return ids[i]; }
+  return preferred;   // no se encontró en ninguna: quedarse con la preferida
+}
+
 // Called after a successful Supabase signIn
 function _afterSupaLogin(session, email) {
   // CRITICAL: set _SUPA.session so all subsequent DB operations use the JWT
@@ -781,7 +802,11 @@ function _afterSupaLogin(session, email) {
   _SUPA.selfMembership();   // completa la membresía (RLS) según los usuarios de la app
 
   var meta = (session.user && session.user.user_metadata) || {};
-  var companyId = meta.company_id || window.APP_STATE.activeCompany || 'comp-001';
+  // Elegir la empresa donde el usuario es un usuario ACTIVO real. Preferimos la de
+  // la metadata, pero si ahí no figura, escaneamos las empresas para no dejarlo
+  // como "viewer/solo lectura" en una empresa a la que no pertenece.
+  var candidate = meta.company_id || window.APP_STATE.activeCompany || 'comp-001';
+  var companyId = _resolveUserCompany(email, candidate);
   DB.setCompany(companyId);
   window.APP_STATE.activeCompany = companyId;
   try { localStorage.setItem('erp_active_company', companyId); } catch(e) {}
