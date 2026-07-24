@@ -165,18 +165,73 @@ function importCuentasDesdeExcel(input) {
 }
 
 // ---- JOURNAL ----
+window._jeFilters = { q:'', from:'', to:'', currency:'', counterparty:'' };
+
+// Valores distintos presentes en los asientos para poblar los selectores.
+function _jeDistinct(field) {
+  var seen = {};
+  DB.getAll('journalEntries').forEach(function(e){ var v = ((e && e[field]) || '').trim(); if (v) seen[v] = true; });
+  return Object.keys(seen).sort();
+}
+
+// Asientos filtrados: proyecto del header + filtros de la barra.
+function _jeApplyFilters() {
+  var f = window._jeFilters;
+  var entries = filterByActiveProject(DB.getAll('journalEntries'));   // proyecto del header
+  if (f.q)  entries = entries.filter(e => (e.number||'').toLowerCase().includes(f.q) || (e.description||'').toLowerCase().includes(f.q));
+  if (f.from) entries = entries.filter(e => (e.date||'') >= f.from);
+  if (f.to)   entries = entries.filter(e => (e.date||'') <= f.to);
+  if (f.currency)     entries = entries.filter(e => (e.currency||'') === f.currency);
+  if (f.counterparty) entries = entries.filter(e => (e.counterparty||'') === f.counterparty);
+  return entries;
+}
+
+// Totales de débito agrupados por moneda de origen (los asientos sin moneda van a "—").
+function _jeSummaryHtml(entries) {
+  var byCur = {};
+  entries.forEach(function(e){
+    var cur = (e.currency||'').trim() || '—';
+    var deb = (e.lines||[]).reduce(function(s,l){ return s + (l.debit||0); }, 0);
+    byCur[cur] = (byCur[cur] || 0) + deb;
+  });
+  var keys = Object.keys(byCur).sort();
+  if (!keys.length) return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">' +
+    keys.map(function(c){
+      return '<div class="card" style="padding:8px 14px;min-width:120px">' +
+        '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px">' + escapeHtml(c) + '</div>' +
+        '<div style="font-size:15px;font-weight:700">' + fmtMoney(byCur[c]) + '</div></div>';
+    }).join('') + '</div>';
+}
+
+function _jeRefresh() {
+  var entries = _jeApplyFilters();
+  var list = document.getElementById('je-list');
+  if (list) list.innerHTML = buildJEList(entries);
+  var sum = document.getElementById('je-summary');
+  if (sum) sum.innerHTML = _jeSummaryHtml(entries);
+}
+
 function renderJournal(entries) {
+  var currencies = _jeDistinct('currency');
+  var parties    = _jeDistinct('counterparty');
+  var filtered   = _jeApplyFilters();
   return `
 <div class="filter-bar">
   <div class="search-input-wrap">
     <i class="fas fa-search"></i>
-    <input type="text" placeholder="Buscar asiento..." oninput="filterJE(this.value)">
+    <input type="text" placeholder="Buscar asiento..." oninput="window._jeFilters.q=this.value.toLowerCase(); _jeRefresh()">
   </div>
-  <input type="date" class="form-control" style="width:140px" placeholder="Desde" oninput="filterJE(undefined, this.value)">
-  <input type="date" class="form-control" style="width:140px" placeholder="Hasta" oninput="filterJE(undefined, undefined, this.value)">
+  <input type="date" class="form-control" style="width:140px" title="Desde" oninput="window._jeFilters.from=this.value; _jeRefresh()">
+  <input type="date" class="form-control" style="width:140px" title="Hasta" oninput="window._jeFilters.to=this.value; _jeRefresh()">
+  ${currencies.length ? `<select class="form-control" style="width:140px" onchange="window._jeFilters.currency=this.value; _jeRefresh()">
+    <option value="">Toda moneda</option>${currencies.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>` : ''}
+  ${parties.length ? `<select class="form-control" style="width:200px" onchange="window._jeFilters.counterparty=this.value; _jeRefresh()">
+    <option value="">Toda razón social</option>${parties.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}</select>` : ''}
 </div>
+<div id="je-summary">${_jeSummaryHtml(filtered)}</div>
 <div id="je-list">
-  ${buildJEList(entries)}
+  ${buildJEList(filtered)}
 </div>`;
 }
 
@@ -193,6 +248,8 @@ function buildJEList(entries) {
       <span style="font-size:13px;font-weight:700">${e.number}</span>
       <span style="font-size:12px;color:var(--text-muted)">${fmtDate(e.date)}</span>
       <span style="flex:1;font-size:13px">${e.description}</span>
+      ${e.counterparty ? `<span class="badge badge-gray" style="font-weight:500" title="Razón social">${escapeHtml(e.counterparty)}</span>` : ''}
+      ${e.currency ? `<span class="badge" style="background:var(--bg);color:var(--text-muted)" title="Moneda de origen">${escapeHtml(e.currency)}</span>` : ''}
       ${statusBadge(e.status)}
       <span class="badge badge-blue">${fmtMoney(totalDebit)}</span>
     </div>
@@ -503,6 +560,24 @@ function openJEForm(id = null) {
     <label class="form-label">Descripción *</label>
     <input class="form-control" id="je-desc" value="${e?.description || ''}">
   </div>
+  <div class="form-group">
+    <label class="form-label">Proyecto</label>
+    <select class="form-control" id="je-project">
+      <option value="">— Sin proyecto —</option>
+      ${DB.getAll('projects').map(p=>`<option value="${p.id}" ${e?.project_id===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Moneda de origen</label>
+    <select class="form-control" id="je-currency">
+      <option value="">— Sin especificar —</option>
+      ${(typeof DB.getAllCurrencies==='function'?DB.getAllCurrencies():[]).map(c=>`<option value="${c.code}" ${e?.currency===c.code?'selected':''}>${escapeHtml(c.code)}${c.name?' — '+escapeHtml(c.name):''}</option>`).join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Razón social (contraparte)</label>
+    <input class="form-control" id="je-counterparty" value="${e?.counterparty?escapeHtml(e.counterparty):''}" placeholder="Cliente / proveedor (opcional)">
+  </div>
 </div>
 <div class="divider"></div>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -639,6 +714,9 @@ async function saveJE(id) {
     date: document.getElementById('je-date').value,
     description,
     status: document.getElementById('je-status').value,
+    project_id:   (document.getElementById('je-project')  || {}).value || '',
+    currency:     (document.getElementById('je-currency') || {}).value || '',
+    counterparty: ((document.getElementById('je-counterparty') || {}).value || '').trim(),
     lines,
   };
 

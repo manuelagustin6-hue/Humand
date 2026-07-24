@@ -658,7 +658,8 @@ async function saveInvoice(id) {
 
   // Generate journal entry from imputacion lines
   if (typeof autoJournalEntryFromImputacion === 'function') {
-    autoJournalEntryFromImputacion('fact_emitida', imputacion, subtotal, data.total, { iva: tax }, data.date, data.number);
+    autoJournalEntryFromImputacion('fact_emitida', imputacion, subtotal, data.total, { iva: tax }, data.date, data.number,
+      { project_id: data.project_id || '', counterparty: data.client_name || '', currency: data.currency || '' });
   }
 
   window._invItems = [];

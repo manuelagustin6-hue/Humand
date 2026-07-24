@@ -1608,7 +1608,9 @@ function saveSI(id) {
     var jeTaxes = { iva: tax };
     if (percIva  > 0) jeTaxes.percIva  = percIva;
     if (percIibb > 0) jeTaxes.percIibb = percIibb;
-    autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, jeTaxes, data.date, data.number);
+    var _sup = DB.getById('suppliers', supplierId) || {};
+    autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, jeTaxes, data.date, data.number,
+      { project_id: data.project_id || '', counterparty: _sup.name || _sup.legal_name || '', currency: data.currency || '' });
   }
 
   // Upload pending files async (after save so we have the record ID)
