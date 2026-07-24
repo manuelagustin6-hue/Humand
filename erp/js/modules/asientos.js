@@ -305,6 +305,9 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
       status: 'posted',
       auto_generated: true,
       operation_type: operationTypeId,
+      project_id:   opts.project_id || '',    // dimensiones para filtrar Contabilidad
+      currency:     opts.currency || '',
+      counterparty: opts.counterparty || '',
       lines: isDebit ? [mainLine, counterLine] : [counterLine, mainLine],
     };
 
@@ -320,12 +323,13 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
 // total  = full invoice total (what goes to AP/AR counter account)
 // taxes  = { iva, percIva, percIibb } — optional tax amounts for separate ledger lines
 // imputacion = [{account_code, account_name, amount}, ...]
-function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total, taxes, date, ref) {
+function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total, taxes, date, ref, opts) {
   try {
+    opts = opts || {};
     var cfg = ajGetConfig(operationTypeId);
     if (!cfg || !cfg.active || !cfg.account) return null;
     var validLines = (imputacion || []).filter(function(l) { return l.account_code && l.amount > 0; });
-    if (!validLines.length) return autoJournalEntry(operationTypeId, total, date, ref, '');
+    if (!validLines.length) return autoJournalEntry(operationTypeId, total, date, ref, '', opts);
     taxes = taxes || {};
 
     var concept = (cfg.concept_template || 'Asiento auto - {ref}')
@@ -405,6 +409,9 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
       status: 'posted',
       auto_generated: true,
       operation_type: operationTypeId,
+      project_id:   opts.project_id || '',    // dimensiones para filtrar Contabilidad
+      currency:     opts.currency || '',
+      counterparty: opts.counterparty || '',
       lines: lines,
     };
     return DB.insert('journalEntries', entry);
