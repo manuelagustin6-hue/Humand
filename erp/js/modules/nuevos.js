@@ -272,37 +272,54 @@ function _contaHeader(title, subtitle, actions) {
     (actions ? '<div class="page-actions">' + actions + '</div>' : '') + '</div>';
 }
 
+// Trae en segundo plano los datos de todas las empresas (para el consolidado) y
+// re-renderiza el módulo actual cuando termina. Idempotente.
+function _contaEnsureConsolidated(reRenderFn) {
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._contaLoadedAll) {
+    window._contaLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok) { if (ok) { try { reRenderFn(); } catch(e) {} } });
+  }
+}
+
 function renderContaDiario() {
-  var entries = DB.getAll('journalEntries');
+  _contaEnsureConsolidated(renderContaDiario);
+  var entries = _contaScopedEntries();          // consolidado + scope (proyecto/razón social)
   document.getElementById('content').innerHTML =
     _contaHeader('Libro Diario', entries.length + ' asientos contables',
       '<button class="btn btn-secondary" onclick="exportJournal()"><i class="fas fa-download"></i> Exportar</button>' +
       '<button class="btn btn-primary" onclick="openJEForm()"><i class="fas fa-plus"></i> Nuevo Asiento</button>') +
+    _contaScopeBar() +
     renderJournal(entries);
 }
 
 function renderContaSumas() {
-  var accounts = DB.getAll('accounts');
-  var entries = DB.getAll('journalEntries');
+  _contaEnsureConsolidated(renderContaSumas);
+  var accounts = _contaScopedAccounts();
+  var entries = _contaScopedEntries();
   document.getElementById('content').innerHTML =
     _contaHeader('Sumas y Saldos', 'Balance de comprobación') +
+    _contaScopeBar() +
     renderSumasYSaldosContabilidad(accounts, entries);
 }
 
 function renderContaBalance() {
-  var accounts = DB.getAll('accounts');
-  var entries = DB.getAll('journalEntries');
+  _contaEnsureConsolidated(renderContaBalance);
+  var accounts = _contaScopedAccounts();
+  var entries = _contaScopedEntries();
   document.getElementById('content').innerHTML =
     _contaHeader('Balance General', 'Estado de situación patrimonial') +
+    _contaScopeBar() +
     renderBalance(accounts, entries);
   setTimeout(function() { renderResultsChart(accounts, entries); }, 100);
 }
 
 function renderContaResultados() {
-  var accounts = DB.getAll('accounts');
-  var entries = DB.getAll('journalEntries');
+  _contaEnsureConsolidated(renderContaResultados);
+  var accounts = _contaScopedAccounts();
+  var entries = _contaScopedEntries();
   document.getElementById('content').innerHTML =
     _contaHeader('Estado de Resultados', 'Ingresos y egresos del ejercicio') +
+    _contaScopeBar() +
     renderResults(accounts, entries);
   setTimeout(function() { renderResultsChart(accounts, entries); }, 100);
 }
