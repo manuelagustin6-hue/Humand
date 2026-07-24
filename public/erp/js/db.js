@@ -610,6 +610,61 @@ const DB = {
     return this.get()[collection] || [];
   },
 
+  // ---- LECTURA CONSOLIDADA (multi-razón social) ----
+  // Devuelve los registros de `collection` de TODAS las razones sociales (empresas)
+  // juntas, cada uno TAGUEADO con su empresa de origen: _company_id / _company_name.
+  // Así "razón social" se vuelve un filtro sin tener que rellenar company_id en los
+  // registros viejos. Lee la empresa activa desde el cache (fresco) y el resto desde
+  // sus blobs de localStorage. (Empresas nunca abiertas en este dispositivo no
+  // aparecen hasta visitarlas / pullearlas; ver ensureAllCompaniesLoaded.)
+  getAllConsolidated: function(collection) {
+    if (collection === 'users') return this._globalUsers();
+    var names = {};
+    try { (this.getAllCompanies() || []).forEach(function(c) { names[c.id] = c.legalName || c.name || c.id; }); } catch(e) {}
+    var out = [], active = this._companyId, self = this;
+    function push(cid, data) {
+      if (data && Array.isArray(data[collection])) {
+        var nm = names[cid] || cid;
+        data[collection].forEach(function(rec) {
+          out.push(Object.assign({}, rec, { _company_id: cid, _company_name: nm }));
+        });
+      }
+    }
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (!key || !/^erp_company_.+_v1$/.test(key)) continue;
+        var cid = key.replace('erp_company_', '').replace(/_v1$/, '');
+        if (cid === active) { push(cid, this.get()); }        // activa: datos frescos del cache
+        else { try { push(cid, JSON.parse(localStorage.getItem(key))); } catch(e) {} }
+      }
+    } catch(e) {}
+    return out;
+  },
+
+  // Proyectos de TODAS las razones sociales, tagueados con su empresa de origen.
+  getAllProjectsConsolidated: function() { return this.getAllConsolidated('projects'); },
+
+  // Trae de Supabase los datos de todas las empresas que aún no estén en localStorage,
+  // para que la vista consolidada sea completa. Devuelve una promesa.
+  ensureAllCompaniesLoaded: async function() {
+    if (!_SUPA.online) return false;
+    var companies = [];
+    try { companies = this.getAllCompanies() || []; } catch(e) {}
+    var active = this._companyId;
+    for (var i = 0; i < companies.length; i++) {
+      var cid = companies[i].id;
+      if (cid === active) continue;
+      if (localStorage.getItem('erp_company_' + cid + '_v1')) continue;   // ya está local
+      try {
+        var remote = await _SUPA.pull(cid);
+        if (remote && remote._global) delete remote._global;
+        localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote || {}));
+      } catch(e) {}
+    }
+    return true;
+  },
+
   getById(collection, id) {
     return this.getAll(collection).find(function(x) { return x.id === id; }) || null;
   },

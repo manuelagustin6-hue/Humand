@@ -1,36 +1,73 @@
 /* ===== CONTABILIDAD ===== */
 
+// Scope de Contabilidad (modelo consolidado):
+//   _contaProject   '' = General (todos los proyectos) | <projectId>
+//   _contaCompanyId '' = Todas las razones sociales     | <companyId>
+window._contaProject   = '';
 window._contaCompanyId = '';
 
-function _contaCompanyBar() {
-  var companies = DB.getAllCompanies();
-  if (companies.length <= 1) return '';
-  var activeId = window._contaCompanyId || (window.APP_STATE && window.APP_STATE.activeCompany) || '';
-  var opts = companies.map(function(c) {
-    return '<option value="' + c.id + '"' + (c.id === activeId ? ' selected' : '') + '>' + c.name + '</option>';
-  }).join('');
-  return '<div class="conta-company-bar">' +
-    '<i class="fas fa-city"></i>' +
-    '<span class="conta-company-label">Razón Social</span>' +
-    '<select class="form-control conta-company-sel" onchange="contaSetCompany(this.value)">' + opts + '</select>' +
+// Barra de scope: Proyecto (eje primario, con "General") + Razón social (filtro).
+function _contaScopeBar() {
+  var companies = DB.getAllCompanies() || [];
+  var projects  = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
+  var seenP = {}, projList = [];
+  projects.forEach(function(p) { if (p && p.id && !seenP[p.id]) { seenP[p.id] = true; projList.push(p); } });
+  projList.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+
+  var projOpts = '<option value="">🌐 General (todos los proyectos)</option>' +
+    projList.map(function(p) { return '<option value="' + p.id + '"' + (p.id === window._contaProject ? ' selected' : '') + '>' + escapeHtml(p.name || '(sin nombre)') + '</option>'; }).join('');
+  var coOpts = '<option value="">Todas las razones sociales</option>' +
+    companies.map(function(c) { return '<option value="' + c.id + '"' + (c.id === window._contaCompanyId ? ' selected' : '') + '>' + escapeHtml(c.legalName || c.name) + '</option>'; }).join('');
+
+  return '<div class="conta-company-bar" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">' +
+    '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-diagram-project" style="color:var(--primary)"></i>' +
+      '<span class="conta-company-label">Proyecto</span>' +
+      '<select class="form-control conta-company-sel" onchange="contaSetProject(this.value)">' + projOpts + '</select></div>' +
+    '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-city" style="color:var(--primary)"></i>' +
+      '<span class="conta-company-label">Razón Social</span>' +
+      '<select class="form-control conta-company-sel" onchange="contaSetCompany(this.value)">' + coOpts + '</select></div>' +
     '</div>';
 }
 
-function contaSetCompany(id) {
-  if (!id) return;
-  window._contaCompanyId = id;
-  DB.setCompany(id);
-  if (window.APP_STATE) window.APP_STATE.activeCompany = id;
+function contaSetProject(id) {
+  window._contaProject = id || '';
   var mod = window.APP_STATE && window.APP_STATE.currentModule;
-  if (mod === 'conta_mayores') renderContaMayores();
-  else renderContabilidad();
+  if (mod === 'conta_mayores') renderContaMayores(); else renderContabilidad();
+}
+
+function contaSetCompany(id) {
+  window._contaCompanyId = id || '';
+  // Al elegir una razón social puntual la ponemos como empresa activa (para que
+  // "Nuevo Asiento" opere sobre ella). En "Todas" se conserva la activa.
+  if (id) { DB.setCompany(id); if (window.APP_STATE) window.APP_STATE.activeCompany = id; }
+  var mod = window.APP_STATE && window.APP_STATE.currentModule;
+  if (mod === 'conta_mayores') renderContaMayores(); else renderContabilidad();
+}
+
+// Asientos consolidados (todas las razones sociales) filtrados por el scope activo.
+function _contaScopedEntries() {
+  var entries = DB.getAllConsolidated('journalEntries');
+  if (window._contaCompanyId) entries = entries.filter(function(e) { return e._company_id === window._contaCompanyId; });
+  if (window._contaProject)   entries = entries.filter(function(e) { return (e.project_id || '') === window._contaProject; });
+  return entries;
+}
+// Plan de cuentas del scope: de la razón social elegida, o consolidado (dedupe por código).
+function _contaScopedAccounts() {
+  var accounts = DB.getAllConsolidated('accounts');
+  if (window._contaCompanyId) return accounts.filter(function(a) { return a._company_id === window._contaCompanyId; });
+  var seen = {}, out = [];
+  accounts.forEach(function(a) { var k = a.code || a.id; if (!seen[k]) { seen[k] = true; out.push(a); } });
+  return out;
 }
 
 function renderContabilidad() {
-  var cid = window._contaCompanyId || (window.APP_STATE && window.APP_STATE.activeCompany) || '';
-  if (cid) { window._contaCompanyId = cid; DB.setCompany(cid); }
-  const entries = DB.getAll('journalEntries');
-  const accounts = DB.getAll('accounts');
+  // Completar en segundo plano los datos de todas las empresas (para el consolidado).
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._contaLoadedAll) {
+    window._contaLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok) { if (ok) { try { renderContabilidad(); } catch(e) {} } });
+  }
+  const entries = _contaScopedEntries();
+  const accounts = _contaScopedAccounts();
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -44,7 +81,7 @@ function renderContabilidad() {
   </div>
 </div>
 
-${_contaCompanyBar()}
+${_contaScopeBar()}
 
 <div id="conta-tabs">
   <div class="tabs">
@@ -167,17 +204,18 @@ function importCuentasDesdeExcel(input) {
 // ---- JOURNAL ----
 window._jeFilters = { q:'', from:'', to:'', currency:'', counterparty:'' };
 
-// Valores distintos presentes en los asientos para poblar los selectores.
+// Valores distintos presentes en los asientos consolidados (para poblar selectores).
 function _jeDistinct(field) {
   var seen = {};
-  DB.getAll('journalEntries').forEach(function(e){ var v = ((e && e[field]) || '').trim(); if (v) seen[v] = true; });
+  DB.getAllConsolidated('journalEntries').forEach(function(e){ var v = ((e && e[field]) || '').trim(); if (v) seen[v] = true; });
   return Object.keys(seen).sort();
 }
 
-// Asientos filtrados: proyecto del header + filtros de la barra.
+// Asientos filtrados: base = scope de Contabilidad (consolidado + proyecto + razón
+// social) y sobre eso los filtros propios del Libro Diario.
 function _jeApplyFilters() {
   var f = window._jeFilters;
-  var entries = filterByActiveProject(DB.getAll('journalEntries'));   // proyecto del header
+  var entries = _contaScopedEntries();
   if (f.q)  entries = entries.filter(e => (e.number||'').toLowerCase().includes(f.q) || (e.description||'').toLowerCase().includes(f.q));
   if (f.from) entries = entries.filter(e => (e.date||'') >= f.from);
   if (f.to)   entries = entries.filter(e => (e.date||'') <= f.to);
@@ -244,8 +282,8 @@ function renderJournal(entries) {
   <select class="form-control" style="width:150px" title="Moneda de origen" onchange="window._jeFilters.currency=this.value; _jeRefresh()">
     <option value="">Toda moneda</option>${currencies.map(c=>`<option value="${escapeHtml(c)}" ${f.currency===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
   </select>
-  <select class="form-control" style="width:210px" title="Razón social" onchange="window._jeFilters.counterparty=this.value; _jeRefresh()">
-    <option value="">Toda razón social</option>${parties.map(p=>`<option value="${escapeHtml(p)}" ${f.counterparty===p?'selected':''}>${escapeHtml(p)}</option>`).join('')}
+  <select class="form-control" style="width:210px" title="Contraparte (cliente/proveedor)" onchange="window._jeFilters.counterparty=this.value; _jeRefresh()">
+    <option value="">Toda contraparte</option>${parties.map(p=>`<option value="${escapeHtml(p)}" ${f.counterparty===p?'selected':''}>${escapeHtml(p)}</option>`).join('')}
   </select>
 </div>
 <div id="je-summary">${_jeSummaryHtml(filtered)}</div>
@@ -267,7 +305,8 @@ function buildJEList(entries) {
       <span style="font-size:13px;font-weight:700">${e.number}</span>
       <span style="font-size:12px;color:var(--text-muted)">${fmtDate(e.date)}</span>
       <span style="flex:1;font-size:13px">${e.description}</span>
-      ${e.counterparty ? `<span class="badge badge-gray" style="font-weight:500" title="Razón social">${escapeHtml(e.counterparty)}</span>` : ''}
+      ${(!window._contaCompanyId && e._company_name) ? `<span class="badge badge-blue" style="font-weight:500" title="Razón social">${escapeHtml(e._company_name)}</span>` : ''}
+      ${e.counterparty ? `<span class="badge badge-gray" style="font-weight:500" title="Contraparte">${escapeHtml(e.counterparty)}</span>` : ''}
       ${e.currency ? `<span class="badge" style="background:var(--bg);color:var(--text-muted)" title="Moneda de origen">${escapeHtml(e.currency)}</span>` : ''}
       ${statusBadge(e.status)}
       <span class="badge badge-blue">${fmtMoney(totalDebit)}</span>
@@ -583,7 +622,7 @@ function openJEForm(id = null) {
     <label class="form-label">Proyecto</label>
     <select class="form-control" id="je-project">
       <option value="">— Sin proyecto —</option>
-      ${DB.getAll('projects').map(p=>`<option value="${p.id}" ${e?.project_id===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+      ${((typeof DB.getAllProjectsConsolidated==='function'?DB.getAllProjectsConsolidated():DB.getAll('projects')).filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i)).map(p=>`<option value="${p.id}" ${e?.project_id===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
     </select>
   </div>
   <div class="form-group">
@@ -831,7 +870,7 @@ function deleteAccount(id) {
 }
 
 function exportJournal() {
-  const entries = DB.getAll('journalEntries');
+  const entries = _contaScopedEntries();   // exporta lo que se ve (consolidado + scope)
   const rows = [];
   entries.forEach(e => {
     e.lines.forEach(l => {
@@ -906,8 +945,8 @@ function renderSumasYSaldosContabilidad(accounts, entries) {
 }
 
 function exportSumasContabilidad() {
-  const accounts = DB.getAll('accounts');
-  const entries = DB.getAll('journalEntries').filter(e=>e.status==='posted');
+  const accounts = _contaScopedAccounts();
+  const entries = _contaScopedEntries().filter(e=>e.status==='posted');
   const debits = {}, credits = {};
   accounts.forEach(a => { debits[a.code]=0; credits[a.code]=0; });
   entries.forEach(e => e.lines.forEach(l => {
@@ -972,11 +1011,13 @@ function sumBalances(accs, balances) {
 
 // ---- LIBRO MAYOR ----
 function renderContaMayores() {
-  var cid = window._contaCompanyId || (window.APP_STATE && window.APP_STATE.activeCompany) || '';
-  if (cid) { window._contaCompanyId = cid; DB.setCompany(cid); }
-  const entries = DB.getAll('journalEntries');
-  const accounts = DB.getAll('accounts');
-  const projects = DB.getAll('projects');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._contaLoadedAll) {
+    window._contaLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok) { if (ok) { try { renderContaMayores(); } catch(e) {} } });
+  }
+  const entries = _contaScopedEntries();          // consolidado + scope (proyecto/razón social)
+  const accounts = _contaScopedAccounts();
+  const projects = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -990,7 +1031,7 @@ function renderContaMayores() {
   </div>
 </div>
 
-${_contaCompanyBar()}
+${_contaScopeBar()}
 
 <div class="filter-bar mb-2">
   <div class="search-input-wrap">
@@ -1166,15 +1207,15 @@ function filterMayores() {
   const from = (document.getElementById('mayor-from') || {}).value || '';
   const to = (document.getElementById('mayor-to') || {}).value || '';
   const type = (document.getElementById('mayor-type') || {}).value || '';
-  const entries = DB.getAll('journalEntries');
-  const accounts = DB.getAll('accounts');
+  const entries = _contaScopedEntries();
+  const accounts = _contaScopedAccounts();
   const list = document.getElementById('mayores-list');
   if (list) list.innerHTML = buildMayoresList(accounts, entries, q, from, to, type);
 }
 
 function exportMayores() {
-  const entries = DB.getAll('journalEntries');
-  const accounts = DB.getAll('accounts');
+  const entries = _contaScopedEntries();
+  const accounts = _contaScopedAccounts();
   const rows = [];
 
   entries.filter(e => e.status === 'posted').forEach(e => {
