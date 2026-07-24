@@ -191,14 +191,19 @@ function setActiveProject(pid) {
 }
 
 // Filtro de proyecto general: filtra un array de registros por el proyecto activo
-// del header. Sin proyecto activo devuelve todo. Usa record.project_id, o una
-// función getPid(record) para derivarlo (p.ej. desde la factura vinculada).
+// del header Y por el acceso del usuario (obras habilitadas). Usa record.project_id,
+// o una función getPid(record) para derivarlo (p.ej. desde la factura vinculada).
+// - Con proyecto activo: solo ese proyecto.
+// - Sin proyecto activo: si el usuario está restringido a ciertas obras, solo esas;
+//   si no (admin o sin restricción), todo.
 function filterByActiveProject(arr, getPid) {
   var pid = window.APP_STATE && window.APP_STATE.activeProject;
-  if (!pid) return arr || [];
+  var accessible = (typeof getAccessibleProjectIds === 'function') ? getAccessibleProjectIds() : null;
+  if (!pid && !accessible) return arr || [];   // sin filtro de proyecto ni restricción
   return (arr || []).filter(function(r) {
     var rp = getPid ? getPid(r) : (r && r.project_id);
-    return rp === pid;
+    if (pid) return rp === pid;                 // proyecto elegido en el header
+    return accessible.indexOf(rp) !== -1;       // restringido: solo obras habilitadas
   });
 }
 

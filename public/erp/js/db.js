@@ -338,11 +338,8 @@ const DB = {
       var raw = localStorage.getItem(key);
       if (!raw) return this.init(); // init()→save() deja el cache seteado
       var data = JSON.parse(raw);
-      // Migration: seed default users if the collection is missing or empty
-      if (!data.users || !data.users.length) {
-        data.users = this._defaultUsers();
-        this.save(data); // setea el cache
-      }
+      // Los usuarios ahora son GLOBALES (store global, no por empresa). Ya no se
+      // siembran ni se leen desde el blob de empresa. getAll('users') va al global.
       this._cache = data;
       this._cacheKey = key;
       return data;
@@ -520,6 +517,14 @@ const DB = {
           if (globalFromRemote && (globalFromRemote.companies || globalFromRemote.currencies)) {
             var cleanGlobal = Object.assign({}, globalFromRemote);
             delete cleanGlobal.id;
+            // Preservar los usuarios GLOBALES: si el remoto aún no los trae (proyectos
+            // migrados desde el modelo per-empresa), no los perdemos al pullear.
+            if (!cleanGlobal.users || !cleanGlobal.users.length) {
+              try {
+                var localG = JSON.parse(localStorage.getItem(self.GLOBAL_KEY) || '{}');
+                if (localG.users && localG.users.length) cleanGlobal.users = localG.users;
+              } catch(e) {}
+            }
             try { localStorage.setItem(self.GLOBAL_KEY, JSON.stringify(cleanGlobal)); } catch(e) {}
           }
           delete remoteData._global; // don't store _global as a company collection
@@ -600,10 +605,58 @@ const DB = {
   },
 
   // ---- CRUD helpers ----
-  getAll(collection) { return this.get()[collection] || []; },
+  getAll(collection) {
+    if (collection === 'users') return this._globalUsers();   // usuarios globales (todas las empresas)
+    return this.get()[collection] || [];
+  },
 
   getById(collection, id) {
     return this.getAll(collection).find(function(x) { return x.id === id; }) || null;
+  },
+
+  // ---- USUARIOS GLOBALES ----
+  // Un usuario es de la ORGANIZACIÓN: tiene acceso a todas las razones sociales
+  // (empresas). El control fino es por proyecto (user.project_ids). Se guardan en
+  // el store global (compartido y sincronizado como _global), no por empresa.
+  _globalUsers: function() {
+    var g = this.getGlobal();
+    if (!g.users) { g.users = this._migrateUsersToGlobal(); this.saveGlobal(g); }
+    return g.users;
+  },
+
+  // Consolida al store global los usuarios que vivían por empresa (dedupe por email,
+  // prefiriendo admin). Corre una sola vez (cuando global.users aún no existe).
+  _migrateUsersToGlobal: function() {
+    var byEmail = {}, out = [];
+    function add(u) {
+      if (!u) return;
+      if (!u.email) { out.push(u); return; }
+      var k = u.email.toLowerCase();
+      if (byEmail[k]) {
+        var ex = byEmail[k];
+        if (u.role === 'admin' && ex.role !== 'admin') ex.role = 'admin';
+        if (u.active && !ex.active) ex.active = true;
+        if (!ex.password && u.password) ex.password = u.password;
+        return;
+      }
+      byEmail[k] = u; out.push(u);
+    }
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && /^erp_company_.+_v1$/.test(key)) {
+          try { (JSON.parse(localStorage.getItem(key)).users || []).forEach(add); } catch(e) {}
+        }
+      }
+    } catch(e) {}
+    if (!out.length) out = this._defaultUsers();
+    return out;
+  },
+
+  _saveGlobalUsers: function(users) {
+    var g = this.getGlobal();
+    g.users = users;
+    this.saveGlobal(g);
   },
 
   // Backstop de permisos (client-side): una cuenta de SOLO LECTURA (sin ningún
@@ -634,6 +687,15 @@ const DB = {
 
   insert(collection, record) {
     if (!this._canWrite(collection)) return this._denyWrite();
+    if (collection === 'users') {
+      var gu = this._globalUsers().slice();
+      var uitem = Object.assign({}, record, { id: record.id || uuid(), created_at: now() });
+      if (uitem._rev == null) uitem._rev = 1;
+      gu.push(uitem);
+      this._saveGlobalUsers(gu);
+      if (typeof window.auditLog === 'function') window.auditLog('create', 'users', uitem.id, uitem);
+      return uitem;
+    }
     var db = this.get();
     if (!db[collection]) db[collection] = [];
     var item = Object.assign({}, record, { id: record.id || uuid(), created_at: now() });
@@ -676,6 +738,20 @@ const DB = {
   // se comporta igual que antes.
   update(collection, id, updates, opts) {
     if (!this._canWrite(collection)) return this._denyWrite();
+    if (collection === 'users') {
+      var gu = this._globalUsers().slice();
+      var gidx = gu.findIndex(function(x) { return x.id === id; });
+      if (gidx === -1) return null;
+      var gcur = gu[gidx];
+      if (opts && opts.expectRev != null && gcur._rev != null && gcur._rev !== opts.expectRev) {
+        if (typeof toast === 'function') toast('Otro usuario modificó este registro mientras lo editabas. Revisá y volvé a guardar.', 'error');
+        return { __conflict: true, current: gcur };
+      }
+      gu[gidx] = Object.assign({}, gcur, updates, { updated_at: now(), _rev: (gcur._rev || 1) + 1 });
+      this._saveGlobalUsers(gu);
+      if (typeof window.auditLog === 'function') window.auditLog('update', 'users', id, updates);
+      return gu[gidx];
+    }
     var db = this.get();
     var idx = (db[collection] || []).findIndex(function(x) { return x.id === id; });
     if (idx === -1) return null;
@@ -700,6 +776,13 @@ const DB = {
 
   remove(collection, id) {
     if (!this._canWrite(collection)) { this._denyWrite(); return; }
+    if (collection === 'users') {
+      var gu = this._globalUsers();
+      var gremoved = gu.find(function(x) { return x.id === id; }) || null;
+      this._saveGlobalUsers(gu.filter(function(x) { return x.id !== id; }));
+      if (typeof window.auditLog === 'function') window.auditLog('delete', 'users', id, gremoved);
+      return;
+    }
     var db = this.get();
     var removed = (db[collection] || []).find(function(x) { return x.id === id; }) || null;
     db[collection] = (db[collection] || []).filter(function(x) { return x.id !== id; });
