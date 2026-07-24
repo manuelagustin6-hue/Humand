@@ -65,7 +65,7 @@ function renderContratos() {
 }
 
 function renderContractsListTab() {
-  const contracts = DB.getAll('contracts');
+  const contracts = filterByActiveProject(DB.getAll('contracts'));
   const projects  = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
   const certs     = DB.getAll('certificates');
@@ -152,7 +152,7 @@ function filterContracts(q, project, status) {
   if (q !== undefined) window._contractFilters.q = q.toLowerCase();
   if (project !== undefined) window._contractFilters.project = project;
   if (status !== undefined) window._contractFilters.status = status;
-  let contracts = DB.getAll('contracts');
+  let contracts = filterByActiveProject(DB.getAll('contracts'));
   const projects  = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
   const f = window._contractFilters;

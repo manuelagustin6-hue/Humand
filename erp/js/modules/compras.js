@@ -539,7 +539,7 @@ function exportRequisitions() {
 
 // ---- PURCHASE ORDERS ----
 function renderPOTable() {
-  const pos = DB.getAll('purchaseOrders');
+  const pos = filterByActiveProject(DB.getAll('purchaseOrders'));
   const projects = DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
 
@@ -614,7 +614,7 @@ window._poFilters = { q: '', status: '' };
 function filterPOs(q, status) {
   if (q !== undefined) window._poFilters.q = q.toLowerCase();
   if (status !== undefined) window._poFilters.status = status;
-  let pos = DB.getAll('purchaseOrders');
+  let pos = filterByActiveProject(DB.getAll('purchaseOrders'));
   const suppliers = DB.getAll('suppliers');
   const f = window._poFilters;
   if (f.q) pos = pos.filter(po => {

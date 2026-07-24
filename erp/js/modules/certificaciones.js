@@ -1,6 +1,6 @@
 /* ===== CERTIFICACIONES DE OBRA ===== */
 function renderCertificaciones() {
-  const certs = DB.getAll('certificates');
+  const certs = filterByActiveProject(DB.getAll('certificates'));
   const projects = DB.getAll('projects');
 
   const totalCertified = certs.reduce((s,c) => s + (c.subtotal || 0), 0);
@@ -131,7 +131,7 @@ function filterCerts(q, status, project) {
   if (q !== undefined) window._certFilters.q = q.toLowerCase();
   if (status !== undefined) window._certFilters.status = status;
   if (project !== undefined) window._certFilters.project = project;
-  let certs = DB.getAll('certificates');
+  let certs = filterByActiveProject(DB.getAll('certificates'));
   const f = window._certFilters;
   if (f.q) certs = certs.filter(c => c.number.toLowerCase().includes(f.q));
   if (f.status) certs = certs.filter(c => c.status === f.status);

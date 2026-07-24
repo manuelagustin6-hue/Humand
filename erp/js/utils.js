@@ -190,6 +190,26 @@ function setActiveProject(pid) {
   if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
 }
 
+// Filtro de proyecto general: filtra un array de registros por el proyecto activo
+// del header. Sin proyecto activo devuelve todo. Usa record.project_id, o una
+// función getPid(record) para derivarlo (p.ej. desde la factura vinculada).
+function filterByActiveProject(arr, getPid) {
+  var pid = window.APP_STATE && window.APP_STATE.activeProject;
+  if (!pid) return arr || [];
+  return (arr || []).filter(function(r) {
+    var rp = getPid ? getPid(r) : (r && r.project_id);
+    return rp === pid;
+  });
+}
+
+// Nombre del proyecto activo (para mostrarlo en encabezados de listados). '' si ninguno.
+function activeProjectName() {
+  var pid = window.APP_STATE && window.APP_STATE.activeProject;
+  if (!pid) return '';
+  var p = (typeof DB !== 'undefined') ? DB.getById('projects', pid) : null;
+  return p ? (p.name || '') : '';
+}
+
 // ---- SIDEBAR FILTER ----
 function filterNav(q) {
   q = q.toLowerCase();

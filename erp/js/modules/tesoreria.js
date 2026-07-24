@@ -2,6 +2,7 @@
 function renderTesoreria() {
   const accounts = DB.getAll('bankAccounts');
   const txs = DB.getAll('treasuryTx');
+  const txsP = filterByActiveProject(txs);   // filtrado por proyecto para movimientos/flujo (saldos van completos)
   const projects = DB.getAll('projects');
 
   // Calc balances
@@ -103,10 +104,10 @@ function renderTesoreria() {
     <button class="tab-btn" data-tab="tab-cuentas">Cuentas</button>
   </div>
   <div id="tab-movimientos" class="tab-content">
-    ${renderTxTable(txs, accounts, projects)}
+    ${renderTxTable(txsP, accounts, projects)}
   </div>
   <div id="tab-cashflow" class="tab-content">
-    ${renderCashflowView(txs)}
+    ${renderCashflowView(txsP)}
   </div>
   <div id="tab-cuentas" class="tab-content">
     ${renderAccountsTable(accountsWithBalance)}
@@ -115,7 +116,7 @@ function renderTesoreria() {
   `;
 
   initTabs('tesoreria-tabs');
-  setTimeout(() => renderCashflowChartTesoreria(txs), 100);
+  setTimeout(() => renderCashflowChartTesoreria(txsP), 100);
 }
 
 function renderTxTable(txs, accounts, projects) {
@@ -184,7 +185,7 @@ function filterTx(q, type, book) {
   if (q !== undefined) window._txFilters.q = q.toLowerCase();
   if (type !== undefined) window._txFilters.type = type;
   if (book !== undefined) window._txFilters.book = book;
-  let txs = DB.getAll('treasuryTx');
+  let txs = filterByActiveProject(DB.getAll('treasuryTx'));
   const f = window._txFilters;
   if (f.q) txs = txs.filter(t => (t.description||'').toLowerCase().includes(f.q) || (t.category||'').toLowerCase().includes(f.q));
   if (f.type) txs = txs.filter(t => t.type === f.type);

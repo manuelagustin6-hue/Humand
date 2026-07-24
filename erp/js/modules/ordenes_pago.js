@@ -1,6 +1,6 @@
 /* ===== ÓRDENES DE PAGO ===== */
 function renderOrdenesPago() {
-  const orders = DB.getAll('paymentOrders');
+  const orders = filterByActiveProject(DB.getAll('paymentOrders'));
   const suppliers = DB.getAll('suppliers');
   const projects = DB.getAll('projects');
 
@@ -139,7 +139,7 @@ function filterPOs2(q, status, period) {
   if (q !== undefined) window._po2Filters.q = q.toLowerCase();
   if (status !== undefined) window._po2Filters.status = status;
   if (period !== undefined) window._po2Filters.period = period;
-  let orders = DB.getAll('paymentOrders');
+  let orders = filterByActiveProject(DB.getAll('paymentOrders'));
   const f = window._po2Filters;
   if (f.q) orders = orders.filter(o => {
     var prov = DB.getById('suppliers', o.supplier_id);
