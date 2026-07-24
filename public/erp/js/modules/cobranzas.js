@@ -1,7 +1,10 @@
 /* ===== COBRANZAS ===== */
 function renderCobranzas() {
-  const invoices = DB.getAll('invoices');
-  const collections = DB.getAll('collections');
+  const invoices = filterByActiveProject(DB.getAll('invoices'));
+  const collections = filterByActiveProject(DB.getAll('collections'), function(c) {
+    // la cobranza puede no tener project_id propio: derivar de su factura
+    return c.project_id || (DB.getById('invoices', c.invoice_id) || {}).project_id || '';
+  });
   const projects = DB.getAll('projects');
 
   const totalInvoiced = invoices.filter(i => i.status !== 'cancelled').reduce((s,i) => s+i.total, 0);

@@ -1,6 +1,6 @@
 /* ===== FACTURACIÓN ===== */
 function renderFacturacion() {
-  const invoices = DB.getAll('invoices');
+  const invoices = filterByActiveProject(DB.getAll('invoices'));
   const projects = DB.getAll('projects');
   const collections = DB.getAll('collections');
 
@@ -123,7 +123,7 @@ function filterInvoices(q, status, project, period) {
   if (status !== undefined) window._invFilters.status = status;
   if (project !== undefined) window._invFilters.project = project;
   if (period !== undefined) window._invFilters.period = period;
-  let invs = DB.getAll('invoices');
+  let invs = filterByActiveProject(DB.getAll('invoices'));
   const f = window._invFilters;
   if (f.q) invs = invs.filter(i => (i.number||'').toLowerCase().includes(f.q) || (i.client_name||'').toLowerCase().includes(f.q));
   if (f.status) invs = invs.filter(i => i.status === f.status);
