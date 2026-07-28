@@ -85,5 +85,111 @@ const { withApp, check, near, summary } = require('./harness');
     check('reintento sin expectRev → fuerza (C-1d)', r.forcedNum === 'C-1d');
   }
 
+  // ---- 6) Balance: rollup padre←hijo UNA sola vez (regresión bug 5×) ----
+  console.log('\n▶ Balance — rollup sin doble-conteo');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'modules/contabilidad.js'], () => {
+      var accounts = [
+        { id: 'a1',  code: '1',   type: 'asset' },
+        { id: 'a11', code: '1.1', type: 'asset', parent_id: 'a1' },
+      ];
+      var entries = [{ status: 'posted', lines: [{ account_code: '1.1', debit: 100, credit: 0 }] }];
+      var b = calcAccountBalances(accounts, entries);
+      return { child: b['1.1'], parent: b['1'] };
+    });
+    check('hijo 1.1 = 100', r.child === 100);
+    check('padre 1 = 100 (una vez, no 500)', r.parent === 100);
+  }
+
+  // ---- 7) Numeración fiscal por país (ARCA/DGI/libre) ----
+  console.log('\n▶ Numeración fiscal por país');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'fiscal.js'], () => ({
+      ar_next: fiscalNextIssued('AR', 5, 1),
+      uy_next: fiscalNextIssued('UY', 5, 'A'),
+      us_next: fiscalNextIssued('US', 5),
+      ar_norm_ok: fiscalNormalizeNumber('1-5', 'AR'),
+      ar_norm_bad: fiscalNormalizeNumber('abc', 'AR').ok,
+      uy_norm: fiscalNormalizeNumber('A5', 'UY').value,
+      legal_A: fiscalIsLegalType('A'), legal_X: fiscalIsLegalType('X'),
+    }));
+    check('AR: 00001-00000005', r.ar_next === '00001-00000005');
+    check('UY: A-0000005', r.uy_next === 'A-0000005');
+    check('US: INV-0005', r.us_next === 'INV-0005');
+    check('AR normaliza 1-5 → 00001-00000005', r.ar_norm_ok.ok && r.ar_norm_ok.value === '00001-00000005');
+    check('AR rechaza formato inválido', r.ar_norm_bad === false);
+    check('UY normaliza A5 → A-0000005', r.uy_norm === 'A-0000005');
+    check('tipo A es legal, X no', r.legal_A === true && r.legal_X === false);
+  }
+
+  // ---- 8) Fondo de reparo por ítem (certificación) ----
+  console.log('\n▶ Fondo de reparo por ítem');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'modules/contratos.js'], () => ({
+      ret: _ccertRetention([
+        { amount_period: 1000, retention_pct: 5 },   // 50
+        { amount_period: 2000, retention_pct: 0 },   // 0 (sin retención)
+        { amount_period: 500,  retention_pct: 10 },  // 50
+      ]),
+    }));
+    check('retención por ítem = 100 (50+0+50)', near(r.ret, 100));
+  }
+
+  // ---- 9) Base de retención por régimen ----
+  console.log('\n▶ Base de retención por régimen (F10)');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'modules/retenciones.js'], () => ({
+      gan: _retDefaultBase('Ret. Ganancias'),
+      iva: _retDefaultBase('Ret. IVA'),
+      iibb: _retDefaultBase('Ret. IIBB'),
+      override: retRuleBase({ type: 'Ganancias', base: 'bruto' }),
+    }));
+    check('Ganancias → neto', r.gan === 'neto');
+    check('IVA → iva', r.iva === 'iva');
+    check('IIBB → bruto', r.iibb === 'bruto');
+    check('base explícita del rule pisa el default', r.override === 'bruto');
+  }
+
+  // ---- 10) Consolidación multi-empresa (getAllConsolidated taguea origen) ----
+  console.log('\n▶ Consolidación multi-empresa');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js'], () => {
+      var g = DB.getGlobal();
+      g.companies = [{ id: 'comp-001', name: 'AR SA', currency: 'ARS' }, { id: 'comp-002', name: 'UY SA', currency: 'UYU' }];
+      DB.saveGlobal(g);
+      localStorage.setItem('erp_company_comp-001_v1', JSON.stringify({ invoices: [{ id: 'i1', total: 100 }] }));
+      localStorage.setItem('erp_company_comp-002_v1', JSON.stringify({ invoices: [{ id: 'i2', total: 200 }] }));
+      DB._invalidateCache(); DB.setCompany('comp-001');
+      var all = DB.getAllConsolidated('invoices'), by = {}; all.forEach(function (x) { by[x.id] = x; });
+      return {
+        count: all.length,
+        i1c: by.i1 && by.i1._company_name, i1cur: by.i1 && by.i1._company_currency,
+        i2c: by.i2 && by.i2._company_name, i2cur: by.i2 && by.i2._company_currency,
+      };
+    });
+    check('junta las 2 empresas', r.count === 2);
+    check('factura de AR tagueada AR SA / ARS', r.i1c === 'AR SA' && r.i1cur === 'ARS');
+    check('factura de UY tagueada UY SA / UYU', r.i2c === 'UY SA' && r.i2cur === 'UYU');
+  }
+
+  // ---- 11) Contabilidad: consolidado por moneda (conversión al TC) ----
+  console.log('\n▶ Contabilidad — consolidado en USD');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'modules/contabilidad.js'], () => {
+      var g = DB.getGlobal();
+      g.companies = [{ id: 'comp-001', name: 'AR SA', currency: 'ARS' }];
+      DB.saveGlobal(g);
+      localStorage.setItem('erp_company_comp-001_v1', JSON.stringify({
+        journalEntries: [{ id: 'j1', status: 'posted', date: '2025-07-01', lines: [{ account_code: 'x', debit: 1100, credit: 0 }] }]
+      }));
+      DB._invalidateCache(); DB.setCompany('comp-001');
+      window._contaProject = ''; window._contaCompanyId = ''; window._contaBook = ''; window._contaConsol = 'USD';
+      var e = _contaScopedEntries().find(function (x) { return x.id === 'j1'; });
+      return { cur: e && e.currency, debit: e && e.lines[0].debit };
+    });
+    check('asiento convertido a USD', r.cur === 'USD');
+    check('1100 ARS → 1 USD', near(r.debit, 1));
+  }
+
   summary();
 })();
