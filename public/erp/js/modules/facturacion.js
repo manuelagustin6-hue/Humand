@@ -1,13 +1,84 @@
 /* ===== FACTURACIÓN ===== */
-function renderFacturacion() {
-  const invoices = filterByActiveProject(DB.getAll('invoices'));
-  const projects = DB.getAll('projects');
-  const collections = DB.getAll('collections');
+// Moneda efectiva de una factura (la propia o la de su razón social).
+function _invCur(inv) { return (inv && (inv.currency || inv._company_currency)) || (typeof _activeCurrency === 'function' ? _activeCurrency() : 'ARS'); }
+window._invCompany = window._invCompany || '';   // filtro razón social ('' = todas)
 
-  const totalBilled = invoices.reduce((s, i) => s + (i.total || 0), 0);
-  const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0);
-  const totalPending = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + (i.total || 0), 0);
-  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + (i.total || 0), 0);
+// Facturas consolidadas (todas las razones sociales) filtradas por proyecto (header)
+// y razón social. Base común para el listado y los KPIs.
+function _invScopedBase() {
+  var invs = filterByActiveProject((typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('invoices') : DB.getAll('invoices'));
+  if (window._invCompany) invs = invs.filter(function(i){ return i._company_id === window._invCompany; });
+  return invs;
+}
+
+// KPIs agrupados por moneda (sumar ARS+UYU en un solo total sería incorrecto).
+function _invKpiHtml(invoices) {
+  var g = {};
+  invoices.forEach(function(i){
+    var c = _invCur(i), t = i.total || 0;
+    if (!g[c]) g[c] = { billed:0, paid:0, pending:0, overdue:0, n:0, np:0, ns:0, no:0 };
+    g[c].billed += t; g[c].n++;
+    if (i.status === 'paid')    { g[c].paid += t; g[c].np++; }
+    if (i.status === 'sent')    { g[c].pending += t; g[c].ns++; }
+    if (i.status === 'overdue') { g[c].overdue += t; g[c].no++; }
+  });
+  var curs = Object.keys(g).sort();
+  if (curs.length <= 1) {
+    var c = curs[0] || (typeof _activeCurrency === 'function' ? _activeCurrency() : 'ARS');
+    var d = g[c] || { billed:0,paid:0,pending:0,overdue:0,n:0,np:0,ns:0,no:0 };
+    return '<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">' +
+      _invStat('blue','fa-file-invoice-dollar', fmtMoney(d.billed,c), 'Facturado Total', d.n+' facturas') +
+      _invStat('green','fa-check-circle', fmtMoney(d.paid,c), 'Cobradas', d.np+' facturas') +
+      _invStat('yellow','fa-clock', fmtMoney(d.pending,c), 'Pendientes de Cobro', d.ns+' facturas') +
+      _invStat('red','fa-exclamation-circle', fmtMoney(d.overdue,c), 'Vencidas', d.no+' facturas') +
+    '</div>';
+  }
+  return '<div class="card"><div class="table-wrap"><table class="table"><thead><tr>' +
+    '<th>Moneda</th><th class="text-right">Facturado</th><th class="text-right">Cobrado</th><th class="text-right">Pendiente</th><th class="text-right">Vencido</th></tr></thead><tbody>' +
+    curs.map(function(c){ var d=g[c]; return '<tr><td><strong>'+escapeHtml(c)+'</strong></td>' +
+      '<td class="number-cell text-right"><strong>'+fmtMoney(d.billed,c)+'</strong></td>' +
+      '<td class="number-cell text-right" style="color:var(--success)">'+fmtMoney(d.paid,c)+'</td>' +
+      '<td class="number-cell text-right" style="color:var(--warning)">'+fmtMoney(d.pending,c)+'</td>' +
+      '<td class="number-cell text-right" style="color:var(--danger)">'+fmtMoney(d.overdue,c)+'</td></tr>'; }).join('') +
+    '</tbody></table></div></div>';
+}
+function _invStat(color, icon, value, label, delta) {
+  return '<div class="stat-card"><div class="stat-icon '+color+'"><i class="fas '+icon+'"></i></div><div>' +
+    '<div class="stat-value">'+value+'</div><div class="stat-label">'+label+'</div>' +
+    '<div class="stat-delta">'+delta+'</div></div></div>';
+}
+function _invCompanyOptions() {
+  return '<option value="">Todas las razones sociales</option>' +
+    (DB.getAllCompanies() || []).map(function(c){ return '<option value="'+c.id+'"'+(window._invCompany===c.id?' selected':'')+'>'+escapeHtml(c.legalName||c.name)+'</option>'; }).join('');
+}
+function facSetCompany(id) {
+  window._invCompany = id || '';
+  // Al elegir una razón social puntual, la activamos (para que alta/edición/cobro
+  // operen sobre ella). En "Todas" se conserva la activa.
+  if (id) { DB.setCompany(id); if (window.APP_STATE) window.APP_STATE.activeCompany = id; }
+  renderFacturacion();
+}
+// Antes de actuar sobre una factura, asegura que su razón social sea la empresa
+// activa (en la vista consolidada la factura puede pertenecer a otra empresa).
+function _invEnsureCompany(id) {
+  if (DB.getById('invoices', id)) return true;
+  var found = (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('invoices') : []).find(function(i){ return i.id === id; });
+  if (found && found._company_id && found._company_id !== DB._companyId) {
+    DB.setCompany(found._company_id);
+    if (window.APP_STATE) window.APP_STATE.activeCompany = found._company_id;
+    return true;
+  }
+  return !!found;
+}
+
+function renderFacturacion() {
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._invLoadedAll) {
+    window._invLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderFacturacion(); } catch(e) {} } });
+  }
+  const invoices = _invScopedBase();
+  const projects = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
+  const collections = DB.getAll('collections');
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -22,20 +93,13 @@ function renderFacturacion() {
   </div>
 </div>
 
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
-  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice-dollar"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalBilled)}</div><div class="stat-label">Facturado Total</div>
-    <div class="stat-delta up">${invoices.length} facturas</div></div></div>
-  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalPaid)}</div><div class="stat-label">Cobradas</div>
-    <div class="stat-delta up">${invoices.filter(i=>i.status==='paid').length} facturas</div></div></div>
-  <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-clock"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalPending)}</div><div class="stat-label">Pendientes de Cobro</div>
-    <div class="stat-delta">${invoices.filter(i=>i.status==='sent').length} facturas</div></div></div>
-  <div class="stat-card"><div class="stat-icon red"><i class="fas fa-exclamation-circle"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalOverdue)}</div><div class="stat-label">Vencidas</div>
-    <div class="stat-delta down">${invoices.filter(i=>i.status==='overdue').length} facturas</div></div></div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+  <i class="fas fa-city" style="color:var(--primary)"></i><span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>
+  <select class="form-control" style="width:230px" onchange="facSetCompany(this.value)">${_invCompanyOptions()}</select>
+  <span style="font-size:11px;color:var(--text-muted)">· el proyecto se filtra desde el selector de arriba</span>
 </div>
+
+${_invKpiHtml(invoices)}
 
 <div class="filter-bar mt-2">
   <div class="search-input-wrap">
@@ -78,8 +142,9 @@ function renderFacturacion() {
 function buildInvoiceRows(invoices, projects, collections) {
   if (!invoices.length) return `<div class="empty-state"><i class="fas fa-file-invoice"></i><p>No hay facturas</p></div>`;
   const sourceLabels = { manual: 'Manual', certificacion: 'Certificacion', oc: 'Desde OC' };
+  const _showRS = !window._invCompany;
   return `<table class="rcard"><thead><tr>
-    <th>Numero</th><th>Tipo</th><th>Origen</th><th>Proyecto</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th>
+    <th>Numero</th><th>Tipo</th><th>Origen</th>${_showRS ? '<th>Razón Social</th>' : ''}<th>Proyecto</th><th>Cliente</th><th>Fecha</th><th>Vencimiento</th>
     <th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>
     <th>Estado</th><th style="text-align:center">CAE / ARCA</th><th>Acciones</th>
   </tr></thead>
@@ -87,6 +152,7 @@ function buildInvoiceRows(invoices, projects, collections) {
   ${invoices.map(inv => {
     const proj = projects.find(p => p.id === inv.project_id);
     const overdue = isOverdue(inv.due_date) && inv.status !== 'paid';
+    const _cur = _invCur(inv);
     const src = inv.source || 'manual';
     const srcBadge = src === 'certificacion'
       ? '<span class="badge badge-green" style="font-size:10px">Certif.</span>'
@@ -97,13 +163,14 @@ function buildInvoiceRows(invoices, projects, collections) {
       <td><strong>${inv.number}</strong></td>
       <td><span class="badge badge-cyan">Fact. ${inv.type}</span></td>
       <td>${srcBadge}</td>
-      <td>${proj ? proj.name : '-'}</td>
-      <td>${inv.client_name}</td>
+      ${_showRS ? `<td style="font-size:12px">${escapeHtml(inv._company_name || '—')}</td>` : ''}
+      <td>${proj ? escapeHtml(proj.name) : '-'}</td>
+      <td>${escapeHtml(inv.client_name || '')}</td>
       <td>${fmtDate(inv.date)}</td>
       <td class="${overdue ? 'text-danger fw-bold' : ''}">${fmtDate(inv.due_date)}</td>
-      <td class="number-cell text-right">${fmtMoney(inv.subtotal)}</td>
-      <td class="number-cell text-right">${fmtMoney(inv.tax)}</td>
-      <td class="number-cell text-right"><strong>${fmtMoney(inv.total)}</strong></td>
+      <td class="number-cell text-right">${fmtMoney(inv.subtotal, _cur)}</td>
+      <td class="number-cell text-right">${fmtMoney(inv.tax, _cur)}</td>
+      <td class="number-cell text-right"><strong>${fmtMoney(inv.total, _cur)}</strong></td>
       <td>${statusBadge(inv.status)}</td>
       <td style="text-align:center">${(typeof afipCaeBadge === 'function') ? afipCaeBadge(inv) : '—'}</td>
       <td><div class="table-actions">
@@ -123,17 +190,19 @@ function filterInvoices(q, status, project, period) {
   if (status !== undefined) window._invFilters.status = status;
   if (project !== undefined) window._invFilters.project = project;
   if (period !== undefined) window._invFilters.period = period;
-  let invs = filterByActiveProject(DB.getAll('invoices'));
+  let invs = _invScopedBase();
   const f = window._invFilters;
   if (f.q) invs = invs.filter(i => (i.number||'').toLowerCase().includes(f.q) || (i.client_name||'').toLowerCase().includes(f.q));
   if (f.status) invs = invs.filter(i => i.status === f.status);
   if (f.project) invs = invs.filter(i => i.project_id === f.project);
   if (f.period) { const r = _periodRange(f.period); invs = invs.filter(i => i.date && i.date >= r.from && i.date <= r.to); }
+  const _projs = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
   const wrap = document.getElementById('inv-table-wrap');
-  if (wrap) wrap.innerHTML = buildInvoiceRows(invs, DB.getAll('projects'), DB.getAll('collections'));
+  if (wrap) wrap.innerHTML = buildInvoiceRows(invs, _projs, DB.getAll('collections'));
 }
 
 function viewInvoice(id) {
+  _invEnsureCompany(id);
   const inv = DB.getById('invoices', id);
   if (!inv) { toast('Factura no encontrada', 'error'); return; }
   const proj = DB.getById('projects', inv.project_id);
@@ -225,6 +294,7 @@ ${collections.length ? `
 }
 
 function openInvoiceForm(id = null) {
+  if (id) _invEnsureCompany(id);
   const inv = id ? DB.getById('invoices', id) : null;
   DB.markEdit('invoices', id);   // control de concurrencia: revisión base al abrir
   const projects = DB.getAll('projects');
@@ -669,6 +739,7 @@ async function saveInvoice(id) {
 }
 
 function markInvoicePaid(id) {
+  _invEnsureCompany(id);
   // "Marcar cobrada" ahora registra el cobro real (cuenta/método/importe), que a su
   // vez marca la factura pagada al completarse e impacta Tesorería. Así Facturación y
   // Cobranzas dejan de contradecirse.
@@ -685,6 +756,7 @@ function markInvoicePaid(id) {
 }
 
 function deleteInvoice(id) {
+  _invEnsureCompany(id);
   var colls = DB.getAll('collections').filter(function(c) { return c.invoice_id === id; });
   var extra = colls.length ? ' Se eliminarán también ' + colls.length + ' cobro(s) asociado(s) y sus movimientos de tesorería.' : '';
   confirmDialog('Eliminar esta factura?' + extra, () => {
