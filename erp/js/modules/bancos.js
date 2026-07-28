@@ -356,10 +356,19 @@ function deleteCheque(id) {
 var _bancosState = { tab: 'cuentas', selectedAccount: null };
 
 function renderCuentasBanco() {
-  var accounts = DB.getAll('bankAccounts');
-  var movements = DB.getAll('bankMovements');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._tesLoadedAll) {
+    window._tesLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderCuentasBanco(); } catch(e) {} } });
+  }
+  var accounts = (typeof _tesScopedAccounts === 'function') ? _tesScopedAccounts() : DB.getAll('bankAccounts');
+  var movements = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('bankMovements') : DB.getAll('bankMovements');
   // Fallback: also check treasuryTx for legacy movement data
-  var treasuryTx = DB.getAll('treasuryTx');
+  var treasuryTx = (typeof _tesScopedTx === 'function') ? _tesScopedTx() : DB.getAll('treasuryTx');
+  var _rsSel = (typeof _tesCompanyOptions === 'function')
+    ? '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><i class="fas fa-city" style="color:var(--primary)"></i>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>' +
+        '<select class="form-control" style="width:230px" onchange="tesSetCompany(this.value)">' + _tesCompanyOptions() + '</select></div>'
+    : '';
 
   document.getElementById('content').innerHTML =
     '<div class="page-header">' +
@@ -373,6 +382,7 @@ function renderCuentasBanco() {
         '</button>' +
       '</div>' +
     '</div>' +
+    _rsSel +
 
     '<div id="bancos-tabs" class="tabs-container">' +
       '<div class="tabs-header">' +
@@ -448,10 +458,11 @@ function baRenderTabCuentas(accounts, movements, treasuryTx) {
           '</div>' +
         '</div>' +
         '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">' + acc.name + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">' + acc.bank + '</div>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;font-family:monospace">' + acc.account_number + '</div>' +
+        ((!window._tesCompany && acc._company_name) ? '<div style="font-size:11px;color:var(--primary);font-weight:600;margin-bottom:4px">' + escapeHtml(acc._company_name) + '</div>' : '') +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">' + (acc.bank||'') + '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;font-family:monospace">' + (acc.account_number||'') + '</div>' +
         '<div style="font-size:22px;font-weight:800;color:' + balanceColor + ';margin-bottom:12px">' +
-          fmtMoney(balance) +
+          fmtMoney(balance, acc.currency) +
         '</div>' +
         '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">' +
           'Saldo inicial: ' + fmtMoney(acc.initial_balance || 0) +

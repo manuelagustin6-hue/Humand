@@ -17,6 +17,11 @@ function _tesCompanyOptions() {
 function tesSetCompany(id) {
   window._tesCompany = id || '';
   if (id) { DB.setCompany(id); if (window.APP_STATE) window.APP_STATE.activeCompany = id; }
+  // Re-renderiza el módulo de tesorería actual (Operaciones / Cuentas / Reporte).
+  var mod = window.APP_STATE && window.APP_STATE.currentModule;
+  if (window.MODULES && window.MODULES[mod] && typeof window.MODULES[mod].render === 'function') {
+    try { window.MODULES[mod].render(); return; } catch(e) {}
+  }
   renderTesoreria();
 }
 // Antes de actuar sobre una cuenta/movimiento de otra razón social, la activamos.

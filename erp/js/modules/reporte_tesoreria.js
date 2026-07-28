@@ -7,7 +7,11 @@ var RTES_PROV_CATS = ['Pago proveedor', 'Materiales menores', 'Servicios', 'Otro
 
 // ── MAIN RENDER ───────────────────────────────────────────────────────────────
 function renderReporteTesoria() {
-  const accounts = DB.getAll('bankAccounts');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._tesLoadedAll) {
+    window._tesLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderReporteTesoria(); } catch(e) {} } });
+  }
+  const accounts = _tesScopedAccounts();
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -19,6 +23,11 @@ function renderReporteTesoria() {
     <button class="btn btn-secondary" onclick="exportRptTesoreria()"><i class="fas fa-download"></i> Exportar</button>
   </div>
 </div>
+
+${(typeof _tesCompanyOptions === 'function') ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+  <i class="fas fa-city" style="color:var(--primary)"></i><span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>
+  <select class="form-control" style="width:230px" onchange="tesSetCompany(this.value)">${_tesCompanyOptions()}</select>
+</div>` : ''}
 
 <div id="rpt-tes-kpis"></div>
 
@@ -63,11 +72,11 @@ function _rptTesRefresh() {
   if (!rng) return;
   const { from, to } = rng;
 
-  let accounts = DB.getAll('bankAccounts');
+  let accounts = _tesScopedAccounts();
   if (f.account)  accounts = accounts.filter(a => a.id === f.account);
   if (f.currency) accounts = accounts.filter(a => (a.currency || 'ARS') === f.currency);
 
-  const allTxs = DB.getAll('treasuryTx');
+  const allTxs = _tesScopedTx();
   const rows   = accounts.map(acc => _rptTesCalcRow(acc, allTxs, from, to));
 
   _rptTesBuildKPIs(rows);
@@ -275,7 +284,7 @@ function _rptTesDetailModal(accountId, from, to) {
   const account = DB.getById('bankAccounts', accountId);
   if (!account) return;
 
-  const txs = DB.getAll('treasuryTx')
+  const txs = _tesScopedTx()
     .filter(t => t.account_id === accountId && t.date >= from && t.date <= to)
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
@@ -338,11 +347,11 @@ function exportRptTesoreria() {
   const { from, to } = rng;
   const f = window._rptTesFilters;
 
-  let accounts = DB.getAll('bankAccounts');
+  let accounts = _tesScopedAccounts();
   if (f.account)  accounts = accounts.filter(a => a.id === f.account);
   if (f.currency) accounts = accounts.filter(a => (a.currency || 'ARS') === f.currency);
 
-  const allTxs = DB.getAll('treasuryTx');
+  const allTxs = _tesScopedTx();
   const rows   = accounts.map(acc => _rptTesCalcRow(acc, allTxs, from, to));
 
   exportXLSX('reporte_tesoreria.xlsx',
