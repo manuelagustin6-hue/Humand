@@ -5,6 +5,8 @@ var ATT_LABELS = {
   paymentOrders:    'Orden de Pago',
   invoices:         'Factura Emitida',
   collections:      'Recibo de Cobranza',
+  rfis:             'RFI',
+  submittals:       'Submittal',
 };
 
 var ATT_ICONS = {

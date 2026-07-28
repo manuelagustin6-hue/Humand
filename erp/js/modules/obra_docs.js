@@ -230,11 +230,17 @@ function viewRFI(id) {
     (r.answer ? '<div style="background:color-mix(in srgb,var(--success) 8%,transparent);border-radius:8px;padding:12px;margin-bottom:12px">' +
       '<div style="font-size:11px;font-weight:700;color:var(--success);text-transform:uppercase;margin-bottom:4px">Respuesta</div>' +
       '<div style="font-size:13px;white-space:pre-wrap">' + escapeHtml(r.answer) + '</div></div>' : '') +
-    (actions ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">' + actions + '</div>' : '') +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">' + actions + _odAttachBtn('rfis', r) + '</div>' +
     '<div class="divider" style="margin:10px 0"></div>' +
     _odThreadHtml('rfis', r);
   openModal('RFI ' + (r.number || ''), body, 'modal-md',
     '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
+}
+
+function _odAttachBtn(collection, item) {
+  var n = (item.attachments || []).length;
+  return '<button class="btn btn-secondary btn-sm" onclick="openAttachmentsModal(\'' + collection + '\',\'' + item.id + '\')">' +
+    '<i class="fas fa-paperclip"></i> Adjuntos' + (n ? ' (' + n + ')' : '') + '</button>';
 }
 
 function _odField(label, val) {
@@ -409,7 +415,7 @@ function viewSubmittal(id) {
     (s.description ? '<div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:12px">' +
       '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Descripción</div>' +
       '<div style="font-size:13px;white-space:pre-wrap">' + escapeHtml(s.description) + '</div></div>' : '') +
-    (actions ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">' + actions + '</div>' : '') +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">' + actions + _odAttachBtn('submittals', s) + '</div>' +
     '<div class="divider" style="margin:10px 0"></div>' +
     _odThreadHtml('submittals', s);
   openModal('Submittal ' + (s.number || ''), body, 'modal-md',
