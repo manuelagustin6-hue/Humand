@@ -45,6 +45,7 @@ const MODULES = {
   presupuesto:     { title: 'Computo y Presupuesto',         icon: 'fa-calculator',             render: renderPresupuesto },
   seguimiento:     { title: 'Control Presupuestal',          icon: 'fa-chart-line',             render: renderSeguimiento },
   reporte_costos:  { title: 'Reporte de Costos de Obra',    icon: 'fa-chart-column',           render: renderReporteCostos },
+  panel_obra:      { title: 'Panel de Obra',                 icon: 'fa-gauge-high',             render: renderPanelObra },
   minutas:         { title: 'Minutas de Reunión',            icon: 'fa-clipboard-list',         render: renderMinutas },
   rfis:            { title: 'RFIs',                          icon: 'fa-circle-question',        render: renderRFIs },
   submittals:      { title: 'Submittals',                    icon: 'fa-file-lines',             render: renderSubmittals },
