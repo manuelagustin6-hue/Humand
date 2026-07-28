@@ -1,0 +1,12 @@
+{
+  "name": "constructerp-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tests headless de la lógica de cliente de ConstructERP (public/erp)",
+  "scripts": {
+    "test": "node run.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}
