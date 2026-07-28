@@ -67,9 +67,15 @@ function renderPanelObra() {
     var el = daysBetween(p.start_date, todayStr());
     timePct = tot > 0 ? Math.max(0, Math.min(100, el / tot * 100)) : 0;
   }
-  // salud de cronograma: avance físico vs tiempo transcurrido
+  // salud de cronograma: avance físico vs tiempo transcurrido, y atraso de hitos
   var schedGap = progress - timePct;   // >0 adelantado, <0 atrasado
   var schedCls = schedGap >= -5 ? 'green' : (schedGap >= -15 ? 'yellow' : 'red');
+  var msDelay = (typeof _milestonesScheduleDelay === 'function') ? _milestonesScheduleDelay(pid) : null;
+  if (msDelay != null && msDelay > 0) {
+    var _rk = { green: 0, yellow: 1, red: 2 };
+    var msCls = msDelay > 15 ? 'red' : 'yellow';
+    if (_rk[msCls] > _rk[schedCls]) schedCls = msCls;   // se queda con el peor
+  }
   // salud presupuestaria: certificado vs presupuesto
   var budgetCls = econPct <= 100 ? (econPct <= 90 ? 'green' : 'yellow') : 'red';
   // salud documental: vencidos
@@ -87,6 +93,7 @@ function renderPanelObra() {
       '<div class="page-title"><i class="fas fa-gauge-high" style="margin-right:8px;color:var(--primary)"></i>Panel de Obra</div>' +
       '<div class="page-subtitle">Estado integral del proyecto a un vistazo</div>' +
     '</div><div class="page-actions" style="display:flex;gap:10px;align-items:center">' +
+      '<button class="btn btn-secondary" onclick="openMilestones(\'' + pid + '\')"><i class="fas fa-flag-checkered"></i> Hitos</button>' +
       '<select class="form-control" style="min-width:220px" onchange="panelSetProject(this.value)">' + projOpts + '</select>' +
     '</div></div>' +
 
@@ -112,8 +119,10 @@ function renderPanelObra() {
         _poBar('Avance físico', progress) +
         _poBar('Tiempo transcurrido', Math.round(timePct)) +
         _poRow('Estado', '<b style="color:' + _poSem(schedCls) + '">' + (schedGap >= 0 ? 'Adelantado' : 'Atrasado') + ' ' + Math.abs(Math.round(schedGap)) + ' pts</b>') +
+        (msDelay != null ? _poRow('Hitos', '<b style="color:' + _poSem(msDelay > 0 ? (msDelay > 15 ? 'red' : 'yellow') : 'green') + '">' + (msDelay > 0 ? 'Atrasados ' + msDelay + ' días' : (msDelay < 0 ? 'Adelantados ' + (-msDelay) + ' días' : 'En fecha')) + '</b>') : '') +
         _poRow('Tareas', tasks.length + '')
       ) +
+      _poMilestonesCard(pid) +
 
       // PRESUPUESTO
       _poCard('Pulso presupuestario', 'fa-sack-dollar', budgetCls,
@@ -194,4 +203,128 @@ function panelSetProject(id) {
   window._panelProject = id;
   if (window.APP_STATE) window.APP_STATE.activeProject = id;   // sincroniza con el filtro global
   renderPanelObra();
+}
+
+/* ===== HITOS / MILESTONES (por proyecto) ===== */
+function _milestones(pid) {
+  return DB.getAll('milestones').filter(function(m){ return m.project_id === pid; })
+    .sort(function(a,b){ return ((a.planned_date||a.forecast_date||'9999')+'').localeCompare((b.planned_date||b.forecast_date||'9999')+''); });
+}
+// Días de atraso del hito (real/forecast vs plan). >0 atrasado, <0 adelantado, null si falta dato.
+function _msDelayDays(m) {
+  var plan = m.planned_date, real = m.completed_date || m.forecast_date;
+  if (!plan || !real) return null;
+  return daysBetween(plan, real);
+}
+function _msAtRisk(m) {
+  if (m.completed_date) return false;
+  if (m.at_risk) return true;
+  var d = _msDelayDays(m); if (d != null && d > 0) return true;
+  if (m.planned_date && m.planned_date < todayStr()) return true;   // pendiente y vencido
+  return false;
+}
+// Atraso general de la obra según hitos pendientes (el peor). null si no hay hitos con datos.
+function _milestonesScheduleDelay(pid) {
+  var pend = _milestones(pid).filter(function(m){ return !m.completed_date; });
+  var worst = null;
+  pend.forEach(function(m){ var d = _msDelayDays(m); if (d != null) worst = (worst == null) ? d : Math.max(worst, d); });
+  return worst;
+}
+
+function _poMilestonesCard(pid) {
+  var ms = _milestones(pid);
+  var pending = ms.filter(function(m){ return !m.completed_date; });
+  var done = ms.filter(function(m){ return m.completed_date; });
+  var atRisk = pending.filter(_msAtRisk).length;
+  var cls = atRisk ? (atRisk >= 2 ? 'red' : 'yellow') : 'green';
+  var inner;
+  if (!ms.length) {
+    inner = '<div style="color:var(--text-muted);font-size:13px">Sin hitos cargados. <a href="#" onclick="openMilestones(\'' + pid + '\');return false">Agregar →</a></div>';
+  } else {
+    inner = '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px">Próximos</div>' +
+      (pending.slice(0, 4).map(_msRow).join('') || '<div style="font-size:12px;color:var(--text-muted)">— sin pendientes —</div>') +
+      (done.length ? '<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin:8px 0 2px">Completados</div>' + done.slice(-3).map(_msRow).join('') : '') +
+      '<div style="margin-top:8px"><a href="#" onclick="openMilestones(\'' + pid + '\');return false" style="font-size:12px">Gestionar hitos →</a></div>';
+  }
+  return _poCard('Hitos (milestones)', 'fa-flag-checkered', cls, inner);
+}
+function _msRow(m) {
+  var done = !!m.completed_date, risk = _msAtRisk(m), d = _msDelayDays(m);
+  var badge = done ? '<span class="badge badge-green" style="font-size:10px">OK</span>'
+    : (risk ? '<span class="badge badge-red" style="font-size:10px">En riesgo</span>'
+            : '<span class="badge badge-gray" style="font-size:10px">Pendiente</span>');
+  var dchip = (d != null && !done) ? ' <span style="font-size:11px;color:' + (d > 0 ? 'var(--danger)' : 'var(--success)') + '">' + (d > 0 ? '+' + d + 'd' : d + 'd') + '</span>' : '';
+  var date = m.completed_date ? fmtDate(m.completed_date) : (m.forecast_date ? fmtDate(m.forecast_date) : (m.planned_date ? fmtDate(m.planned_date) : '—'));
+  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:13px;gap:8px">' +
+    '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(m.name || '(hito)') + dchip + '</span>' +
+    '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap">' + date + '</span>' + badge + '</div>';
+}
+
+// ---- gestión de hitos ----
+function openMilestones(pid) {
+  var ms = _milestones(pid);
+  var canE = canEdit('gantt') || canEdit('projects');
+  var rows = ms.length ? ms.map(function(m){
+    var d = _msDelayDays(m), done = !!m.completed_date;
+    return '<tr>' +
+      '<td>' + escapeHtml(m.name || '') + '</td>' +
+      '<td style="font-size:12px">' + (m.planned_date ? fmtDate(m.planned_date) : '—') + '</td>' +
+      '<td style="font-size:12px">' + (m.forecast_date ? fmtDate(m.forecast_date) : '—') + '</td>' +
+      '<td style="font-size:12px">' + (m.completed_date ? fmtDate(m.completed_date) : '—') + '</td>' +
+      '<td>' + (done ? '<span class="badge badge-green" style="font-size:10px">Completado</span>' : (_msAtRisk(m) ? '<span class="badge badge-red" style="font-size:10px">En riesgo</span>' : '<span class="badge badge-gray" style="font-size:10px">Pendiente</span>')) +
+        (d != null && !done ? ' <span style="font-size:11px;color:' + (d>0?'var(--danger)':'var(--success)') + '">' + (d>0?'+'+d+'d':d+'d') + '</span>' : '') + '</td>' +
+      (canE ? '<td style="white-space:nowrap"><button class="btn-ghost btn btn-sm" onclick="openMilestoneForm(\'' + pid + '\',\'' + m.id + '\')"><i class="fas fa-edit"></i></button>' +
+        '<button class="btn-ghost btn btn-sm danger" onclick="deleteMilestone(\'' + pid + '\',\'' + m.id + '\')"><i class="fas fa-trash"></i></button></td>' : '') +
+    '</tr>';
+  }).join('') : '<tr><td colspan="' + (canE?6:5) + '" style="text-align:center;color:var(--text-muted);padding:16px">Sin hitos. Agregá el primero.</td></tr>';
+  openModal('Hitos — ' + escapeHtml(_odSafeProjName(pid)),
+    '<div class="table-wrap"><table class="table" style="font-size:13px"><thead><tr>' +
+      '<th>Hito</th><th>Plan (contrato)</th><th>Proyección</th><th>Completado</th><th>Estado</th>' + (canE?'<th></th>':'') + '</tr></thead><tbody>' + rows + '</tbody></table></div>',
+    '', (canE ? '<button class="btn btn-primary" onclick="openMilestoneForm(\'' + pid + '\')"><i class="fas fa-plus"></i> Nuevo hito</button>' : '') +
+        '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
+}
+function _odSafeProjName(pid) { var p = DB.getById('projects', pid); return p ? p.name : '(proyecto)'; }
+
+function openMilestoneForm(pid, id) {
+  if (!requireEdit('gantt')) return;
+  var m = id ? DB.getById('milestones', id) : null;
+  openModal(m ? 'Editar hito' : 'Nuevo hito',
+    '<div class="form-grid form-grid-2">' +
+      '<div class="form-group full"><label class="form-label">Nombre del hito *</label>' +
+        '<input class="form-control" id="ms-name" value="' + (m ? escapeHtml(m.name || '') : '') + '" placeholder="Ej: Hormigonado losa nivel 3"></div>' +
+      '<div class="form-group"><label class="form-label">Fecha plan (contrato)</label>' +
+        '<input class="form-control" id="ms-planned" type="date" value="' + (m ? (m.planned_date || '') : '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">Fecha proyectada</label>' +
+        '<input class="form-control" id="ms-forecast" type="date" value="' + (m ? (m.forecast_date || '') : '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">Fecha completado</label>' +
+        '<input class="form-control" id="ms-completed" type="date" value="' + (m ? (m.completed_date || '') : '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">¿En riesgo?</label>' +
+        '<select class="form-control" id="ms-risk"><option value="false"' + (m && m.at_risk ? '' : ' selected') + '>No</option><option value="true"' + (m && m.at_risk ? ' selected' : '') + '>Sí</option></select></div>' +
+      '<div class="form-group full"><label class="form-label">Notas</label>' +
+        '<input class="form-control" id="ms-notes" value="' + (m ? escapeHtml(m.notes || '') : '') + '"></div>' +
+    '</div>',
+    '', '<button class="btn btn-secondary" onclick="openMilestones(\'' + pid + '\')">Cancelar</button>' +
+        '<button class="btn btn-primary" onclick="saveMilestone(\'' + pid + '\',\'' + (id || '') + '\')"><i class="fas fa-save"></i> Guardar</button>');
+}
+function saveMilestone(pid, id) {
+  if (!requireEdit('gantt')) return;
+  var name = document.getElementById('ms-name').value.trim();
+  if (!name) { toast('El nombre es obligatorio', 'error'); return; }
+  var data = {
+    project_id: pid, company_id: DB._companyId, name: name,
+    planned_date: document.getElementById('ms-planned').value || '',
+    forecast_date: document.getElementById('ms-forecast').value || '',
+    completed_date: document.getElementById('ms-completed').value || '',
+    at_risk: document.getElementById('ms-risk').value === 'true',
+    notes: document.getElementById('ms-notes').value.trim(),
+  };
+  if (id) DB.update('milestones', id, data); else DB.insert('milestones', data);
+  toast('Hito guardado', 'success');
+  openMilestones(pid);
+}
+function deleteMilestone(pid, id) {
+  if (!requireEdit('gantt')) return;
+  DB.remove('milestones', id);
+  toast('Hito eliminado', 'warning');
+  openMilestones(pid);
 }
