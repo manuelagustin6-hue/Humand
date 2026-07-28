@@ -617,6 +617,7 @@ function getEffectivePermissions(roleId) {
       pedidos:'edit', ordenes_compra:'edit', licitaciones:'edit',
       projects:'edit', contratos:'edit', certificaciones:'edit',
       presupuesto:'edit', seguimiento:'edit', gantt:'edit',
+      rfis:'edit', submittals:'edit', minutas:'edit',
       rubros:'edit', apu:'edit', indices:'edit',
       cuentas_prov:'view', documentos_prov:'view',
       ordenes_pago:'view', retenciones:'view',
@@ -636,6 +637,7 @@ function getEffectivePermissions(roleId) {
     inspector: {
       projects:'view', contratos:'view', certificaciones:'view',
       presupuesto:'view', seguimiento:'view', gantt:'view', rubros:'view',
+      rfis:'edit', submittals:'view',
     },
   };
   return defaults[roleId] || {};

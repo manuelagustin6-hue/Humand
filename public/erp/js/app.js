@@ -46,6 +46,8 @@ const MODULES = {
   seguimiento:     { title: 'Control Presupuestal',          icon: 'fa-chart-line',             render: renderSeguimiento },
   reporte_costos:  { title: 'Reporte de Costos de Obra',    icon: 'fa-chart-column',           render: renderReporteCostos },
   minutas:         { title: 'Minutas de Reunión',            icon: 'fa-clipboard-list',         render: renderMinutas },
+  rfis:            { title: 'RFIs',                          icon: 'fa-circle-question',        render: renderRFIs },
+  submittals:      { title: 'Submittals',                    icon: 'fa-file-lines',             render: renderSubmittals },
   parte_diario:    { title: 'Parte Diario de Obra',          icon: 'fa-hard-hat',               render: renderParteDiario },
   gantt:           { title: 'Diagrama de Gantt',             icon: 'fa-stream',                 render: renderGantt },
   rubros:          { title: 'Rubros de Obra',                icon: 'fa-list-ol',                render: renderRubros },
