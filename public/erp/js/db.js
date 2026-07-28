@@ -1322,6 +1322,29 @@ const DB = {
     return matching[0];
   },
 
+  // Tipo de cambio directo from→to a una fecha (o su inverso). null si no hay.
+  _fxDirect: function(from, to, date) {
+    if (from === to) return 1;
+    var d = this.getExchangeRate(from, to, date); if (d) return d.rate;
+    var i = this.getExchangeRate(to, from, date); if (i && i.rate) return 1 / i.rate;
+    return null;
+  },
+  // Factor from→to, probando directo/inverso y, si no, vía pivote USD (ej. ARS↔UYU).
+  _fxRate: function(from, to, date) {
+    var r = this._fxDirect(from, to, date); if (r != null) return r;
+    var a = this._fxDirect(from, 'USD', date), b = this._fxDirect('USD', to, date);
+    if (a != null && b != null) return a * b;
+    return null;
+  },
+  // Convierte un monto de una moneda a otra. Si no hay tipo de cambio, devuelve el
+  // monto sin convertir (mejor esfuerzo) — cargá el TC en Empresas → Tipos de cambio.
+  convertCurrency: function(amount, from, to, date) {
+    amount = amount || 0;
+    if (!amount || !from || !to || from === to) return amount;
+    var r = this._fxRate(from, to, date);
+    return (r != null) ? amount * r : amount;
+  },
+
   getAllForConsolidation(collection) {
     var companies = this.getAllCompanies();
     var result = [];

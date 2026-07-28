@@ -6,6 +6,7 @@
 window._contaProject   = '';
 window._contaCompanyId = '';
 window._contaBook      = '';   // '' = A y B | 'A' = Contabilidad A (formal) | 'B'
+window._contaConsol    = '';   // '' = por moneda | 'ARS'/'USD'/... = todo convertido a esa moneda
 
 // Barra de scope: Proyecto (eje primario, con "General") + Razón social (filtro).
 function _contaScopeBar() {
@@ -24,6 +25,9 @@ function _contaScopeBar() {
     '<option value="">Contabilidad A y B</option>' +
     '<option value="A"' + (bk === 'A' ? ' selected' : '') + '>Solo Contabilidad A</option>' +
     '<option value="B"' + (bk === 'B' ? ' selected' : '') + '>Solo Contabilidad B</option>';
+  var cs = window._contaConsol || '';
+  var consolOpts = '<option value="">Por moneda (sin convertir)</option>' +
+    ((typeof DB.getAllCurrencies === 'function' ? DB.getAllCurrencies() : []).map(function(c){ return '<option value="' + c.id + '"' + (cs === c.id ? ' selected' : '') + '>Consolidar en ' + escapeHtml(c.id) + '</option>'; }).join(''));
 
   return '<div class="conta-company-bar" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">' +
     '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-diagram-project" style="color:var(--primary)"></i>' +
@@ -35,7 +39,11 @@ function _contaScopeBar() {
     '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-book-open" style="color:var(--primary)"></i>' +
       '<span class="conta-company-label">Libro</span>' +
       '<select class="form-control conta-company-sel" onchange="contaSetBook(this.value)">' + bookOpts + '</select></div>' +
-    '</div>';
+    '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-right-left" style="color:var(--primary)"></i>' +
+      '<span class="conta-company-label">Moneda</span>' +
+      '<select class="form-control conta-company-sel" onchange="contaSetConsol(this.value)">' + consolOpts + '</select></div>' +
+    '</div>' +
+    (cs ? '<div style="font-size:11px;color:var(--text-muted);margin:-4px 0 10px"><i class="fas fa-circle-info"></i> Montos convertidos a ' + escapeHtml(cs) + ' al tipo de cambio de la fecha de cada asiento (Empresas → Tipos de cambio).</div>' : '');
 }
 
 // Re-renderiza el módulo de contabilidad ACTUAL (Diario, Sumas, Balance, etc.).
@@ -57,6 +65,11 @@ function contaSetBook(v) {
   _contaRerender();
 }
 
+function contaSetConsol(v) {
+  window._contaConsol = v || '';
+  _contaRerender();
+}
+
 function contaSetCompany(id) {
   window._contaCompanyId = id || '';
   // Al elegir una razón social puntual la ponemos como empresa activa (para que
@@ -71,6 +84,22 @@ function _contaScopedEntries() {
   if (window._contaCompanyId) entries = entries.filter(function(e) { return e._company_id === window._contaCompanyId; });
   if (window._contaProject)   entries = entries.filter(function(e) { return (e.project_id || '') === window._contaProject; });
   if (window._contaBook)      entries = entries.filter(function(e) { return (e.book || 'A') === window._contaBook; });
+  // Consolidado por moneda: convertir cada asiento a la moneda objetivo al TC de su fecha.
+  if (window._contaConsol) {
+    var tgt = window._contaConsol;
+    entries = entries.map(function(e) {
+      var from = _jeCur(e);
+      if (from === tgt) return e;
+      var conv = Object.assign({}, e, { currency: tgt, _converted: true });
+      conv.lines = (e.lines || []).map(function(l) {
+        return Object.assign({}, l, {
+          debit:  DB.convertCurrency(l.debit  || 0, from, tgt, e.date),
+          credit: DB.convertCurrency(l.credit || 0, from, tgt, e.date),
+        });
+      });
+      return conv;
+    });
+  }
   return entries;
 }
 // Plan de cuentas del scope: de la razón social elegida, o consolidado (dedupe por código).
