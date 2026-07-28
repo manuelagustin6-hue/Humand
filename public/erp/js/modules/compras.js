@@ -538,15 +538,51 @@ function exportRequisitions() {
 }
 
 // ---- PURCHASE ORDERS ----
+window._poCompany = window._poCompany || '';   // filtro razón social ('' = todas)
+function _poCur(po) { return (po && (po.currency || po._company_currency)) || (typeof _activeCurrency === 'function' ? _activeCurrency() : 'ARS'); }
+function _poScopedPOs() {
+  var pos = filterByActiveProject((typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('purchaseOrders') : DB.getAll('purchaseOrders'));
+  if (window._poCompany) pos = pos.filter(function(p){ return p._company_id === window._poCompany; });
+  return pos;
+}
+function _poCompanyOptions() {
+  return '<option value="">Todas las razones sociales</option>' +
+    (DB.getAllCompanies() || []).map(function(c){ return '<option value="'+c.id+'"'+(window._poCompany===c.id?' selected':'')+'>'+escapeHtml(c.legalName||c.name)+'</option>'; }).join('');
+}
+function compSetCompany(id) {
+  window._poCompany = id || '';
+  if (id) { DB.setCompany(id); if (window.APP_STATE) window.APP_STATE.activeCompany = id; }
+  renderCompras();
+}
+function _poEnsureCompany(id) {
+  if (DB.getById('purchaseOrders', id)) return true;
+  var found = (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('purchaseOrders') : []).find(function(p){ return p.id === id; });
+  if (found && found._company_id && found._company_id !== DB._companyId) {
+    DB.setCompany(found._company_id); if (window.APP_STATE) window.APP_STATE.activeCompany = found._company_id; return true;
+  }
+  return !!found;
+}
+
 function renderPOTable() {
-  const pos = filterByActiveProject(DB.getAll('purchaseOrders'));
-  const projects = DB.getAll('projects');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._poLoadedAll) {
+    window._poLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderCompras(); } catch(e) {} } });
+  }
+  const pos = _poScopedPOs();
+  const projects = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
+  const _multiCur = !window._poCompany && Object.keys(pos.reduce(function(m,p){ m[_poCur(p)]=1; return m; }, {})).length > 1;
 
   const totalPending = pos.filter(p => ['draft','sent'].includes(p.status)).reduce((s,p) => s+p.total, 0);
   const totalReceived = pos.filter(p => p.status === 'received').reduce((s,p) => s+p.total, 0);
 
   return `
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+  <i class="fas fa-city" style="color:var(--primary)"></i><span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>
+  <select class="form-control" style="width:230px" onchange="compSetCompany(this.value)">${_poCompanyOptions()}</select>
+  ${_multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — ver cada OC</span>' : ''}
+</div>
+
 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-alt"></i></div><div>
     <div class="stat-value">${pos.length}</div><div class="stat-label">OC Totales</div></div></div>
@@ -582,8 +618,9 @@ function renderPOTable() {
 
 function buildPORows(pos, projects, suppliers) {
   if (!pos.length) return `<div class="empty-state"><i class="fas fa-shopping-cart"></i><p>No hay órdenes de compra</p></div>`;
+  const _showRS = !window._poCompany;
   return `<table class="rcard"><thead><tr>
-    <th>Número</th><th>Proyecto</th><th>Proveedor</th><th>Fecha</th><th>Entrega Est.</th><th>Total</th><th>Estado</th><th>Acciones</th>
+    <th>Número</th>${_showRS ? '<th>Razón Social</th>' : ''}<th>Proyecto</th><th>Proveedor</th><th>Fecha</th><th>Entrega Est.</th><th>Total</th><th>Estado</th><th>Acciones</th>
   </tr></thead>
   <tbody>
   ${pos.map(po => {
@@ -592,11 +629,12 @@ function buildPORows(pos, projects, suppliers) {
     const srcReq = po.req_id ? DB.getById('purchaseRequisitions', po.req_id) : null;
     return `<tr>
       <td><strong>${po.number}</strong>${srcReq ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px"><i class="fas fa-clipboard-list" style="font-size:9px"></i> ${srcReq.number}</div>` : ''}</td>
-      <td>${proj ? proj.name : '-'}</td>
-      <td>${sup ? sup.name : '-'}</td>
+      ${_showRS ? `<td style="font-size:12px">${escapeHtml(po._company_name || '—')}</td>` : ''}
+      <td>${proj ? escapeHtml(proj.name) : '-'}</td>
+      <td>${sup ? escapeHtml(sup.name) : '-'}</td>
       <td>${fmtDate(po.date)}</td>
       <td>${fmtDate(po.expected_date)}</td>
-      <td class="number-cell"><strong>${fmtMoney(po.total)}</strong></td>
+      <td class="number-cell"><strong>${fmtMoney(po.total, _poCur(po))}</strong></td>
       <td>${statusBadge(po.status)}</td>
       <td><div class="table-actions">
         <button class="btn-ghost btn btn-sm" onclick="viewPO('${po.id}')"><i class="fas fa-eye"></i></button>
@@ -614,7 +652,7 @@ window._poFilters = { q: '', status: '' };
 function filterPOs(q, status) {
   if (q !== undefined) window._poFilters.q = q.toLowerCase();
   if (status !== undefined) window._poFilters.status = status;
-  let pos = filterByActiveProject(DB.getAll('purchaseOrders'));
+  let pos = _poScopedPOs();
   const suppliers = DB.getAll('suppliers');
   const f = window._poFilters;
   if (f.q) pos = pos.filter(po => {
@@ -622,11 +660,13 @@ function filterPOs(q, status) {
     return po.number.toLowerCase().includes(f.q) || (s && s.name.toLowerCase().includes(f.q));
   });
   if (f.status) pos = pos.filter(po => po.status === f.status);
+  const _projs = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
   const wrap = document.getElementById('po-table-wrap');
-  if (wrap) wrap.innerHTML = buildPORows(pos, DB.getAll('projects'), suppliers);
+  if (wrap) wrap.innerHTML = buildPORows(pos, _projs, suppliers);
 }
 
 function viewPO(id) {
+  _poEnsureCompany(id);
   const po = DB.getById('purchaseOrders', id);
   const proj = DB.getById('projects', po.project_id);
   const sup = DB.getById('suppliers', po.supplier_id);
@@ -675,6 +715,7 @@ ${po.notes ? `<div class="mt-2"><strong>Notas:</strong> ${po.notes}</div>` : ''}
 function openPOForm(id) {
   id = (id != null && id !== '') ? id : null;
   try {
+  if (id) _poEnsureCompany(id);
   const po = id ? DB.getById('purchaseOrders', id) : null;
   DB.markEdit('purchaseOrders', id);   // control de concurrencia: revisión base al abrir
   const projects = DB.getAll('projects');
@@ -870,12 +911,14 @@ function savePO(id) {
 }
 
 function receivePO(id) {
+  _poEnsureCompany(id);
   DB.update('purchaseOrders', id, { status: 'received' });
   toast('OC marcada como recibida', 'success');
   _refreshCurrentComprasView();
 }
 
 function deletePO(id) {
+  _poEnsureCompany(id);
   confirmDialog('¿Eliminar esta orden de compra?', () => {
     DB.remove('purchaseOrders', id);
     toast('OC eliminada', 'warning');
@@ -1144,6 +1187,7 @@ function filterSIs(q, status, period) {
 }
 
 function generateSIFromPO(poId) {
+  _poEnsureCompany(poId);
   openSIForm(null, poId);
 }
 

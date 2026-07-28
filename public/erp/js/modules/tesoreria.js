@@ -1,9 +1,44 @@
 /* ===== TESORERÍA ===== */
+window._tesCompany = window._tesCompany || '';   // filtro razón social ('' = todas)
+function _tesScopedAccounts() {
+  var a = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('bankAccounts') : DB.getAll('bankAccounts');
+  if (window._tesCompany) a = a.filter(function(x){ return x._company_id === window._tesCompany; });
+  return a;
+}
+function _tesScopedTx() {
+  var t = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('treasuryTx') : DB.getAll('treasuryTx');
+  if (window._tesCompany) t = t.filter(function(x){ return x._company_id === window._tesCompany; });
+  return t;
+}
+function _tesCompanyOptions() {
+  return '<option value="">Todas las razones sociales</option>' +
+    (DB.getAllCompanies() || []).map(function(c){ return '<option value="'+c.id+'"'+(window._tesCompany===c.id?' selected':'')+'>'+escapeHtml(c.legalName||c.name)+'</option>'; }).join('');
+}
+function tesSetCompany(id) {
+  window._tesCompany = id || '';
+  if (id) { DB.setCompany(id); if (window.APP_STATE) window.APP_STATE.activeCompany = id; }
+  renderTesoreria();
+}
+// Antes de actuar sobre una cuenta/movimiento de otra razón social, la activamos.
+function _tesEnsureCompany(id, coll) {
+  coll = coll || 'treasuryTx';
+  if (DB.getById(coll, id)) return true;
+  var found = (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated(coll) : []).find(function(x){ return x.id === id; });
+  if (found && found._company_id && found._company_id !== DB._companyId) {
+    DB.setCompany(found._company_id); if (window.APP_STATE) window.APP_STATE.activeCompany = found._company_id; return true;
+  }
+  return !!found;
+}
+
 function renderTesoreria() {
-  const accounts = DB.getAll('bankAccounts');
-  const txs = DB.getAll('treasuryTx');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._tesLoadedAll) {
+    window._tesLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderTesoreria(); } catch(e) {} } });
+  }
+  const accounts = _tesScopedAccounts();
+  const txs = _tesScopedTx();
   const txsP = filterByActiveProject(txs);   // filtrado por proyecto para movimientos/flujo (saldos van completos)
-  const projects = DB.getAll('projects');
+  const projects = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
 
   // Calc balances
   const accountsWithBalance = accounts.map(acc => {
@@ -56,15 +91,21 @@ function renderTesoreria() {
   </div>
 </div>
 
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+  <i class="fas fa-city" style="color:var(--primary)"></i><span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>
+  <select class="form-control" style="width:230px" onchange="tesSetCompany(this.value)">${_tesCompanyOptions()}</select>
+</div>
+
 <!-- ACCOUNT CARDS -->
 <div class="grid-auto mb-2">
   ${accountsWithBalance.map(acc => `
   <div class="card" style="cursor:pointer" onclick="showAccountTx('${acc.id}')">
     <div class="card-header" style="padding:14px 16px">
       <div>
-        <div style="font-size:13px;font-weight:600">${acc.name}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${acc.bank}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${acc.account_number}</div>
+        <div style="font-size:13px;font-weight:600">${escapeHtml(acc.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(acc.bank||'')}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(acc.account_number||'')}</div>
+        ${(!window._tesCompany && acc._company_name) ? `<div style="font-size:10px;color:var(--primary);font-weight:600;margin-top:2px">${escapeHtml(acc._company_name)}</div>` : ''}
       </div>
       <div style="text-align:right">
         <span class="badge ${acc.currency === 'USD' ? 'badge-green' : 'badge-blue'}">${acc.currency}</span>
@@ -185,7 +226,7 @@ function filterTx(q, type, book) {
   if (q !== undefined) window._txFilters.q = q.toLowerCase();
   if (type !== undefined) window._txFilters.type = type;
   if (book !== undefined) window._txFilters.book = book;
-  let txs = filterByActiveProject(DB.getAll('treasuryTx'));
+  let txs = filterByActiveProject(_tesScopedTx());
   const f = window._txFilters;
   if (f.q) txs = txs.filter(t => (t.description||'').toLowerCase().includes(f.q) || (t.category||'').toLowerCase().includes(f.q));
   if (f.type) txs = txs.filter(t => t.type === f.type);
@@ -353,6 +394,7 @@ function saveTx(type) {
 }
 
 function deleteTx(id) {
+  _tesEnsureCompany(id, 'treasuryTx');
   confirmDialog('¿Eliminar este movimiento?', () => {
     DB.remove('treasuryTx', id);
     toast('Movimiento eliminado', 'warning');
@@ -361,6 +403,7 @@ function deleteTx(id) {
 }
 
 function showAccountTx(accountId) {
+  _tesEnsureCompany(accountId, 'bankAccounts');
   const acc = DB.getById('bankAccounts', accountId);
   const txs = DB.getAll('treasuryTx').filter(t => t.account_id === accountId);
   const income = txs.filter(t=>t.type==='income').reduce((s,t) => s+t.amount, 0);
@@ -392,6 +435,7 @@ function showAccountTx(accountId) {
 }
 
 function openBankAccountForm(id = null) {
+  if (id) _tesEnsureCompany(id, 'bankAccounts');
   const acc = id ? DB.getById('bankAccounts', id) : null;
   openModal(acc ? 'Editar Cuenta' : 'Nueva Cuenta Bancaria', `
 <div class="form-grid form-grid-2">
@@ -485,6 +529,7 @@ function saveBankAccount(id) {
 }
 
 function deleteBankAccountFromTesoreria(id) {
+  _tesEnsureCompany(id, 'bankAccounts');
   confirmDialog('¿Eliminar esta cuenta? Los movimientos asociados se mantendrán.', () => {
     DB.remove('bankAccounts', id);
     toast('Cuenta eliminada', 'warning');
