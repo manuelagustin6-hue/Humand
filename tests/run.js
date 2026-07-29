@@ -191,5 +191,19 @@ const { withApp, check, near, summary } = require('./harness');
     check('1100 ARS → 1 USD', near(r.debit, 1));
   }
 
+  // ---- 12) Tesorería: consolidado por moneda (_tesConv) ----
+  console.log('\n▶ Tesorería — consolidado por moneda');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'modules/tesoreria.js'], () => {
+      window._tesConsol = 'USD';
+      var conv = _tesConv(1100, 'ARS');
+      window._tesConsol = '';
+      var noconv = _tesConv(1100, 'ARS');
+      return { conv: conv, noconv: noconv };
+    });
+    check('1100 ARS → 1 USD (consolidado)', near(r.conv, 1));
+    check('sin consolidar no convierte', r.noconv === 1100);
+  }
+
   summary();
 })();
