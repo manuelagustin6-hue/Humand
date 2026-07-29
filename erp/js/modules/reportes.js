@@ -76,7 +76,6 @@ function renderSumasYSaldos() {
   const accounts = DB.getAll('accounts');
   const entries = DB.getAll('journalEntries').filter(e => e.status === 'posted');
 
-  // Calc debits and credits per account from posted entries
   const debits = {}, credits = {};
   accounts.forEach(a => { debits[a.code] = 0; credits[a.code] = 0; });
 
@@ -98,18 +97,17 @@ function renderSumasYSaldos() {
   return `
 <div class="card">
   <div class="card-header">
-    <span class="card-title"><i class="fas fa-balance-scale text-primary"></i> Sumas y Saldos — Balance de Comprobación</span>
+    <span class="card-title"><i class="fas fa-balance-scale text-primary"></i> Sumas y Saldos</span>
     <div style="display:flex;gap:8px;align-items:center">
-      <span style="font-size:11px;color:var(--text-muted)">Solo asientos contabilizados</span>
-      <span class="badge ${balanced?'badge-green':'badge-red'}">${balanced?'✓ Cuadrado':'⚠ Desbalanceado'}</span>
+      <span class="badge ${balanced ? 'badge-green' : 'badge-red'}">${balanced ? 'Cuadrado' : 'Desbalanceado'}</span>
       <button class="btn btn-sm btn-secondary" onclick="exportSumasYSaldos()"><i class="fas fa-download"></i> Exportar</button>
     </div>
   </div>
   <div class="card-body" style="padding:0">
     <div class="table-wrap">
       <table><thead><tr>
-        <th>Código</th><th>Cuenta</th><th>Tipo</th>
-        <th class="text-right">Débitos Acum.</th><th class="text-right">Créditos Acum.</th>
+        <th>Codigo</th><th>Cuenta</th><th>Tipo</th>
+        <th class="text-right">Debitos Acum.</th><th class="text-right">Creditos Acum.</th>
         <th class="text-right">Saldo Deudor</th><th class="text-right">Saldo Acreedor</th>
       </tr></thead>
       <tbody>
@@ -118,15 +116,7 @@ function renderSumasYSaldos() {
           const c = credits[a.code]||0;
           const saldoD = d > c ? d - c : 0;
           const saldoC = c > d ? c - d : 0;
-          return `<tr>
-            <td><strong>${a.code}</strong></td>
-            <td style="padding-left:${(a.code.split('.').length-1)*12+4}px">${a.name}</td>
-            <td><span class="badge ${typeColor[a.type]||'badge-gray'}">${typeLabel[a.type]||a.type}</span></td>
-            <td class="number-cell text-right">${d ? fmtMoney(d) : '-'}</td>
-            <td class="number-cell text-right">${c ? fmtMoney(c) : '-'}</td>
-            <td class="number-cell text-right ${saldoD?'text-primary':''}">${saldoD ? fmtMoney(saldoD) : '-'}</td>
-            <td class="number-cell text-right ${saldoC?'text-primary':''}">${saldoC ? fmtMoney(saldoC) : '-'}</td>
-          </tr>`;
+          return '<tr><td><strong>' + a.code + '</strong></td><td style="padding-left:' + ((a.code.split('.').length-1)*12+4) + 'px">' + a.name + '</td><td><span class="badge ' + (typeColor[a.type]||'badge-gray') + '">' + (typeLabel[a.type]||a.type) + '</span></td><td class="number-cell text-right">' + (d ? fmtMoney(d) : '-') + '</td><td class="number-cell text-right">' + (c ? fmtMoney(c) : '-') + '</td><td class="number-cell text-right' + (saldoD ? ' text-primary' : '') + '">' + (saldoD ? fmtMoney(saldoD) : '-') + '</td><td class="number-cell text-right' + (saldoC ? ' text-primary' : '') + '">' + (saldoC ? fmtMoney(saldoC) : '-') + '</td></tr>';
         }).join('')}
       </tbody>
       <tfoot>
@@ -137,7 +127,6 @@ function renderSumasYSaldos() {
           <td class="number-cell text-right"><strong>${fmtMoney(Object.values(debits).map((d,i) => { const c = Object.values(credits)[i]; return d>c?d-c:0; }).reduce((s,v)=>s+v,0))}</strong></td>
           <td class="number-cell text-right"><strong>${fmtMoney(Object.values(credits).map((c,i) => { const d = Object.values(debits)[i]; return c>d?c-d:0; }).reduce((s,v)=>s+v,0))}</strong></td>
         </tr>
-        ${!balanced ? `<tr><td colspan="7" class="text-danger text-right">⚠ El libro no cuadra — revisá los asientos</td></tr>` : ''}
       </tfoot>
       </table>
     </div>
@@ -155,8 +144,8 @@ function exportSumasYSaldos() {
     debits[l.account_code] = (debits[l.account_code]||0) + (l.debit||0);
     credits[l.account_code] = (credits[l.account_code]||0) + (l.credit||0);
   }));
-  exportXLSX('sumas_y_saldos.xlsx',
-    ['Código','Cuenta','Tipo','Débitos Acum.','Créditos Acum.','Saldo Deudor','Saldo Acreedor'],
+  exportCSV('sumas_y_saldos.csv',
+    ['Codigo','Cuenta','Tipo','Debitos Acum.','Creditos Acum.','Saldo Deudor','Saldo Acreedor'],
     accounts.sort((a,b)=>a.code.localeCompare(b.code)).filter(a=>debits[a.code]||credits[a.code]).map(a => {
       const d = debits[a.code]||0, c = credits[a.code]||0;
       return [a.code, a.name, a.type, d, c, d>c?d-c:0, c>d?c-d:0];
@@ -181,7 +170,7 @@ function renderReporteProyecto() {
     <div class="card-body" style="padding:0"><div class="table-wrap">
       <table><thead><tr>
         <th>Proyecto</th><th>Cliente</th><th>Estado</th>
-        <th class="text-right">Presupuesto</th><th class="text-right">Costo Real</th><th class="text-right">Desvío</th>
+        <th class="text-right">Presupuesto</th><th class="text-right">Costo Real</th><th class="text-right">Desvio</th>
         <th class="text-right">Certificado</th><th class="text-right">Facturado</th><th class="text-right">Cobrado</th>
       </tr></thead>
       <tbody>
@@ -194,20 +183,7 @@ function renderReporteProyecto() {
           const deviation = actualTotal - budget;
           const invIds = invoices.filter(i=>i.project_id===p.id).map(i=>i.id);
           const collected = collections.filter(c=>invIds.includes(c.invoice_id)).reduce((s,c)=>s+c.amount,0);
-
-          return `<tr>
-            <td><strong>${p.name}</strong></td>
-            <td style="font-size:12px">${p.client||'-'}</td>
-            <td>${statusBadge(p.status)}</td>
-            <td class="number-cell text-right">${fmtMoney(budget)}</td>
-            <td class="number-cell text-right">${fmtMoney(actualTotal)}</td>
-            <td class="number-cell text-right ${deviation>0?'text-danger':'text-success'}">
-              ${deviation>0?'+':''}${fmtMoney(deviation)}
-            </td>
-            <td class="number-cell text-right">${fmtMoney(certTotal)}</td>
-            <td class="number-cell text-right">${fmtMoney(invTotal)}</td>
-            <td class="number-cell text-right text-success">${fmtMoney(collected)}</td>
-          </tr>`;
+          return '<tr><td><strong>' + p.name + '</strong></td><td style="font-size:12px">' + (p.client||'-') + '</td><td>' + statusBadge(p.status) + '</td><td class="number-cell text-right">' + fmtMoney(budget) + '</td><td class="number-cell text-right">' + fmtMoney(actualTotal) + '</td><td class="number-cell text-right ' + (deviation>0?'text-danger':'text-success') + '">' + (deviation>0?'+':'') + fmtMoney(deviation) + '</td><td class="number-cell text-right">' + fmtMoney(certTotal) + '</td><td class="number-cell text-right">' + fmtMoney(invTotal) + '</td><td class="number-cell text-right text-success">' + fmtMoney(collected) + '</td></tr>';
         }).join('')}
       </tbody>
       <tfoot><tr class="total-row">
@@ -225,7 +201,6 @@ function renderReporteProyecto() {
 // ---- FLUJO PROYECTADO ----
 function renderFlujoCaja() {
   const projections = DB.getAll('cashflowProjections');
-  const txs = DB.getAll('treasuryTx');
   const projects = DB.getAll('projects');
 
   const totalIncomeProj = projections.filter(p=>p.type==='income').reduce((s,p)=>s+(p.amount*(p.probability||100)/100),0);
@@ -237,14 +212,14 @@ function renderFlujoCaja() {
     <div class="stat-value text-success">${fmtMoney(totalIncomeProj)}</div><div class="stat-label">Ingresos Proyectados (ponderado)</div></div></div>
   <div class="stat-card"><div class="stat-icon red"><i class="fas fa-arrow-up"></i></div><div>
     <div class="stat-value text-danger">${fmtMoney(totalExpenseProj)}</div><div class="stat-label">Egresos Proyectados (ponderado)</div></div></div>
-  <div class="stat-card"><div class="stat-icon ${totalIncomeProj-totalExpenseProj>=0?'cyan':'red'}"><i class="fas fa-balance-scale"></i></div><div>
-    <div class="stat-value ${totalIncomeProj-totalExpenseProj>=0?'text-success':'text-danger'}">${fmtMoney(totalIncomeProj-totalExpenseProj)}</div><div class="stat-label">Resultado Neto Proyectado</div></div></div>
+  <div class="stat-card"><div class="stat-icon ${totalIncomeProj-totalExpenseProj>=0 ? 'cyan' : 'red'}"><i class="fas fa-balance-scale"></i></div><div>
+    <div class="stat-value ${totalIncomeProj-totalExpenseProj>=0 ? 'text-success' : 'text-danger'}">${fmtMoney(totalIncomeProj-totalExpenseProj)}</div><div class="stat-label">Resultado Neto Proyectado</div></div></div>
 </div>
 
 <div class="card mb-2">
   <div class="card-header">
     <span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Flujo de Caja Proyectado</span>
-    <button class="btn btn-sm btn-primary" onclick="openProjectionForm()"><i class="fas fa-plus"></i> Proyección</button>
+    <button class="btn btn-sm btn-primary" onclick="openProjectionForm()"><i class="fas fa-plus"></i> Proyeccion</button>
   </div>
   <div class="card-body"><div style="height:280px"><canvas id="flujo-chart"></canvas></div></div>
 </div>
@@ -253,29 +228,14 @@ function renderFlujoCaja() {
   <div class="card-header"><span class="card-title">Detalle de Proyecciones</span></div>
   <div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr>
-      <th>Fecha Esperada</th><th>Tipo</th><th>Proyecto</th><th>Descripción</th><th>Categoría</th>
+      <th>Fecha Esperada</th><th>Tipo</th><th>Proyecto</th><th>Descripcion</th><th>Categoria</th>
       <th class="text-right">Monto</th><th class="text-right">Probabilidad</th><th class="text-right">Ponderado</th><th>Acciones</th>
     </tr></thead>
     <tbody>
       ${projections.sort((a,b)=>a.expected_date.localeCompare(b.expected_date)).map(p => {
         const proj = projects.find(x=>x.id===p.project_id);
         const ponderado = p.amount * (p.probability||100) / 100;
-        return `<tr>
-          <td>${fmtDate(p.expected_date)}</td>
-          <td>${statusBadge(p.type)}</td>
-          <td style="font-size:11px">${proj?.name||'-'}</td>
-          <td>${p.description}</td>
-          <td><span class="badge badge-gray">${p.category||'-'}</span></td>
-          <td class="number-cell text-right">${fmtMoney(p.amount)}</td>
-          <td class="text-right">
-            <div class="progress-bar" style="width:80px;display:inline-block">
-              <div class="progress-fill ${p.probability>=80?'green':p.probability>=50?'':''}" style="width:${p.probability||100}%"></div>
-            </div>
-            <span style="font-size:11px;margin-left:4px">${p.probability||100}%</span>
-          </td>
-          <td class="number-cell text-right ${p.type==='income'?'text-success':'text-danger'}"><strong>${fmtMoney(ponderado)}</strong></td>
-          <td><button class="btn-ghost btn btn-sm danger" onclick="deleteProjection('${p.id}')"><i class="fas fa-trash"></i></button></td>
-        </tr>`;
+        return '<tr><td>' + fmtDate(p.expected_date) + '</td><td>' + statusBadge(p.type) + '</td><td style="font-size:11px">' + (proj ? proj.name : '-') + '</td><td>' + p.description + '</td><td><span class="badge badge-gray">' + (p.category||'-') + '</span></td><td class="number-cell text-right">' + fmtMoney(p.amount) + '</td><td class="text-right"><div class="progress-bar" style="width:80px;display:inline-block"><div class="progress-fill" style="width:' + (p.probability||100) + '%"></div></div><span style="font-size:11px;margin-left:4px">' + (p.probability||100) + '%</span></td><td class="number-cell text-right ' + (p.type==='income'?'text-success':'text-danger') + '"><strong>' + fmtMoney(ponderado) + '</strong></td><td><button class="btn-ghost btn btn-sm danger" onclick="deleteProjection(' + JSON.stringify(p.id) + ')"><i class="fas fa-trash"></i></button></td></tr>';
       }).join('')}
     </tbody></table>
   </div></div>
@@ -287,10 +247,9 @@ function renderFlujoCajaChart() {
   if (!ctx) return;
   const projections = DB.getAll('cashflowProjections');
 
-  // Group by month
   const months = {};
   projections.forEach(p => {
-    const m = p.expected_date?.slice(0,7) || '';
+    const m = p.expected_date ? p.expected_date.slice(0,7) : '';
     if (!m) return;
     if (!months[m]) months[m] = { income: 0, expense: 0 };
     const val = p.amount * (p.probability||100) / 100;
@@ -329,53 +288,16 @@ function renderFlujoCajaChart() {
 
 function openProjectionForm() {
   const projects = DB.getAll('projects');
-  openModal('Nueva Proyección de Flujo', `
-<div class="form-grid form-grid-2">
-  <div class="form-group">
-    <label class="form-label">Tipo *</label>
-    <select class="form-control" id="pj-type">
-      <option value="income">Ingreso</option>
-      <option value="expense">Egreso</option>
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Categoría</label>
-    <input class="form-control" id="pj-cat" placeholder="Certificación, Pago proveedor...">
-  </div>
-  <div class="form-group full">
-    <label class="form-label">Descripción *</label>
-    <input class="form-control" id="pj-desc" placeholder="Descripción de la proyección">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Proyecto</label>
-    <select class="form-control" id="pj-proj">
-      <option value="">Sin proyecto</option>
-      ${projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
-    </select>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Fecha Esperada</label>
-    <input class="form-control" id="pj-date" type="date" value="${todayStr()}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Monto *</label>
-    <input class="form-control" id="pj-amount" type="number" min="0" placeholder="0">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Probabilidad (%)</label>
-    <input class="form-control" id="pj-prob" type="number" min="0" max="100" value="80">
-  </div>
-</div>
-`, '', `
-<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-<button class="btn btn-primary" onclick="saveProjection()"><i class="fas fa-save"></i> Guardar</button>
-`);
+  openModal('Nueva Proyeccion de Flujo', '<div class="form-grid form-grid-2"><div class="form-group"><label class="form-label">Tipo *</label><select class="form-control" id="pj-type"><option value="income">Ingreso</option><option value="expense">Egreso</option></select></div><div class="form-group"><label class="form-label">Categoria</label><input class="form-control" id="pj-cat" placeholder="Certificacion, Pago proveedor..."></div><div class="form-group full"><label class="form-label">Descripcion *</label><input class="form-control" id="pj-desc" placeholder="Descripcion de la proyeccion"></div><div class="form-group"><label class="form-label">Proyecto</label><select class="form-control" id="pj-proj"><option value="">Sin proyecto</option>' + projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('') + '</select></div><div class="form-group"><label class="form-label">Fecha Esperada</label><input class="form-control" id="pj-date" type="date" value="' + todayStr() + '"></div><div class="form-group"><label class="form-label">Monto *</label><input class="form-control" id="pj-amount" type="number" min="0" placeholder="0"></div><div class="form-group"><label class="form-label">Probabilidad (%)</label><input class="form-control" id="pj-prob" type="number" min="0" max="100" value="80"></div></div>',
+    '',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveProjection()"><i class="fas fa-save"></i> Guardar</button>'
+  );
 }
 
 function saveProjection() {
   const desc = document.getElementById('pj-desc').value.trim();
   const amount = parseFloat(document.getElementById('pj-amount').value);
-  if (!desc || !amount) { toast('Descripción y monto son obligatorios', 'error'); return; }
+  if (!desc || !amount) { toast('Descripcion y monto son obligatorios', 'error'); return; }
 
   DB.insert('cashflowProjections', {
     type: document.getElementById('pj-type').value,
@@ -386,15 +308,15 @@ function saveProjection() {
     amount,
     probability: parseInt(document.getElementById('pj-prob').value) || 80,
   });
-  toast('Proyección guardada', 'success');
+  toast('Proyeccion guardada', 'success');
   closeModal();
   renderReportes();
 }
 
 function deleteProjection(id) {
-  confirmDialog('¿Eliminar esta proyección?', () => {
+  confirmDialog('Eliminar esta proyeccion?', () => {
     DB.remove('cashflowProjections', id);
-    toast('Proyección eliminada', 'warning');
+    toast('Proyeccion eliminada', 'warning');
     renderReportes();
   });
 }
@@ -411,34 +333,13 @@ function renderReporteCertificaciones() {
     if (c.status === 'pending') byProject[c.project_id].pending++;
   });
 
-  return `<div class="card"><div class="card-header">
-    <span class="card-title"><i class="fas fa-certificate text-primary"></i> Estado de Certificaciones por Proyecto</span>
-    <button class="btn btn-sm btn-secondary" onclick="exportReporteCertificaciones()"><i class="fas fa-download"></i> Exportar CSV</button>
-  </div>
-  <div class="card-body" style="padding:0"><div class="table-wrap">
-    <table><thead><tr>
-      <th>Proyecto</th><th>Presupuesto</th><th>Certificados Aprobados</th><th>Pendientes</th>
-      <th class="text-right">Total Certificado</th><th class="text-right">Fondo Reparo</th><th class="text-right">% Avance</th>
-    </tr></thead>
-    <tbody>
-      ${projects.map(p => {
-        const data = byProject[p.id] || { approved:0, pending:0, totalCert:0, totalRet:0 };
-        const pct = p.budget ? Math.min(100, data.totalCert / p.budget * 100) : 0;
-        return `<tr>
-          <td><strong>${p.name}</strong></td>
-          <td>${fmtMoney(p.budget||0)}</td>
-          <td>${data.approved}</td>
-          <td>${data.pending}</td>
-          <td class="number-cell text-right">${fmtMoney(data.totalCert)}</td>
-          <td class="number-cell text-right text-warning">${fmtMoney(data.totalRet)}</td>
-          <td>
-            <div class="progress-bar"><div class="progress-fill ${pct>=80?'green':''}" style="width:${pct}%"></div></div>
-            <span style="font-size:11px">${fmtPct(pct)}</span>
-          </td>
-        </tr>`;
-      }).join('')}
-    </tbody></table>
-  </div></div></div>`;
+  return '<div class="card"><div class="card-header"><span class="card-title"><i class="fas fa-certificate text-primary"></i> Estado de Certificaciones por Proyecto</span><button class="btn btn-sm btn-secondary" onclick="exportReporteCertificaciones()"><i class="fas fa-download"></i> Exportar CSV</button></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Proyecto</th><th>Presupuesto</th><th>Certificados Aprobados</th><th>Pendientes</th><th class="text-right">Total Certificado</th><th class="text-right">Fondo Reparo</th><th class="text-right">Avance</th></tr></thead><tbody>' +
+    projects.map(p => {
+      const data = byProject[p.id] || { approved:0, pending:0, totalCert:0, totalRet:0 };
+      const pct = p.budget ? Math.min(100, data.totalCert / p.budget * 100) : 0;
+      return '<tr><td><strong>' + p.name + '</strong></td><td>' + fmtMoney(p.budget||0) + '</td><td>' + data.approved + '</td><td>' + data.pending + '</td><td class="number-cell text-right">' + fmtMoney(data.totalCert) + '</td><td class="number-cell text-right text-warning">' + fmtMoney(data.totalRet) + '</td><td><div class="progress-bar"><div class="progress-fill ' + (pct>=80?'green':'') + '" style="width:' + pct + '%"></div></div><span style="font-size:11px">' + fmtPct(pct) + '</span></td></tr>';
+    }).join('') +
+    '</tbody></table></div></div></div>';
 }
 
 // ---- AGING REPORT ----
@@ -449,11 +350,11 @@ function renderReporteAging() {
   const open = invoices.filter(i => ['sent','overdue'].includes(i.status));
 
   const buckets = [
-    { label: 'Al día', min: null, max: 0, total: 0, count: 0 },
-    { label: '1-30 días', min: 1, max: 30, total: 0, count: 0 },
-    { label: '31-60 días', min: 31, max: 60, total: 0, count: 0 },
-    { label: '61-90 días', min: 61, max: 90, total: 0, count: 0 },
-    { label: '+90 días', min: 91, max: null, total: 0, count: 0 },
+    { label: 'Al dia', min: null, max: 0, total: 0, count: 0 },
+    { label: '1-30 dias', min: 1, max: 30, total: 0, count: 0 },
+    { label: '31-60 dias', min: 31, max: 60, total: 0, count: 0 },
+    { label: '61-90 dias', min: 61, max: 90, total: 0, count: 0 },
+    { label: '+90 dias', min: 91, max: null, total: 0, count: 0 },
   ];
 
   open.forEach(inv => {
@@ -467,34 +368,18 @@ function renderReporteAging() {
 
   const grandTotal = buckets.reduce((s,b)=>s+b.total,0);
 
-  return `<div class="card"><div class="card-header">
-    <span class="card-title"><i class="fas fa-clock text-warning"></i> Aging de Deudores</span>
-    <button class="btn btn-sm btn-secondary" onclick="exportReporteAging()"><i class="fas fa-download"></i> Exportar CSV</button>
-  </div>
-  <div class="card-body" style="padding:0"><div class="table-wrap">
-    <table><thead><tr><th>Rango</th><th>Facturas</th><th class="text-right">Saldo</th><th class="text-right">% del Total</th><th>Distribución</th></tr></thead>
-    <tbody>
-      ${buckets.map((b,i) => {
-        const pct = grandTotal ? b.total/grandTotal*100 : 0;
-        return `<tr>
-          <td><strong>${b.label}</strong></td>
-          <td>${b.count}</td>
-          <td class="number-cell text-right ${i>0&&b.total>0?'text-danger':''}">${fmtMoney(b.total)}</td>
-          <td class="text-right">${fmtPct(pct)}</td>
-          <td><div class="progress-bar"><div class="progress-fill ${i>=3?'red':i>=1?'yellow':''}" style="width:${pct}%"></div></div></td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-    <tfoot><tr class="total-row"><td><strong>TOTAL</strong></td><td>${open.length}</td><td class="number-cell text-right"><strong>${fmtMoney(grandTotal)}</strong></td><td colspan="2"></td></tr></tfoot>
-    </table>
-  </div></div></div>`;
+  return '<div class="card"><div class="card-header"><span class="card-title"><i class="fas fa-clock text-warning"></i> Aging de Deudores</span><button class="btn btn-sm btn-secondary" onclick="exportReporteAging()"><i class="fas fa-download"></i> Exportar CSV</button></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Rango</th><th>Facturas</th><th class="text-right">Saldo</th><th class="text-right">del Total</th><th>Distribucion</th></tr></thead><tbody>' +
+    buckets.map((b,i) => {
+      const pct = grandTotal ? b.total/grandTotal*100 : 0;
+      return '<tr><td><strong>' + b.label + '</strong></td><td>' + b.count + '</td><td class="number-cell text-right' + (i>0&&b.total>0?' text-danger':'') + '">' + fmtMoney(b.total) + '</td><td class="text-right">' + fmtPct(pct) + '</td><td><div class="progress-bar"><div class="progress-fill ' + (i>=3?'red':i>=1?'yellow':'') + '" style="width:' + pct + '%"></div></div></td></tr>';
+    }).join('') +
+    '<tfoot><tr class="total-row"><td><strong>TOTAL</strong></td><td>' + open.length + '</td><td class="number-cell text-right"><strong>' + fmtMoney(grandTotal) + '</strong></td><td colspan="2"></td></tr></tfoot></tbody></table></div></div></div>';
 }
 
 // ---- COMPRAS REPORT ----
 function renderReporteCompras() {
   const pos = DB.getAll('purchaseOrders');
   const suppliers = DB.getAll('suppliers');
-  const projects = DB.getAll('projects');
 
   const totalPOs = pos.reduce((s,o)=>s+o.total,0);
   const byStatus = {};
@@ -502,40 +387,18 @@ function renderReporteCompras() {
 
   const bySupplier = {};
   pos.forEach(o => {
-    const s = suppliers.find(s=>s.id===o.supplier_id)?.name||'Desconocido';
-    bySupplier[s] = (bySupplier[s]||0) + o.total;
+    const s = suppliers.find(s=>s.id===o.supplier_id);
+    const name = s ? s.name : 'Desconocido';
+    bySupplier[name] = (bySupplier[name]||0) + o.total;
   });
 
-  return `
-<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
-  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-shopping-cart"></i></div><div>
-    <div class="stat-value">${pos.length}</div><div class="stat-label">Órdenes de Compra</div></div></div>
-  <div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-dollar-sign"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalPOs)}</div><div class="stat-label">Monto Total Compras</div></div></div>
-  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check"></i></div><div>
-    <div class="stat-value">${fmtMoney(byStatus['received']||0)}</div><div class="stat-label">Recibido</div></div></div>
-</div>
-
-<div class="card"><div class="card-header">
-  <span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Compras por Proveedor</span>
-  <button class="btn btn-sm btn-secondary" onclick="exportReporteCompras()"><i class="fas fa-download"></i> Exportar CSV</button>
-</div>
-<div class="card-body" style="padding:0"><div class="table-wrap">
-  <table><thead><tr><th>Proveedor</th><th class="text-right">Total Comprado</th><th class="text-right">% del Total</th><th>Participación</th></tr></thead>
-  <tbody>
-    ${Object.entries(bySupplier).sort((a,b)=>b[1]-a[1]).map(([name, total]) => {
+  return '<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px"><div class="stat-card"><div class="stat-icon blue"><i class="fas fa-shopping-cart"></i></div><div><div class="stat-value">' + pos.length + '</div><div class="stat-label">Ordenes de Compra</div></div></div><div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-dollar-sign"></i></div><div><div class="stat-value">' + fmtMoney(totalPOs) + '</div><div class="stat-label">Monto Total Compras</div></div></div><div class="stat-card"><div class="stat-icon green"><i class="fas fa-check"></i></div><div><div class="stat-value">' + fmtMoney(byStatus['received']||0) + '</div><div class="stat-label">Recibido</div></div></div></div>' +
+    '<div class="card"><div class="card-header"><span class="card-title"><i class="fas fa-chart-bar text-primary"></i> Compras por Proveedor</span><button class="btn btn-sm btn-secondary" onclick="exportReporteCompras()"><i class="fas fa-download"></i> Exportar CSV</button></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Proveedor</th><th class="text-right">Total Comprado</th><th class="text-right">Participacion</th><th>Barra</th></tr></thead><tbody>' +
+    Object.entries(bySupplier).sort((a,b)=>b[1]-a[1]).map(([name, total]) => {
       const pct = totalPOs ? total/totalPOs*100 : 0;
-      return `<tr>
-        <td><strong>${name}</strong></td>
-        <td class="number-cell text-right">${fmtMoney(total)}</td>
-        <td class="text-right">${fmtPct(pct)}</td>
-        <td><div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div></td>
-      </tr>`;
-    }).join('')}
-  </tbody>
-  <tfoot><tr class="total-row"><td>TOTAL</td><td class="number-cell text-right">${fmtMoney(totalPOs)}</td><td colspan="2"></td></tr></tfoot>
-  </table>
-</div></div></div>`;
+      return '<tr><td><strong>' + name + '</strong></td><td class="number-cell text-right">' + fmtMoney(total) + '</td><td class="text-right">' + fmtPct(pct) + '</td><td><div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div></td></tr>';
+    }).join('') +
+    '<tfoot><tr class="total-row"><td>TOTAL</td><td class="number-cell text-right">' + fmtMoney(totalPOs) + '</td><td colspan="2"></td></tr></tfoot></tbody></table></div></div></div>';
 }
 
 // ---- RENTABILIDAD REPORT ----
@@ -602,7 +465,7 @@ function renderReporteRentabilidad() {
 
 <div class="card">
   <div class="card-header">
-    <span class="card-title"><i class="fas fa-table text-primary"></i> Análisis Detallado de Rentabilidad</span>
+    <span class="card-title"><i class="fas fa-table text-primary"></i> Analisis Detallado de Rentabilidad</span>
   </div>
   <div class="card-body" style="padding:0"><div class="table-wrap">
     <table><thead><tr>
@@ -616,24 +479,7 @@ function renderReporteRentabilidad() {
       <th class="text-right">Margen %</th>
     </tr></thead>
     <tbody>
-      ${rows.map(r => `<tr>
-        <td><strong>${r.p.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${r.p.client || ''}</span></td>
-        <td>${statusBadge(r.p.status)}</td>
-        <td class="number-cell text-right">${fmtMoney(r.budget)}</td>
-        <td class="number-cell text-right">${fmtMoney(r.costs)}</td>
-        <td class="number-cell text-right ${r.budgetVar >= 0 ? 'text-success' : 'text-danger'}">
-          ${r.budgetVar >= 0 ? '+' : ''}${fmtPct(r.budgetVar)}
-        </td>
-        <td class="number-cell text-right">${fmtMoney(r.billed)}</td>
-        <td class="number-cell text-right text-success">${fmtMoney(r.collected)}</td>
-        <td class="number-cell text-right ${r.margin >= 0 ? 'text-success' : 'text-danger'}">${fmtMoney(r.margin)}</td>
-        <td class="text-right">
-          <div class="progress-bar" style="width:80px;display:inline-block;vertical-align:middle">
-            <div class="progress-fill ${r.marginPct >= 20 ? 'green' : r.marginPct >= 10 ? '' : r.marginPct >= 0 ? 'yellow' : 'red'}" style="width:${Math.max(0, Math.min(100, r.marginPct))}%"></div>
-          </div>
-          <span style="font-size:11px;margin-left:4px;color:${r.marginPct >= 0 ? 'var(--success)' : 'var(--danger)'}">${fmtPct(r.marginPct)}</span>
-        </td>
-      </tr>`).join('')}
+      ${rows.map(r => '<tr><td><strong>' + r.p.name + '</strong><br><span style="font-size:11px;color:var(--text-muted)">' + (r.p.client||'') + '</span></td><td>' + statusBadge(r.p.status) + '</td><td class="number-cell text-right">' + fmtMoney(r.budget) + '</td><td class="number-cell text-right">' + fmtMoney(r.costs) + '</td><td class="number-cell text-right ' + (r.budgetVar >= 0 ? 'text-success' : 'text-danger') + '">' + (r.budgetVar >= 0 ? '+' : '') + fmtPct(r.budgetVar) + '</td><td class="number-cell text-right">' + fmtMoney(r.billed) + '</td><td class="number-cell text-right text-success">' + fmtMoney(r.collected) + '</td><td class="number-cell text-right ' + (r.margin >= 0 ? 'text-success' : 'text-danger') + '">' + fmtMoney(r.margin) + '</td><td class="text-right"><div class="progress-bar" style="width:80px;display:inline-block;vertical-align:middle"><div class="progress-fill ' + (r.marginPct >= 20 ? 'green' : r.marginPct >= 10 ? '' : r.marginPct >= 0 ? 'yellow' : 'red') + '" style="width:' + Math.max(0,Math.min(100,r.marginPct)) + '%"></div></div><span style="font-size:11px;margin-left:4px;color:' + (r.marginPct >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmtPct(r.marginPct) + '</span></td></tr>').join('')}
     </tbody>
     <tfoot><tr class="total-row">
       <td colspan="2"><strong>TOTALES</strong></td>
@@ -659,7 +505,7 @@ function renderRentabilidadChart() {
   const data = projects.map(p => {
     const billed = invoices.filter(i => i.project_id === p.id).reduce((s, i) => s + (i.total || 0), 0);
     const costs = actualCosts.filter(a => a.project_id === p.id).reduce((s, a) => s + (a.amount || 0), 0);
-    return { name: p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name, pct: billed > 0 ? (billed - costs) / billed * 100 : 0 };
+    return { name: p.name.length > 18 ? p.name.slice(0, 18) + '...' : p.name, pct: billed > 0 ? (billed - costs) / billed * 100 : 0 };
   }).sort((a, b) => b.pct - a.pct);
 
   new Chart(ctx, {
@@ -695,7 +541,7 @@ function exportReporteProyecto() {
   const invoices = DB.getAll('invoices');
   const collections = DB.getAll('collections');
   const certificates = DB.getAll('certificates');
-  exportXLSX('reporte_proyectos.xlsx',
+  exportCSV('reporte_proyectos.csv',
     ['Proyecto', 'Cliente', 'Estado', 'Presupuesto', 'Costo Real', 'Desviacion', 'Certificado', 'Facturado', 'Cobrado'],
     projects.map(p => {
       const boqTotal = boqItems.filter(b=>b.project_id===p.id).reduce((s,b)=>s+b.total,0);
@@ -719,7 +565,7 @@ function exportReporteCertificaciones() {
     if (c.status==='approved') { byProject[c.project_id].approved++; byProject[c.project_id].totalCert+=c.subtotal; byProject[c.project_id].totalRet+=c.retention_amount||0; }
     if (c.status==='pending') byProject[c.project_id].pending++;
   });
-  exportXLSX('reporte_certificaciones.xlsx',
+  exportCSV('reporte_certificaciones.csv',
     ['Proyecto', 'Presupuesto', 'Certificados Aprobados', 'Pendientes', 'Total Certificado', 'Fondo Reparo', 'Avance %'],
     projects.map(p => {
       const d = byProject[p.id] || { approved:0,pending:0,totalCert:0,totalRet:0 };
@@ -735,14 +581,14 @@ function exportReporteAging() {
   const projects = DB.getAll('projects');
   const today = todayStr();
   const open = invoices.filter(i => ['sent','overdue'].includes(i.status));
-  exportXLSX('reporte_aging.xlsx',
+  exportCSV('reporte_aging.csv',
     ['Factura', 'Proyecto', 'Cliente', 'Total', 'Cobrado', 'Saldo', 'Vencimiento', 'Dias Mora'],
     open.map(inv => {
       const cobrado = collections.filter(c=>c.invoice_id===inv.id).reduce((s,c)=>s+c.amount,0);
       const balance = inv.total - cobrado;
       const proj = projects.find(p=>p.id===inv.project_id);
       const days = inv.due_date < today ? daysBetween(inv.due_date, today) : 0;
-      return [inv.number, proj?.name||'', inv.client_name||'', inv.total, cobrado, balance, inv.due_date, days];
+      return [inv.number, proj ? proj.name : '', inv.client_name||'', inv.total, cobrado, balance, inv.due_date, days];
     })
   );
 }
@@ -751,12 +597,12 @@ function exportReporteCompras() {
   const pos = DB.getAll('purchaseOrders');
   const suppliers = DB.getAll('suppliers');
   const projects = DB.getAll('projects');
-  exportXLSX('reporte_compras.xlsx',
+  exportCSV('reporte_compras.csv',
     ['OC Numero', 'Proveedor', 'Proyecto', 'Estado', 'Fecha', 'Total'],
     pos.map(o => {
       const sup = suppliers.find(s=>s.id===o.supplier_id);
       const proj = projects.find(p=>p.id===o.project_id);
-      return [o.number||'', sup?.name||'', proj?.name||'', o.status, o.date||'', o.total];
+      return [o.number||'', sup ? sup.name : '', proj ? proj.name : '', o.status, o.date||'', o.total];
     })
   );
 }
@@ -766,7 +612,7 @@ function exportReporteRentabilidad() {
   const invoices = DB.getAll('invoices');
   const collections = DB.getAll('collections');
   const actualCosts = DB.getAll('actualCosts');
-  exportXLSX('reporte_rentabilidad.xlsx',
+  exportCSV('reporte_rentabilidad.csv',
     ['Proyecto', 'Cliente', 'Estado', 'Presupuesto', 'Costo Real', 'Var Ppto %', 'Facturado', 'Cobrado', 'Margen $', 'Margen %'],
     projects.map(p => {
       const invs = invoices.filter(i=>i.project_id===p.id);

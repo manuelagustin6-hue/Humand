@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-16-v7';
+var APP_VERSION = '2026-06-12-v4';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -44,12 +44,7 @@ const MODULES = {
   certificaciones: { title: 'Certificaciones',               icon: 'fa-certificate',            render: renderCertificaciones },
   presupuesto:     { title: 'Computo y Presupuesto',         icon: 'fa-calculator',             render: renderPresupuesto },
   seguimiento:     { title: 'Control Presupuestal',          icon: 'fa-chart-line',             render: renderSeguimiento },
-  reporte_costos:  { title: 'Reporte de Costos de Obra',    icon: 'fa-chart-column',           render: renderReporteCostos },
-  panel_obra:      { title: 'Panel de Obra',                 icon: 'fa-gauge-high',             render: renderPanelObra },
   minutas:         { title: 'Minutas de Reunión',            icon: 'fa-clipboard-list',         render: renderMinutas },
-  rfis:            { title: 'RFIs',                          icon: 'fa-circle-question',        render: renderRFIs },
-  submittals:      { title: 'Submittals',                    icon: 'fa-file-lines',             render: renderSubmittals },
-  parte_diario:    { title: 'Parte Diario de Obra',          icon: 'fa-hard-hat',               render: renderParteDiario },
   gantt:           { title: 'Diagrama de Gantt',             icon: 'fa-stream',                 render: renderGantt },
   rubros:          { title: 'Rubros de Obra',                icon: 'fa-list-ol',                render: renderRubros },
   apu:             { title: 'APU — Análisis de Precios Unitarios', icon: 'fa-calculator',       render: renderAPU },
@@ -71,8 +66,6 @@ const MODULES = {
   tesoreria:       { title: 'Operaciones',                   icon: 'fa-arrows-left-right',      render: renderTesoreria },
   cheques:         { title: 'Cheques',                       icon: 'fa-money-check',            render: renderCheques },
   conciliaciones:  { title: 'Conciliaciones Bancarias',      icon: 'fa-balance-scale',          render: renderConciliaciones },
-  inversiones:     { title: 'Inversiones',                   icon: 'fa-chart-line',             render: renderInversiones },
-  rpt_tesoreria:   { title: 'Reporte de Tesorería',          icon: 'fa-table-columns',          render: renderReporteTesoria },
 
   // Contabilidad
   contabilidad:    { title: 'Contabilidad',                  icon: 'fa-book-open',              render: renderContabilidad },
@@ -83,7 +76,6 @@ const MODULES = {
   conta_plan:      { title: 'Plan de Cuentas',               icon: 'fa-sitemap',                render: renderContaPlan },
   conta_mayores:   { title: 'Libro Mayor',                   icon: 'fa-book',                   render: renderContaMayores },
   libro_iva:       { title: 'Libro IVA Compras / Ventas',   icon: 'fa-receipt',                render: renderLibroIVA },
-  tax_planning:    { title: 'Tax Planning',                 icon: 'fa-calculator',             render: renderTaxPlanning },
 
   // RRHH
   rrhh:            { title: 'RRHH — Empleados y Liquidaciones', icon: 'fa-hard-hat',              render: renderRRHH },
@@ -100,9 +92,7 @@ const MODULES = {
   empresas:        { title: 'Empresas',                      icon: 'fa-city',                   render: renderEmpresas },
   asientos:        { title: 'Asientos Automaticos',          icon: 'fa-magic',                  render: renderAsientos },
   aprobaciones:    { title: 'Aprobaciones',                  icon: 'fa-check-double',           render: renderAprobaciones },
-  vencimientos:    { title: 'Vencimientos Fiscales',         icon: 'fa-calendar-exclamation',   render: renderVencimientos },
   reportes:        { title: 'Reportes',                      icon: 'fa-chart-bar',              render: renderReportes },
-  audit_log:       { title: 'Registro de Auditoría',         icon: 'fa-history',                render: renderAuditLog },
   usuarios:        { title: 'Usuarios',                      icon: 'fa-users',                  render: renderUsuarios },
   ajustes:         { title: 'Ajustes del Sistema',           icon: 'fa-cog',                    render: renderAjustes },
 };
@@ -168,53 +158,6 @@ function updateMobileNav(module) {
   document.querySelectorAll('#mobile-bottom-nav .mnav-item').forEach(function(btn) {
     btn.classList.toggle('active', btn.dataset.nav === module);
   });
-}
-
-// ---- SYNC BADGE (shows pending writes count) ----
-function _updateSyncBadge() {
-  var badge = document.getElementById('sync-status');
-  if (!badge) return;
-  var pending = (typeof DB !== 'undefined' && typeof DB.getPendingCount === 'function') ? DB.getPendingCount() : 0;
-  var hasSession = !!(_SUPA && _SUPA.session);
-  if (!_SUPA.online) {
-    badge.textContent = pending > 0 ? '○ Sin conexión (' + pending + ' pend.)' : '○ Sin conexión';
-    badge.style.color = '#f59e0b';
-    badge.style.cursor = 'pointer';
-    badge.title = 'Sin conexión — hacé clic para reconectar';
-    badge.onclick = function() {
-      badge.textContent = '↻ Reconectando…';
-      badge.style.cursor = 'default';
-      badge.onclick = null;
-      DB.load().then(function() {
-        _updateSyncBadge();
-        if (window.APP_STATE && window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
-      }).catch(function() { _updateSyncBadge(); });
-    };
-  } else if (!hasSession) {
-    // Connected to Supabase but no auth session — local user, writes can't sync
-    badge.textContent = '○ Modo local';
-    badge.style.color = '#94a3b8';
-    badge.style.cursor = 'default';
-    badge.title = 'Sesión local sin Supabase Auth — los cambios se guardan en este dispositivo únicamente';
-    badge.onclick = null;
-  } else if (pending > 0) {
-    badge.textContent = '⚠ ' + pending + ' pend.';
-    badge.style.color = '#f59e0b';
-    badge.title = pending + ' cambio(s) pendiente(s) de sincronizar con Supabase — hacé clic para reintentar';
-    badge.style.cursor = 'pointer';
-    badge.onclick = function() {
-      badge.textContent = '↻ Sincronizando…';
-      badge.style.cursor = 'default';
-      badge.onclick = null;
-      DB.forcePull().then(function() { _updateSyncBadge(); }).catch(function() { _updateSyncBadge(); });
-    };
-  } else {
-    badge.textContent = '● En línea';
-    badge.style.color = '#22c55e';
-    badge.title = 'Sincronizado con Supabase — hacé clic para forzar sincronización';
-    badge.style.cursor = 'pointer';
-    badge.onclick = function() { DB.forcePull(); };
-  }
 }
 
 // ---- EXCHANGE RATE SYNC ----
@@ -303,26 +246,18 @@ function updateSidebarUserInfo() {
 // ---- NOTIFICATION BADGE & PANEL ----
 function updateNotifBadge() {
   try {
-    var count = _countPendingApprovals() + _countFiscalAlerts();
+    var ais = DB.getAll('approvalInstances');
+    var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+    var count = ais.filter(function(ai) {
+      if (ai.status !== 'pending') return false;
+      var step = ai.steps && ai.steps[ai.current_step_index];
+      if (!step || step.status !== 'pending') return false;
+      if (!currentUser) return false;
+      return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+    }).length;
     var badge = document.getElementById('notif-badge');
     if (badge) { badge.textContent = count > 9 ? '9+' : String(count); badge.style.display = count > 0 ? '' : 'none'; }
   } catch(e) {}
-}
-
-function _countPendingApprovals() {
-  var ais = DB.getAll('approvalInstances');
-  var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
-  if (!currentUser) return 0;
-  return ais.filter(function(ai) {
-    if (ai.status !== 'pending') return false;
-    var step = ai.steps && ai.steps[ai.current_step_index];
-    if (!step || step.status !== 'pending') return false;
-    return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
-  }).length;
-}
-
-function _countFiscalAlerts() {
-  try { return (typeof getFiscalAlerts === 'function') ? getFiscalAlerts().length : 0; } catch(e) { return 0; }
 }
 
 function toggleNotifPanel() {
@@ -354,111 +289,54 @@ function dismissNotifPanel() {
 }
 
 function buildNotifPanel() {
-  var totalAprov = _countPendingApprovals();
-  var fiscalAlerts = (typeof getFiscalAlerts === 'function') ? getFiscalAlerts() : [];
-  var totalCount   = totalAprov + fiscalAlerts.length;
-
+  var ais = DB.getAll('approvalInstances');
+  var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
+  var docLabels = { purchase_order:'OC', supplier_invoice:'Factura Prov.', payment_order:'Orden de Pago', invoice:'Factura' };
+  var docCollections = { purchase_order:'purchaseOrders', supplier_invoice:'supplierInvoices', payment_order:'paymentOrders', invoice:'invoices' };
+  var items = ais.filter(function(ai) {
+    if (ai.status !== 'pending') return false;
+    var step = ai.steps && ai.steps[ai.current_step_index];
+    if (!step || step.status !== 'pending') return false;
+    if (!currentUser) return false;
+    return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
+  });
   var header = '<div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center">' +
     '<span><i class="fas fa-bell text-warning" style="margin-right:6px"></i>Notificaciones</span>' +
-    (totalCount ? '<span class="badge badge-red" style="font-size:10px">' + totalCount + '</span>' : '') +
+    (items.length ? '<span class="badge badge-red" style="font-size:10px">' + items.length + '</span>' : '') +
     '</div>';
-
-  var sections = '';
-
-  // ── Fiscal alerts ──
-  if (fiscalAlerts.length) {
-    sections += '<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Vencimientos Fiscales</div>';
-    sections += fiscalAlerts.map(function(fc) {
-      var badge = (typeof fiscalAlertBadge === 'function') ? fiscalAlertBadge(fc) : { label: fc.due_date, color: '#6b7280', bg: '#f9fafb' };
-      var typCfg = (window.FISCAL_TYPE_CFG && window.FISCAL_TYPE_CFG[fc.type]) || { label: fc.type || '', color: '#6b7280', icon: 'fa-calendar-alt' };
-      return '<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">' +
-        '<i class="fas ' + typCfg.icon + '" style="color:' + typCfg.color + ';width:16px;text-align:center"></i>' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onclick="dismissNotifPanel();navigate(\'vencimientos\')" style="cursor:pointer">' + escapeHtml(fc.name) + '</div>' +
-          '<div style="font-size:11px;color:' + badge.color + ';font-weight:600">' + badge.label + ' — ' + fmtDate(fc.due_date) + '</div>' +
-        '</div>' +
-        '<button class="btn btn-sm" style="color:#10b981;padding:2px 6px;flex-shrink:0" onclick="dismissFiscalAlert(\'' + fc.id + '\')" title="Marcar cumplido"><i class="fas fa-check"></i></button>' +
+  if (!items.length) {
+    return header + '<div style="padding:24px 16px;text-align:center;color:var(--text-muted);font-size:13px"><i class="fas fa-check-circle" style="color:var(--success);font-size:22px;display:block;margin-bottom:8px"></i>Sin aprobaciones pendientes</div>';
+  }
+  var rows = items.map(function(ai) {
+    var step = ai.steps[ai.current_step_index];
+    var stepName = (step && step.name) ? step.name : ('Paso ' + (ai.current_step_index + 1));
+    var typeLabel = docLabels[ai.doc_type] || ai.doc_type;
+    var coll = docCollections[ai.doc_type];
+    var doc = coll ? DB.getById(coll, ai.doc_id) : null;
+    var docNum = doc ? (doc.number || ai.doc_id) : ai.doc_id;
+    return '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--primary-muted)\'" onmouseout="this.style.background=\'\'">' +
+      '<div style="font-size:12px;font-weight:600"><i class="fas fa-clock text-warning" style="margin-right:6px"></i>' + typeLabel + ': ' + docNum + '</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Paso: ' + stepName + '</div>' +
       '</div>';
-    }).join('');
-    sections += '<div onclick="dismissNotifPanel();navigate(\'vencimientos\')" style="padding:6px 16px;text-align:center;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600;border-bottom:1px solid var(--border)">Ver calendario fiscal →</div>';
-  }
-
-  // ── Pending approvals ──
-  if (totalAprov) {
-    var ais = DB.getAll('approvalInstances');
-    var currentUser = window.APP_STATE && window.APP_STATE.currentUser;
-    var docLabels = { purchase_order:'OC', supplier_invoice:'Factura Prov.', payment_order:'Orden de Pago', invoice:'Factura' };
-    var docCollections = { purchase_order:'purchaseOrders', supplier_invoice:'supplierInvoices', payment_order:'paymentOrders', invoice:'invoices' };
-    var items = ais.filter(function(ai) {
-      if (ai.status !== 'pending') return false;
-      var step = ai.steps && ai.steps[ai.current_step_index];
-      if (!step || step.status !== 'pending') return false;
-      if (!currentUser) return false;
-      return step.eligible_user_ids && step.eligible_user_ids.indexOf(currentUser.id) !== -1;
-    });
-    sections += '<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Aprobaciones Pendientes</div>';
-    sections += items.map(function(ai) {
-      var step = ai.steps[ai.current_step_index];
-      var stepName = (step && step.name) ? step.name : ('Paso ' + (ai.current_step_index + 1));
-      var typeLabel = docLabels[ai.doc_type] || ai.doc_type;
-      var coll = docCollections[ai.doc_type];
-      var doc = coll ? DB.getById(coll, ai.doc_id) : null;
-      var docNum = doc ? (doc.number || ai.doc_id) : ai.doc_id;
-      return '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--primary-muted)\'" onmouseout="this.style.background=\'\'">' +
-        '<div style="font-size:12px;font-weight:600"><i class="fas fa-clock text-warning" style="margin-right:6px"></i>' + typeLabel + ': ' + docNum + '</div>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Paso: ' + stepName + '</div>' +
-        '</div>';
-    }).join('');
-    sections += '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:6px 16px;text-align:center;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600">Ver todas las aprobaciones →</div>';
-  }
-
-  if (!totalCount) {
-    sections = '<div style="padding:24px 16px;text-align:center;color:var(--text-muted);font-size:13px"><i class="fas fa-check-circle" style="color:var(--success);font-size:22px;display:block;margin-bottom:8px"></i>Todo al día — sin alertas pendientes</div>';
-  }
-
-  return header + sections;
-}
-
-// ---- COMPANY SELECTOR ----
-function populateCompanySelector() {
-  var sel = document.getElementById('company-switcher');
-  if (!sel) return;
-  var companies = DB.getAllCompanies();
-  var activeId  = window.APP_STATE.activeCompany || 'comp-001';
-  var flags = { AR: '🇦🇷', UY: '🇺🇾', US: '🇺🇸', CL: '🇨🇱', BR: '🇧🇷' };
-  // Nota: no hay opción "Todas las empresas" — la app opera una razón social por vez
-  // (los datos son por empresa). Para consolidado multi-empresa haría falta una vista aparte.
-  sel.innerHTML = companies.map(function(c) {
-    var flag = flags[c.country] || '🏢';
-    var label = flag + ' ' + (c.legalName || c.name);
-    return '<option value="' + c.id + '"' + (c.id === activeId ? ' selected' : '') + '>' + label + '</option>';
   }).join('');
-  // Always show the widget (needed for switching)
-  var wrap = document.getElementById('company-switcher-wrap');
-  if (wrap) wrap.style.display = '';
+  return header + rows + '<div onclick="dismissNotifPanel();navigate(\'aprobaciones\')" style="padding:8px 16px;text-align:center;font-size:12px;color:var(--primary);cursor:pointer;font-weight:600">Ver todas las aprobaciones →</div>';
 }
+
+// ---- COMPANY SELECTOR (kept for backward compat; topbar selector removed) ----
+function populateCompanySelector() {}
 
 function setActiveCompany(id) {
+  // id === '' means "Todas las empresas" (consolidated view)
   if (id !== '') {
     var companies = DB.getAllCompanies();
     var company = companies.find(function(c) { return c.id === id; });
     if (!company) return;
     DB.setCompany(id);
   }
-  window.APP_STATE.activeCompany = id || DB._companyId;
-  try { localStorage.setItem('erp_active_company', id); } catch(e) {}
-  populateCompanySelector();
+  window.APP_STATE.activeCompany = id;
+  localStorage.setItem('erp_active_company', id);
   populateProjectSelector();
-
-  // Re-pull data for the new company from Supabase so we get fresh data, not stale localStorage
-  if (_SUPA.online && id) {
-    DB.load().then(function() {
-      _updateSyncBadge();
-      if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
-    });
-  } else {
-    if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
-  }
+  if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
 }
 
 // ---- DATA HEALTH CHECK ----
@@ -476,68 +354,24 @@ function _initApp() {
   // Trigger global init / migration
   DB.getGlobal();
 
-  // Determine the active company. Priority:
-  //   1. companyId already set by the boot sequence from session metadata
-  //   2. last saved choice in localStorage
-  //   3. first company in the list
-  // IMPORTANT: do NOT call DB.setCompany() with a different id than what DB.load() used —
-  // that would cause a mismatch between loaded data and the active company key.
-  var loadedCompanyId = DB._companyId; // set by boot before DB.load()
-  var savedCompany    = localStorage.getItem('erp_active_company');
-  var companies       = DB.getAllCompanies();
-  var activeCompanyId = loadedCompanyId; // default: trust what was loaded
-
+  // Load previously active company or default to first
+  var savedCompany = localStorage.getItem('erp_active_company');
+  var companies = DB.getAllCompanies();
+  var activeCompanyId = 'comp-001';
   if (savedCompany && companies.find(function(c) { return c.id === savedCompany; })) {
     activeCompanyId = savedCompany;
-  } else if (companies.length > 0 && !companies.find(function(c) { return c.id === loadedCompanyId; })) {
+  } else if (companies.length > 0) {
     activeCompanyId = companies[0].id;
   }
 
-  // Only call setCompany (and trigger a reload) if the company changed after load
-  if (activeCompanyId !== loadedCompanyId) {
-    DB.setCompany(activeCompanyId);
-    if (_SUPA.online) {
-      // Re-pull data for the correct company without blocking the UI
-      DB.load().catch(function() {});
-    }
-  }
+  DB.setCompany(activeCompanyId);
   window.APP_STATE.activeCompany = activeCompanyId;
 
   // Populate selectors
   populateCompanySelector();
   populateProjectSelector();
 
-  // Check Supabase Auth session first (takes priority — JWT is already verified)
-  if (_SUPA.session) {
-    var supaEmail = ((_SUPA.session.user && _SUPA.session.user.email) || '').toLowerCase();
-    var supaDbUser = DB.getAll('users').find(function(u) { return (u.email||'').toLowerCase() === supaEmail && u.active; });
-    if (!supaDbUser) {
-      var suMeta = (_SUPA.session.user && _SUPA.session.user.user_metadata) || {};
-      supaDbUser = {
-        id: _SUPA.session.user.id,
-        name: suMeta.name || supaEmail.split('@')[0],
-        email: supaEmail,
-        role: suMeta.role || 'viewer',
-        active: true,
-      };
-    }
-    window.APP_STATE.currentUser = supaDbUser;
-    document.getElementById('app').style.display = 'flex';
-    document.getElementById('login-screen').style.display = 'none';
-    updateSidebarUserInfo();
-    applyPermissionsToSidebar();
-    if (typeof populateProjectSelector === 'function') populateProjectSelector();
-    var savedModule0 = null;
-    try { savedModule0 = localStorage.getItem('erp_active_module'); } catch(e) {}
-    navigate(savedModule0 && MODULES[savedModule0] ? savedModule0 : 'dashboard');
-    _watchResponsiveTables();
-    setTimeout(syncExchangeRates, 1500);
-    setTimeout(checkDataHealth, 3000);
-    setTimeout(_maybeShowInstall, 4000);
-    return;
-  }
-
-  // Fallback: check local session token
+  // Check for an existing session
   var user = (typeof sessionCurrentUser === 'function') ? sessionCurrentUser() : null;
   if (user) {
     window.APP_STATE.currentUser = user;
@@ -548,154 +382,11 @@ function _initApp() {
     var savedModule = null;
     try { savedModule = localStorage.getItem('erp_active_module'); } catch(e) {}
     navigate(savedModule && MODULES[savedModule] ? savedModule : 'dashboard');
-    _watchResponsiveTables();
     setTimeout(syncExchangeRates, 1500);
     setTimeout(checkDataHealth, 3000);
-    setTimeout(_maybeShowInstall, 4000);
   } else {
     showLoginScreen();
   }
-}
-
-// ---- RESPONSIVE CARD TABLES ----
-// For every <table class="rcard">, copy each column's header text onto the
-// matching <td> as data-label so the mobile CSS can render rows as cards.
-function _applyResponsiveTables(root) {
-  var scope = root || document.getElementById('content');
-  if (!scope) return;
-  var tables = scope.querySelectorAll('table.rcard');
-  for (var t = 0; t < tables.length; t++) {
-    var tbl = tables[t];
-    var ths = tbl.querySelectorAll('thead th');
-    if (!ths.length) continue;
-    var labels = [];
-    for (var h = 0; h < ths.length; h++) labels.push(ths[h].textContent.trim());
-    var rows = tbl.querySelectorAll('tbody tr');
-    for (var r = 0; r < rows.length; r++) {
-      var cells = rows[r].children;
-      for (var c = 0; c < cells.length; c++) {
-        if (labels[c] != null && !cells[c].hasAttribute('data-label')) {
-          cells[c].setAttribute('data-label', labels[c]);
-        }
-      }
-    }
-  }
-}
-
-function _watchResponsiveTables() {
-  var content = document.getElementById('content');
-  if (!content || typeof MutationObserver === 'undefined') return;
-  // childList/subtree only — setting data-label attributes does NOT retrigger this.
-  var obs = new MutationObserver(function() { _applyResponsiveTables(content); });
-  obs.observe(content, { childList: true, subtree: true });
-  _applyResponsiveTables(content);
-}
-
-// ---- PWA INSTALL BANNER ----
-window._deferredInstallPrompt = null;
-window.addEventListener('beforeinstallprompt', function(e) {
-  e.preventDefault();
-  window._deferredInstallPrompt = e;
-  _maybeShowInstall();
-});
-window.addEventListener('appinstalled', function() {
-  window._deferredInstallPrompt = null;
-  _hideInstall();
-});
-
-function _isStandalonePWA() {
-  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-         window.navigator.standalone === true;
-}
-function _installDismissedRecently() {
-  try {
-    var t = parseInt(localStorage.getItem('erp_install_dismissed') || '0', 10);
-    return t && (Date.now() - t) < 7 * 24 * 3600 * 1000; // 7 días
-  } catch (e) { return false; }
-}
-function _isIOSDevice() { return /iphone|ipad|ipod/i.test(navigator.userAgent); }
-
-function _maybeShowInstall() {
-  if (!(window.APP_STATE && window.APP_STATE.currentUser)) return; // sólo logueado
-  if (_isStandalonePWA() || _installDismissedRecently()) return;
-  var banner = document.getElementById('install-banner');
-  var sub = document.getElementById('install-sub');
-  var go = document.getElementById('install-go');
-  if (!banner || !sub || !go) return;
-
-  if (window._deferredInstallPrompt) {
-    sub.textContent = 'Acceso directo desde tu pantalla de inicio';
-    go.textContent = 'Instalar';
-    banner.classList.add('show');
-  } else if (_isIOSDevice() && /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent)) {
-    // iOS Safari no permite instalar por código → mostrar instrucciones
-    sub.innerHTML = 'Tocá <i class="fas fa-arrow-up-from-bracket"></i> Compartir y luego “Agregar a inicio”';
-    go.textContent = 'Entendido';
-    banner.classList.add('show');
-  }
-}
-
-function doInstall() {
-  var p = window._deferredInstallPrompt;
-  if (p && typeof p.prompt === 'function') {
-    p.prompt();
-    p.userChoice.then(function() {
-      window._deferredInstallPrompt = null;
-      _hideInstall();
-    });
-  } else {
-    // iOS / sin prompt nativo: el botón sólo cierra el aviso
-    dismissInstall();
-  }
-}
-function dismissInstall() {
-  try { localStorage.setItem('erp_install_dismissed', String(Date.now())); } catch (e) {}
-  _hideInstall();
-}
-function _hideInstall() {
-  var b = document.getElementById('install-banner');
-  if (b) b.classList.remove('show');
-}
-
-// ---- PASSWORD RECOVERY ----
-function doSetRecoveryPassword() {
-  var pw1 = (document.getElementById('recovery-pw1') || {}).value || '';
-  var pw2 = (document.getElementById('recovery-pw2') || {}).value || '';
-  var errEl = document.getElementById('recovery-error');
-  if (!pw1 || pw1.length < 6) { if (errEl) errEl.textContent = 'La contraseña debe tener al menos 6 caracteres'; return; }
-  if (pw1 !== pw2) { if (errEl) errEl.textContent = 'Las contraseñas no coinciden'; return; }
-  if (errEl) errEl.textContent = '';
-  var btn = document.querySelector('#recovery-screen .btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…'; }
-  // getSession() should already have the recovery session from the URL hash
-  _SUPA.getSession().then(function(session) {
-    if (!session) {
-      if (errEl) errEl.textContent = 'Sesión expirada — pedí un nuevo enlace de recuperación.';
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Guardar contraseña'; }
-      return;
-    }
-    return _SUPA.updatePassword(pw1).then(function(res) {
-      if (res && res.error) {
-        if (errEl) errEl.textContent = res.error.message || 'Error al actualizar la contraseña';
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Guardar contraseña'; }
-      } else {
-        // Success — clear hash and go to login
-        try { window.history.replaceState(null, '', window.location.pathname); } catch(e) {}
-        document.getElementById('recovery-screen').style.display = 'none';
-        // Show login with success message
-        var loader = document.getElementById('boot-loader');
-        if (loader) loader.style.display = 'flex';
-        _SUPA.getSession().then(function() { return DB.load(); }).then(function() {
-          if (loader) loader.style.display = 'none';
-          _initApp();
-        });
-        setTimeout(function() { toast('Contraseña actualizada correctamente. Podés ingresar ahora.', 'success'); }, 500);
-      }
-    });
-  }).catch(function() {
-    if (errEl) errEl.textContent = 'Error de conexión — intentá nuevamente.';
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Guardar contraseña'; }
-  });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -727,34 +418,20 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   try { localStorage.setItem('erp_app_version', APP_VERSION); } catch(e) {}
 
-  // Check for password recovery token in URL hash BEFORE normal flow
-  var _hash = window.location.hash || '';
-  if (_hash.indexOf('type=recovery') !== -1 || _hash.indexOf('type=signup') !== -1) {
-    // Supabase JS v2 automatically picks up the session from the hash via getSession()
-    if (loader) loader.style.display = 'none';
-    document.getElementById('recovery-screen').style.display = 'flex';
-    // getSession() will parse the hash and set _SUPA.session
-    _SUPA.getSession().catch(function() {});
-    return;
-  }
-
   // Show boot loader while we connect to Supabase
   var loader = document.getElementById('boot-loader');
   if (loader) loader.style.display = 'flex';
 
-  // Restore Supabase Auth session before loading data (so JWT is available for RLS)
-  _SUPA.getSession().then(function(session) {
-    if (session) {
-      var meta = (session.user && session.user.user_metadata) || {};
-      var savedCo = '';
-      try { savedCo = localStorage.getItem('erp_active_company') || ''; } catch(e) {}
-      var companyId = meta.company_id || savedCo || 'comp-001';
-      DB.setCompany(companyId);
-    }
-    return DB.load();
-  }).then(function(online) {
+  DB.load().then(function(online) {
     if (loader) loader.style.display = 'none';
-    _updateSyncBadge();
+    var badge = document.getElementById('sync-status');
+    if (badge) {
+      badge.textContent = online ? '● En línea' : '○ Sin conexión';
+      badge.style.color  = online ? '#22c55e'    : '#f59e0b';
+      badge.title = online
+        ? 'Sincronizado con Supabase — múltiples usuarios activos'
+        : 'Sin conexión a Supabase — datos guardados solo en este dispositivo';
+    }
     _initApp();
   });
 });

@@ -1,27 +1,8 @@
 /* ===== MÓDULO: ASIENTOS AUTOMÁTICOS ===== */
 
-// Próximo número de asiento por AÑO calculado como max+1 sobre los existentes
-// (no length+1, que repite números al borrar o al mezclar auto+manual).
-function nextJournalNumber() {
-  var year = new Date().getFullYear();
-  var prefix = 'AS-' + year + '-';
-  var max = 0;
-  DB.getAll('journalEntries').forEach(function(e) {
-    var n = (e && e.number) || '';
-    if (n.indexOf(prefix) === 0) {
-      var num = parseInt(n.slice(prefix.length), 10);
-      if (!isNaN(num) && num > max) max = num;
-    }
-  });
-  return prefix + String(max + 1).padStart(4, '0');
-}
-
 var AJ_TYPES = [
   { id: 'fact_emitida',        name: 'Factura Emitida',          desc: 'Al emitir factura a cliente',           icon: 'fa-file-invoice-dollar', default_side: 'credit', side_label: 'Cuenta a Cobrar (AR) — contraparte de cada rubro de venta', has_iva: true },
   { id: 'nc_emitida',          name: 'Nota de Credito Emitida',  desc: 'Al emitir nota de credito a cliente',   icon: 'fa-file-circle-minus',   default_side: 'debit',  side_label: 'Cuenta de Ventas (devolucion)' },
-  { id: 'nd_emitida',          name: 'Nota de Debito Emitida',   desc: 'Al emitir nota de debito a cliente',    icon: 'fa-file-circle-plus',    default_side: 'debit',  side_label: 'Cuenta a Cobrar (AR)' },
-  { id: 'nc_proveedor',        name: 'Nota de Credito Recibida', desc: 'Al recibir nota de credito de proveedor',icon: 'fa-file-circle-minus',  default_side: 'debit',  side_label: 'Cuenta a Pagar (AP) — devolucion' },
-  { id: 'nd_proveedor',        name: 'Nota de Debito Recibida',  desc: 'Al recibir nota de debito de proveedor', icon: 'fa-file-circle-plus',   default_side: 'credit', side_label: 'Cuenta a Pagar (AP) — cargo adicional' },
   { id: 'cobro_cliente',       name: 'Cobro de Cliente',         desc: 'Al registrar cobro de cliente',         icon: 'fa-hand-holding-dollar', default_side: 'debit',  side_label: 'Cuenta Caja / Banco (ingreso)' },
   { id: 'certificacion',       name: 'Certificacion de Obra',    desc: 'Al aprobar certificacion',              icon: 'fa-certificate',         default_side: 'credit', side_label: 'Cuenta de Certificaciones' },
   { id: 'fact_proveedor',      name: 'Factura Proveedor',        desc: 'Al cargar factura de proveedor',        icon: 'fa-file-invoice',        default_side: 'credit', side_label: 'Cuenta a Pagar (AP) — contraparte de cada rubro de costo', has_iva: true, has_percepciones: true },
@@ -278,21 +259,11 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
       .replace(/\{amount\}/g, amount ? Number(amount).toLocaleString('es-AR') : '');
 
     var entries = DB.getAll('journalEntries');
-    var nextNum = nextJournalNumber();
+    var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
 
     var isDebit = (cfg.account_side === 'debit');
-    var counterCode = opts.counterAccount || '';
-    var counterName = opts.counterName || 'Contraparte';
-
-    // Integridad: nunca postear a una cuenta contraparte inexistente. Una línea
-    // con código fuera del plan la descarta calcAccountBalances y descuadra el
-    // balance. Si el módulo no aportó una contraparte real, omitimos el asiento.
-    var _accts = DB.getAll('accounts');
-    var _counterValid = counterCode && _accts.some(function(a) { return a.code === counterCode; });
-    if (!_counterValid) {
-      console.warn('[asientos] "' + operationTypeId + '": sin cuenta contraparte válida — asiento omitido para no descuadrar el balance.');
-      return null;
-    }
+    var counterCode = opts.counterAccount || '---';
+    var counterName = opts.counterName || 'Contraparte pendiente';
 
     var mainLine   = { account_code: cfg.account,  account_name: cfg.account_name || cfg.account, debit: isDebit ? amount : 0, credit: isDebit ? 0 : amount, description: concept };
     var counterLine = { account_code: counterCode, account_name: counterName, debit: isDebit ? 0 : amount, credit: isDebit ? amount : 0, description: concept };
@@ -305,10 +276,6 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
       status: 'posted',
       auto_generated: true,
       operation_type: operationTypeId,
-      project_id:   opts.project_id || '',    // dimensiones para filtrar Contabilidad
-      book:         opts.book || 'A',
-      currency:     opts.currency || '',
-      counterparty: opts.counterparty || '',
       lines: isDebit ? [mainLine, counterLine] : [counterLine, mainLine],
     };
 
@@ -324,13 +291,12 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
 // total  = full invoice total (what goes to AP/AR counter account)
 // taxes  = { iva, percIva, percIibb } — optional tax amounts for separate ledger lines
 // imputacion = [{account_code, account_name, amount}, ...]
-function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total, taxes, date, ref, opts) {
+function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total, taxes, date, ref) {
   try {
-    opts = opts || {};
     var cfg = ajGetConfig(operationTypeId);
     if (!cfg || !cfg.active || !cfg.account) return null;
     var validLines = (imputacion || []).filter(function(l) { return l.account_code && l.amount > 0; });
-    if (!validLines.length) return autoJournalEntry(operationTypeId, total, date, ref, '', opts);
+    if (!validLines.length) return autoJournalEntry(operationTypeId, total, date, ref, '');
     taxes = taxes || {};
 
     var concept = (cfg.concept_template || 'Asiento auto - {ref}')
@@ -339,7 +305,7 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
       .replace(/\{amount\}/g, total ? Number(total).toLocaleString('es-AR') : '');
 
     var entries = DB.getAll('journalEntries');
-    var nextNum = nextJournalNumber();
+    var nextNum = 'AS-' + new Date().getFullYear() + '-' + String(entries.length + 1).padStart(4, '0');
     var isDebit = (cfg.account_side === 'debit');  // true = AR (fact_emitida), false = AP (fact_proveedor)
     var typeObj = AJ_TYPES.find(function(t) { return t.id === operationTypeId; });
 
@@ -384,21 +350,12 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
         });
       }
     }
-    // Counter line = configured AP/AR account. Debe igualar EXACTAMENTE la suma de
-    // las líneas realmente contabilizadas (neto + impuestos cuyas cuentas están
-    // mapeadas), no el `total` crudo. Si una cuenta de impuesto no está configurada
-    // su línea no se emite; usar `total` dejaría el asiento descuadrado por ese monto.
-    var _postedSum = lines.reduce(function(s, ln) { return s + (isDebit ? (ln.credit || 0) : (ln.debit || 0)); }, 0);
-    if (Math.abs(_postedSum - total) > 0.01) {
-      console.warn('[asientos] "' + operationTypeId + '": faltan cuentas de impuesto configuradas — se contabilizó ' +
-        _postedSum + ' de ' + total + '. Mapeá las cuentas de IVA/percepciones en Asientos Automáticos.');
-      if (typeof toast === 'function') toast('Asiento generado sin la cuenta de IVA/percepción configurada — revisá Asientos Automáticos', 'warning');
-    }
+    // Counter line = configured AP/AR account (full invoice total including taxes)
     lines.push({
       account_code: cfg.account,
       account_name: cfg.account_name || cfg.account,
-      debit:  isDebit ? _postedSum : 0,
-      credit: isDebit ? 0 : _postedSum,
+      debit:  isDebit ? total : 0,
+      credit: isDebit ? 0 : total,
       description: concept
     });
 
@@ -410,10 +367,6 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
       status: 'posted',
       auto_generated: true,
       operation_type: operationTypeId,
-      project_id:   opts.project_id || '',    // dimensiones para filtrar Contabilidad
-      book:         opts.book || 'A',
-      currency:     opts.currency || '',
-      counterparty: opts.counterparty || '',
       lines: lines,
     };
     return DB.insert('journalEntries', entry);
