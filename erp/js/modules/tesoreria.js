@@ -14,14 +14,30 @@ function _tesCompanyOptions() {
   return '<option value="">Todas las razones sociales</option>' +
     (DB.getAllCompanies() || []).map(function(c){ return '<option value="'+c.id+'"'+(window._tesCompany===c.id?' selected':'')+'>'+escapeHtml(c.legalName||c.name)+'</option>'; }).join('');
 }
+// Consolidación por moneda: convertir todo a una moneda para poder sumar disponibilidades.
+window._tesConsol = window._tesConsol || '';   // '' = por moneda | 'USD'/'ARS'/... = convertir todo
+function _tesConsolOptions() {
+  return '<option value="">Por moneda</option>' +
+    ((typeof DB.getAllCurrencies === 'function' ? DB.getAllCurrencies() : []).map(function(c){ return '<option value="'+c.id+'"'+(window._tesConsol===c.id?' selected':'')+'>'+escapeHtml(c.id)+'</option>'; }).join(''));
+}
+function _tesConv(amount, fromCur) {
+  if (!window._tesConsol) return amount;
+  return DB.convertCurrency(amount || 0, fromCur || 'ARS', window._tesConsol);
+}
+function tesSetConsol(v) {
+  window._tesConsol = v || '';
+  var mod = window.APP_STATE && window.APP_STATE.currentModule;
+  if (typeof navigate === 'function' && mod) { navigate(mod); return; }
+  renderReporteTesoria();
+}
 function tesSetCompany(id) {
   window._tesCompany = id || '';
   if (id) { DB.setCompany(id); if (window.APP_STATE) window.APP_STATE.activeCompany = id; }
-  // Re-renderiza el módulo de tesorería actual (Operaciones / Cuentas / Reporte).
+  // Re-renderiza SIEMPRE la pantalla actual (Operaciones / Cuentas / Reporte) por la
+  // vía canónica — nunca saltar a otra pantalla.
   var mod = window.APP_STATE && window.APP_STATE.currentModule;
-  if (window.MODULES && window.MODULES[mod] && typeof window.MODULES[mod].render === 'function') {
-    try { window.MODULES[mod].render(); return; } catch(e) {}
-  }
+  if (typeof navigate === 'function' && mod) { navigate(mod); return; }
+  if (window.MODULES && window.MODULES[mod] && typeof window.MODULES[mod].render === 'function') { window.MODULES[mod].render(); return; }
   renderTesoreria();
 }
 // Antes de actuar sobre una cuenta/movimiento de otra razón social, la activamos.

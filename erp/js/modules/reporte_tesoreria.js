@@ -24,9 +24,11 @@ function renderReporteTesoria() {
   </div>
 </div>
 
-${(typeof _tesCompanyOptions === 'function') ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-  <i class="fas fa-city" style="color:var(--primary)"></i><span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>
-  <select class="form-control" style="width:230px" onchange="tesSetCompany(this.value)">${_tesCompanyOptions()}</select>
+${(typeof _tesCompanyOptions === 'function') ? `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+  <div style="display:flex;align-items:center;gap:8px"><i class="fas fa-city" style="color:var(--primary)"></i><span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>
+    <select class="form-control" style="width:220px" onchange="tesSetCompany(this.value)">${_tesCompanyOptions()}</select></div>
+  <div style="display:flex;align-items:center;gap:8px"><i class="fas fa-right-left" style="color:var(--primary)"></i><span style="font-size:12px;font-weight:600;color:var(--text-muted)">Total en</span>
+    <select class="form-control" style="width:180px" onchange="tesSetConsol(this.value)">${_tesConsolOptions()}</select></div>
 </div>` : ''}
 
 <div id="rpt-tes-kpis"></div>
@@ -127,9 +129,11 @@ function _rptTesCalcRow(account, allTxs, from, to) {
 
 // ── KPI CARDS ─────────────────────────────────────────────────────────────────
 function _rptTesBuildKPIs(rows) {
-  const totalSaldo    = rows.reduce((s, r) => s + r.saldoFinal,     0);
-  const totalIngresos = rows.reduce((s, r) => s + r.movClientes,    0);
-  const totalEgresos  = rows.reduce((s, r) => s + r.movProveedores + r.movTesoreria, 0);
+  const _tc = (typeof window._tesConsol !== 'undefined') ? window._tesConsol : '';
+  const _cv = (r, amt) => (typeof _tesConv === 'function') ? _tesConv(amt, (r.account && r.account.currency) || 'ARS') : amt;
+  const totalSaldo    = rows.reduce((s, r) => s + _cv(r, r.saldoFinal),     0);
+  const totalIngresos = rows.reduce((s, r) => s + _cv(r, r.movClientes),    0);
+  const totalEgresos  = rows.reduce((s, r) => s + _cv(r, r.movProveedores + r.movTesoreria), 0);
   const variacion     = totalIngresos - totalEgresos;
 
   const el = document.getElementById('rpt-tes-kpis');
@@ -139,9 +143,9 @@ function _rptTesBuildKPIs(rows) {
   <div class="stat-card">
     <div class="stat-icon blue"><i class="fas fa-landmark"></i></div>
     <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(totalSaldo)}</div>
-      <div class="stat-label">Saldo Total Actual</div>
-      <div class="stat-delta up"><i class="fas fa-info-circle"></i> ${fmtMoney(totalSaldo)}</div>
+      <div class="stat-value">${_tc ? fmtMoney(totalSaldo, _tc) : fmtMoneyK(totalSaldo)}</div>
+      <div class="stat-label">Saldo Total Actual${_tc ? ' (en ' + _tc + ')' : ''}</div>
+      <div class="stat-delta up"><i class="fas fa-info-circle"></i> ${_tc ? 'convertido al TC' : fmtMoney(totalSaldo)}</div>
     </div>
   </div>
   <div class="stat-card">
