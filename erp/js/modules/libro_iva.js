@@ -23,6 +23,10 @@ function _livaCompanyOpts(selId) {
 }
 
 function renderLibroIVA() {
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._livaLoadedAll) {
+    window._livaLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderLibroIVA(); } catch(e) {} } });
+  }
   const p        = window._libroIvaPeriod;
   const coId     = window._livaCompanyFilter || '';
   const sis      = _livaGetCompras(p, coId);
@@ -170,17 +174,24 @@ function _livaIsAfipDoc(tipo) {
   return LIVA_AFIP_TYPES.includes(tipo);
 }
 
+// Lectura consolidada (todas las razones sociales) con fallback a la empresa activa.
+function _livaAll(collection) {
+  return (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated(collection) : DB.getAll(collection);
+}
+// Empresa efectiva de un registro consolidado.
+function _livaCoId(rec) { return rec._company_id || rec.company_id || ''; }
+
 function _livaGetCompras(p, companyId) {
-  const suppliers = DB.getAll('suppliers');
+  const suppliers = _livaAll('suppliers');
   const supMap    = {};
   suppliers.forEach(s => { supMap[s.id] = s; });
 
   const rows = [];
 
   // Facturas proveedor — solo comprobantes AFIP (A/B/C/M o sin tipo = legacy)
-  DB.getAll('supplierInvoices').filter(si =>
+  _livaAll('supplierInvoices').filter(si =>
     _livaInPeriod(si.date, p) && _livaIsAfipDoc(si.tipo_comprobante) &&
-    (!companyId || si.company_id === companyId)
+    (!companyId || _livaCoId(si) === companyId)
   ).forEach(si => {
     const sup = supMap[si.supplier_id] || {};
     si._cuit = sup.cuit || sup.tax_id || '-';
@@ -189,13 +200,13 @@ function _livaGetCompras(p, companyId) {
   });
 
   // NC / ND recibidas (confirmadas)
-  DB.getAll('notasCreditoDebito').filter(n => (n.type==='nc_rec'||n.type==='nd_rec') && _livaInPeriod(n.date, p) && n.status==='confirmed').forEach(n => {
+  _livaAll('notasCreditoDebito').filter(n => (n.type==='nc_rec'||n.type==='nd_rec') && _livaInPeriod(n.date, p) && n.status==='confirmed' && (!companyId || _livaCoId(n) === companyId)).forEach(n => {
     n._name = n.entity_name;
     rows.push(_livaComprasRow(n, n.type==='nc_rec'?'NC':'ND'));
   });
 
   // Count excluded docs for display (filtrar por empresa igual que las filas)
-  const totalSI = DB.getAll('supplierInvoices').filter(si => _livaInPeriod(si.date, p) && (!companyId || si.company_id === companyId)).length;
+  const totalSI = _livaAll('supplierInvoices').filter(si => _livaInPeriod(si.date, p) && (!companyId || _livaCoId(si) === companyId)).length;
   var excl = totalSI - rows.filter(r => r.docType === 'FAC').length;
 
   var sorted = rows.sort((a,b) => a.date.localeCompare(b.date));
@@ -232,22 +243,22 @@ function _livaGetVentas(p, companyId) {
   const rows = [];
 
   // Facturas emitidas — solo comprobantes AFIP (A/B/C/M o sin tipo = legacy)
-  DB.getAll('invoices').filter(inv =>
+  _livaAll('invoices').filter(inv =>
     _livaInPeriod(inv.date, p) &&
     _livaIsAfipDoc(inv.tipo_comprobante || inv.type) &&
-    (!companyId || inv.company_id === companyId)
+    (!companyId || _livaCoId(inv) === companyId)
   ).forEach(inv => {
     rows.push(_livaVentasRow(inv, 'FAC'));
   });
 
-  DB.getAll('notasCreditoDebito').filter(n => (n.type==='nc_emi'||n.type==='nd_emi') && _livaInPeriod(n.date, p) && n.status==='confirmed').forEach(n => {
+  _livaAll('notasCreditoDebito').filter(n => (n.type==='nc_emi'||n.type==='nd_emi') && _livaInPeriod(n.date, p) && n.status==='confirmed' && (!companyId || _livaCoId(n) === companyId)).forEach(n => {
     rows.push(_livaVentasRow(n, n.type==='nc_emi'?'NC':'ND'));
   });
 
   // Cobranzas de cuotas con IVA (declarables AFIP sin factura emitida aún)
-  DB.getAll('collections').filter(function(c) {
+  _livaAll('collections').filter(function(c) {
     return c.iva_incluido && c.tipo_cobranza === 'cuota_formal' && _livaInPeriod(c.date, p) &&
-           (!companyId || c.company_id === companyId);
+           (!companyId || _livaCoId(c) === companyId);
   }).forEach(function(c) {
     var rate = parseFloat(c.iva_rate) || 10.5;
     var neto = parseFloat(c.neto) || (c.amount / (1 + rate/100));
@@ -592,7 +603,7 @@ function livaRenderRateSummary(totals, type) {
 // =====================================================================
 function livaExportCompras() {
   const p    = window._libroIvaPeriod;
-  const rows = _livaGetCompras(p);
+  const rows = _livaGetCompras(p, window._livaCompanyFilter || '');
   const filename = `libro_iva_compras_${p.year}${String(p.month).padStart(2,'0')}`;
   exportXLSX(filename,
     ['Fecha','Tipo','Número','CUIT','Razón Social',
@@ -608,7 +619,7 @@ function livaExportCompras() {
 
 function livaExportVentas() {
   const p    = window._libroIvaPeriod;
-  const rows = _livaGetVentas(p);
+  const rows = _livaGetVentas(p, window._livaCompanyFilter || '');
   const filename = `libro_iva_ventas_${p.year}${String(p.month).padStart(2,'0')}`;
   exportXLSX(filename,
     ['Fecha','Tipo','Número','CUIT','Razón Social',
@@ -726,11 +737,11 @@ function livaCitiExportCompras(mode) {
   var ym      = p.year + String(p.month).padStart(2, '0');
   var citiCoId= (document.getElementById('citi-company')?.value) || (window._livaCompanyFilter || '');
   var supMap  = {};
-  try { DB.getAll('suppliers').forEach(function(s) { supMap[s.id] = s; }); } catch(e) {}
+  try { _livaAll('suppliers').forEach(function(s) { supMap[s.id] = s; }); } catch(e) {}
 
-  var sis = DB.getAll('supplierInvoices').filter(function(si) {
+  var sis = _livaAll('supplierInvoices').filter(function(si) {
     return _livaInPeriod(si.date, p) && _livaIsAfipDoc(si.tipo_comprobante) &&
-           (!citiCoId || si.company_id === citiCoId);
+           (!citiCoId || _livaCoId(si) === citiCoId);
   });
 
   if (!sis.length) { toast('Sin comprobantes de compras AFIP para el período', 'warning'); return; }
@@ -813,8 +824,10 @@ function livaCitiExportVentas(mode) {
     if (el) emisorCuit = (el.value || '').replace(/[-\s]/g, '');
   } catch(e) {}
 
-  var invs = DB.getAll('invoices').filter(function(inv) {
-    return _livaInPeriod(inv.date, p) && _livaIsAfipDoc(inv.tipo_comprobante || inv.type);
+  var citiCoId = (document.getElementById('citi-company')?.value) || (window._livaCompanyFilter || '');
+  var invs = _livaAll('invoices').filter(function(inv) {
+    return _livaInPeriod(inv.date, p) && _livaIsAfipDoc(inv.tipo_comprobante || inv.type) &&
+           (!citiCoId || _livaCoId(inv) === citiCoId);
   });
 
   if (!invs.length) { toast('Sin comprobantes de ventas AFIP para el período', 'warning'); return; }

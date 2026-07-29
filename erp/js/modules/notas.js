@@ -24,7 +24,12 @@ const SI_IVA_RATES_NOTA = [
 // MAIN RENDER
 // =====================================================================
 function renderNotas() {
-  const notas = DB.getAll('notasCreditoDebito');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._notasLoadedAll) {
+    window._notasLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderNotas(); } catch(e) {} } });
+  }
+  const notas = rsScoped('notasCreditoDebito', 'notas');
+  const _multiCur = [...new Set(notas.map(n => rsCur(n)))].length > 1;
   const ncRec = notas.filter(n => n.type === 'nc_rec');
   const ndRec = notas.filter(n => n.type === 'nd_rec');
   const ncEmi = notas.filter(n => n.type === 'nc_emi');
@@ -46,6 +51,8 @@ function renderNotas() {
     <button class="btn btn-primary"   onclick="openNotaForm('nd_rec')"><i class="fas fa-plus"></i> ND Recibida</button>
   </div>
 </div>
+
+${rsSelectorHtml('notas', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — filtrá por razón social para totales exactos</span>' : '')}
 
 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
   <div class="stat-card"><div class="stat-icon green"><i class="fas fa-arrow-down"></i></div><div>
@@ -74,10 +81,9 @@ function renderNotas() {
 // TABLE
 // =====================================================================
 function renderNotasTable(notas, dir) {
-  const suppliers = dir === 'rec' ? DB.getAll('suppliers') : [];
-  const clients   = dir === 'emi' ? DB.getAll('clients') : [];
-  const projects  = DB.getAll('projects');
+  const projects  = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('projects') : DB.getAll('projects');
   const isRec     = dir === 'rec';
+  const showCompany = !rsGet('notas') && [...new Set(notas.map(n => n._company_name || ''))].filter(Boolean).length > 1;
 
   const addBtns = isRec
     ? `<button class="btn btn-secondary btn-sm" onclick="openNotaForm('nc_rec')"><i class="fas fa-plus"></i> NC</button>
@@ -111,18 +117,20 @@ function renderNotasTable(notas, dir) {
     const refLink = n.ref_doc_number
       ? `<span class="badge badge-gray" style="font-size:10px">${n.ref_doc_number}</span>`
       : '<span style="color:var(--text-muted)">-</span>';
+    const _cur = rsCur(n);
     return `<tr class="nota-row" data-dir="${dir}" data-type="${n.type.startsWith('nc')?'nc':'nd'}" data-status="${n.status||'draft'}"
                data-q="${(n.number||'').toLowerCase()} ${(n.entity_name||'').toLowerCase()}">
       <td><strong>${n.number||'-'}</strong></td>
       <td><span class="badge badge-${nt.color}"><i class="fas ${nt.icon}"></i> ${nt.label}</span></td>
+      ${showCompany ? `<td style="font-size:11px;color:#64748b">${escapeHtml(n._company_name||'')}</td>` : ''}
       <td>${n.entity_name||'-'}</td>
       <td style="font-size:11px">${proj?.name||'-'}</td>
       <td>${fmtDate(n.date)}</td>
       <td style="font-size:11px">${n.reason||'-'}</td>
       <td>${refLink}</td>
-      <td class="text-right">${fmtMoney(n.subtotal||0)}</td>
-      <td class="text-right">${fmtMoney(n.iva||0)}</td>
-      <td class="text-right"><strong>${fmtMoney(n.total||0)}</strong></td>
+      <td class="text-right">${fmtMoney(n.subtotal||0, _cur)}</td>
+      <td class="text-right">${fmtMoney(n.iva||0, _cur)}</td>
+      <td class="text-right"><strong>${fmtMoney(n.total||0, _cur)}</strong></td>
       <td>${n.status==='confirmed'
         ? '<span class="badge badge-green">Confirmada</span>'
         : '<span class="badge badge-gray">Borrador</span>'}</td>
@@ -137,7 +145,7 @@ function renderNotasTable(notas, dir) {
 
   return filterBar + `<div class="card"><div class="card-body" style="padding:0">
 <table id="notas-table-${dir}"><thead><tr>
-  <th>Número</th><th>Tipo</th><th>${isRec?'Proveedor':'Cliente'}</th><th>Proyecto</th>
+  <th>Número</th><th>Tipo</th>${showCompany?'<th>Razón Social</th>':''}<th>${isRec?'Proveedor':'Cliente'}</th><th>Proyecto</th>
   <th>Fecha</th><th>Motivo</th><th>Ref.</th>
   <th class="text-right">Subtotal</th><th class="text-right">IVA</th><th class="text-right">Total</th>
   <th>Estado</th><th>Acciones</th>
@@ -222,6 +230,7 @@ function openNotaForm(type, id) {
   const nt   = NOTA_TYPES[type];
   if (!nt) { toast('Tipo de nota inválido', 'error'); return; }
 
+  if (id && typeof rsEnsureCompany === 'function') rsEnsureCompany('notasCreditoDebito', id);
   const nota = id ? DB.getById('notasCreditoDebito', id) : null;
   const isRec = nt.dir === 'rec';
   const suppliers = DB.getAll('suppliers');
@@ -397,6 +406,7 @@ function saveNota(type, id, status) {
 }
 
 function confirmNota(id) {
+  if (typeof rsEnsureCompany === 'function') rsEnsureCompany('notasCreditoDebito', id);
   const nota = DB.getById('notasCreditoDebito', id);
   if (!nota) return;
   confirmDialog(`¿Confirmar ${NOTA_TYPES[nota.type]?.label||'nota'} N° ${nota.number}? Se generará el asiento contable.`, function() {
@@ -408,6 +418,7 @@ function confirmNota(id) {
 }
 
 function deleteNota(id) {
+  if (typeof rsEnsureCompany === 'function') rsEnsureCompany('notasCreditoDebito', id);
   confirmDialog('¿Eliminar esta nota? Esta acción no se puede deshacer.', function() {
     DB.remove('notasCreditoDebito', id);
     toast('Nota eliminada', 'success');
@@ -454,6 +465,7 @@ function _notaGenerateJournalEntry(nota) {
 // VIEW
 // =====================================================================
 function viewNota(id) {
+  if (typeof rsEnsureCompany === 'function') rsEnsureCompany('notasCreditoDebito', id);
   const nota = DB.getById('notasCreditoDebito', id);
   if (!nota) return;
   const nt   = NOTA_TYPES[nota.type] || {};
