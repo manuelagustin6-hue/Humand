@@ -205,5 +205,25 @@ const { withApp, check, near, summary } = require('./harness');
     check('sin consolidar no convierte', r.noconv === 1100);
   }
 
+  // ---- 13) Helper de consolidación (rsScoped filtra por razón social) ----
+  console.log('\n▶ Helper consolidación (rsScoped)');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'consolid.js'], () => {
+      var g = DB.getGlobal(); g.companies = [{ id: 'comp-001', name: 'AR SA', currency: 'ARS' }, { id: 'comp-002', name: 'UY SA', currency: 'UYU' }]; DB.saveGlobal(g);
+      localStorage.setItem('erp_company_comp-001_v1', JSON.stringify({ paymentOrders: [{ id: 'o1', total: 10 }] }));
+      localStorage.setItem('erp_company_comp-002_v1', JSON.stringify({ paymentOrders: [{ id: 'o2', total: 20 }] }));
+      DB._invalidateCache(); DB.setCompany('comp-001');
+      window.APP_STATE = { activeProject: '' };
+      window._rsCompany = {};
+      var all = rsScoped('paymentOrders', 'x');
+      window._rsCompany = { x: 'comp-002' };
+      var only2 = rsScoped('paymentOrders', 'x');
+      return { all: all.length, only2: only2.map(function (o) { return o.id; }), cur2: only2[0] && rsCur(only2[0]) };
+    });
+    check('rsScoped "todas" = 2', r.all === 2);
+    check('rsScoped filtra por razón social (o2)', JSON.stringify(r.only2) === JSON.stringify(['o2']));
+    check('rsCur usa la moneda de la empresa (UYU)', r.cur2 === 'UYU');
+  }
+
   summary();
 })();
