@@ -147,6 +147,7 @@ function buildContractsTable(contracts, projects, suppliers, allCerts) {
       '<td><div class="table-actions">' +
         '<button class="btn btn-sm btn-primary" onclick="renderContractDetail(\'' + c.id + '\')"><i class="fas fa-eye"></i> Ver</button>' +
         '<button class="btn-ghost btn btn-sm" onclick="openContractForm(\'' + c.id + '\')"><i class="fas fa-edit"></i></button>' +
+        (typeof attBadge === 'function' ? attBadge(c).replace(/\{col\}/g, 'contracts').replace(/\{id\}/g, c.id) : '') +
         '<button class="btn-ghost btn btn-sm danger" onclick="deleteContract(\'' + c.id + '\')"><i class="fas fa-trash"></i></button>' +
       '</div></td>' +
     '</tr>';
