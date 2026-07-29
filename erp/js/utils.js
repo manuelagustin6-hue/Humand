@@ -167,13 +167,22 @@ function confirmDialog(msg, onConfirm) {
 function populateProjectSelector() {
   const sel = document.getElementById('global-project');
   if (!sel) return;
-  var projects = DB.getAll('projects');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._projSelLoadedAll) {
+    window._projSelLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { populateProjectSelector(); } catch(e) {} } });
+  }
+  // Consolidado: el switcher lista los proyectos de TODAS las razones sociales del
+  // grupo; "Todos los proyectos" = vista General (todo el grupo junto).
+  var projects = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('projects') : DB.getAll('projects');
   var accessibleIds = typeof getAccessibleProjectIds === 'function' ? getAccessibleProjectIds() : null;
   if (accessibleIds) {
     projects = projects.filter(function(p) { return accessibleIds.indexOf(p.id) !== -1; });
   }
-  sel.innerHTML = '<option value="">Todos los proyectos</option>' +
-    projects.map(function(p) { return '<option value="' + p.id + '">' + p.name + '</option>'; }).join('');
+  sel.innerHTML = '<option value="">Todos los proyectos (General)</option>' +
+    projects.map(function(p) {
+      var co = p._company_name ? ' — ' + p._company_name : '';
+      return '<option value="' + p.id + '">' + escapeHtml(p.name) + co + '</option>';
+    }).join('');
   // Restore previously active project if still accessible
   var cur = window.APP_STATE && window.APP_STATE.activeProject;
   if (cur && projects.find(function(p) { return p.id === cur; })) {
@@ -187,6 +196,15 @@ function populateProjectSelector() {
 
 function setActiveProject(pid) {
   window.APP_STATE.activeProject = pid;
+  // Si el proyecto pertenece a otra razón social, activamos su empresa para que los
+  // módulos que aún leen por empresa activa apunten al lugar correcto.
+  if (pid && typeof DB.getAllConsolidated === 'function') {
+    var p = DB.getAllConsolidated('projects').find(function(x) { return x.id === pid; });
+    if (p && p._company_id && p._company_id !== DB._companyId) {
+      DB.setCompany(p._company_id);
+      window.APP_STATE.activeCompany = p._company_id;
+    }
+  }
   if (window.APP_STATE.currentModule) navigate(window.APP_STATE.currentModule);
 }
 
