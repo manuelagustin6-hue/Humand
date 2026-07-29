@@ -1,5 +1,5 @@
 /* ERP Construcción — Service Worker v12 */
-const CACHE = 'erp-v36';
+const CACHE = 'erp-v37';
 const CDN_SHELL = [
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',

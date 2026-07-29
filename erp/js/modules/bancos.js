@@ -365,10 +365,28 @@ function renderCuentasBanco() {
   // Fallback: also check treasuryTx for legacy movement data
   var treasuryTx = (typeof _tesScopedTx === 'function') ? _tesScopedTx() : DB.getAll('treasuryTx');
   var _rsSel = (typeof _tesCompanyOptions === 'function')
-    ? '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><i class="fas fa-city" style="color:var(--primary)"></i>' +
-        '<span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>' +
-        '<select class="form-control" style="width:230px" onchange="tesSetCompany(this.value)">' + _tesCompanyOptions() + '</select></div>'
+    ? '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">' +
+        '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-city" style="color:var(--primary)"></i>' +
+          '<span style="font-size:12px;font-weight:600;color:var(--text-muted)">Razón Social</span>' +
+          '<select class="form-control" style="width:220px" onchange="tesSetCompany(this.value)">' + _tesCompanyOptions() + '</select></div>' +
+        (typeof _tesConsolOptions === 'function' ? '<div style="display:flex;align-items:center;gap:8px"><i class="fas fa-right-left" style="color:var(--primary)"></i>' +
+          '<span style="font-size:12px;font-weight:600;color:var(--text-muted)">Total en</span>' +
+          '<select class="form-control" style="width:180px" onchange="tesSetConsol(this.value)">' + _tesConsolOptions() + '</select></div>' : '') +
+      '</div>'
     : '';
+  // Totales de disponibilidades: consolidados a una moneda o agrupados por moneda.
+  var _tot = {};
+  accounts.forEach(function(a){
+    var bal = baCalcBalance(a, movements, treasuryTx);
+    if (window._tesConsol && typeof _tesConv === 'function') { _tot[window._tesConsol] = (_tot[window._tesConsol] || 0) + _tesConv(bal, a.currency || 'ARS'); }
+    else { var c = a.currency || 'ARS'; _tot[c] = (_tot[c] || 0) + bal; }
+  });
+  var _totCards = Object.keys(_tot).sort().map(function(c){
+    return '<div class="card" style="padding:12px 18px;min-width:160px">' +
+      '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px">Disponibilidades ' + escapeHtml(c) + (window._tesConsol ? ' (consolidado)' : '') + '</div>' +
+      '<div style="font-size:20px;font-weight:800">' + fmtMoney(_tot[c], c) + '</div></div>';
+  }).join('');
+  var _totBanner = _totCards ? '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px">' + _totCards + '</div>' : '';
 
   document.getElementById('content').innerHTML =
     '<div class="page-header">' +
@@ -382,7 +400,7 @@ function renderCuentasBanco() {
         '</button>' +
       '</div>' +
     '</div>' +
-    _rsSel +
+    _rsSel + _totBanner +
 
     '<div id="bancos-tabs" class="tabs-container">' +
       '<div class="tabs-header">' +
