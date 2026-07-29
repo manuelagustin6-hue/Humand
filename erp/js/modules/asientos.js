@@ -422,3 +422,41 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
     return null;
   }
 }
+
+// Wrapper A/B: postea el asiento en el libro que corresponde según la clasificación
+// contable del comprobante origen (contab_tipo: 'A' | 'B' | 'AB').
+//   'A' (o vacío) → un asiento en libro A (comportamiento por defecto).
+//   'B'           → un asiento en libro B.
+//   'AB'          → dos asientos proporcionales: pct_a% al libro A, resto al B.
+// opts admite: contab_tipo, contab_pct_a (0-100), y el resto que pasa tal cual.
+function autoJournalEntryABImp(operationTypeId, imputacion, neto, total, taxes, date, ref, opts) {
+  opts = opts || {};
+  var tipo = (opts.contab_tipo || 'A').toUpperCase();
+  var base = {};
+  Object.keys(opts).forEach(function(k){ if (k !== 'contab_tipo' && k !== 'contab_pct_a') base[k] = opts[k]; });
+
+  if (tipo !== 'AB') {
+    var o = Object.assign({}, base, { book: tipo === 'B' ? 'B' : 'A' });
+    return autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total, taxes, date, ref, o);
+  }
+
+  // Split AB proporcional
+  var pctA = Math.max(0, Math.min(100, parseFloat(opts.contab_pct_a) || 0)) / 100;
+  function scaleImp(f) {
+    return (imputacion || []).map(function(l){ return Object.assign({}, l, { amount: (l.amount || 0) * f }); });
+  }
+  function scaleTaxes(f) {
+    var t = {}; Object.keys(taxes || {}).forEach(function(k){ t[k] = (taxes[k] || 0) * f; }); return t;
+  }
+  var refA = ref ? ref + ' (Cont. A)' : 'Cont. A';
+  var refB = ref ? ref + ' (Cont. B)' : 'Cont. B';
+  var eA = null, eB = null;
+  if (pctA > 0) {
+    eA = autoJournalEntryFromImputacion(operationTypeId, scaleImp(pctA), (neto||0)*pctA, (total||0)*pctA, scaleTaxes(pctA), date, refA, Object.assign({}, base, { book: 'A' }));
+  }
+  if (pctA < 1) {
+    var fB = 1 - pctA;
+    eB = autoJournalEntryFromImputacion(operationTypeId, scaleImp(fB), (neto||0)*fB, (total||0)*fB, scaleTaxes(fB), date, refB, Object.assign({}, base, { book: 'B' }));
+  }
+  return eA || eB;
+}

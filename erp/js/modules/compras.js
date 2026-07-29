@@ -1351,6 +1351,11 @@ function openSIForm(id, prefillPoId, prefillCertId) {
         '<input class="form-control" id="si-date" type="date" value="' + ((si && si.date) || todayStr()) + '"></div>' +
       '<div class="form-group"><label class="form-label">Fecha Vencimiento</label>' +
         '<input class="form-control" id="si-due" type="date" value="' + ((si && si.due_date) || addDays(todayStr(), 30)) + '"></div>' +
+      '<div class="form-group"><label class="form-label">Libro Contable</label>' +
+        '<select class="form-control" id="si-contab-tipo" title="Libro (A/B) del asiento automático. Se hereda de la certificación si aplica.">' +
+          '<option value="A"' + ((!si || !si.contab_tipo || si.contab_tipo === 'A') ? ' selected' : '') + '>Contabilidad A</option>' +
+          '<option value="B"' + ((si && si.contab_tipo === 'B') ? ' selected' : '') + '>Contabilidad B</option>' +
+        '</select></div>' +
     '</div>' +
 
     '<div class="divider"></div>' +
@@ -1637,6 +1642,7 @@ function saveSI(id) {
     net_to_pay:  sub + tax + addToTotal - retTotal,
     status:      id ? ((DB.getById('supplierInvoices', id) || {}).status || 'pending') : 'pending',
     notes:       document.getElementById('si-notes').value.trim(),
+    contab_tipo: document.getElementById('si-contab-tipo') ? (document.getElementById('si-contab-tipo').value || 'A') : 'A',
     imputacion:  imputacion,
   };
   var savedId;
@@ -1647,14 +1653,27 @@ function saveSI(id) {
     DB.update('certificates', certId, { supplier_invoice_id: savedId });
   }
 
-  // Generate journal entry from imputacion lines
-  if (typeof autoJournalEntryFromImputacion === 'function') {
+  // Generate journal entry from imputacion lines. La clasificación contable (A/B/AB)
+  // se hereda de la certificación asociada (si la factura la origina) para postear en
+  // el libro correcto; sin cert queda en libro A.
+  if (typeof autoJournalEntryABImp === 'function' || typeof autoJournalEntryFromImputacion === 'function') {
     var jeTaxes = { iva: tax };
     if (percIva  > 0) jeTaxes.percIva  = percIva;
     if (percIibb > 0) jeTaxes.percIibb = percIibb;
     var _sup = DB.getById('suppliers', supplierId) || {};
-    autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, jeTaxes, data.date, data.number,
-      { project_id: data.project_id || '', counterparty: _sup.name || _sup.legal_name || '', currency: data.currency || '' });
+    var _cert = certId ? DB.getById('certificates', certId) : null;
+    // La certificación con split A/B (AB) manda: define el prorrateo entre libros.
+    // Si no hay split, se usa el libro elegido en la factura (heredable del cert).
+    var _tipo = (_cert && _cert.contab_tipo === 'AB') ? 'AB' : (data.contab_tipo || 'A');
+    var _jeOpts = {
+      project_id: data.project_id || '', counterparty: _sup.name || _sup.legal_name || '', currency: data.currency || '',
+      contab_tipo: _tipo, contab_pct_a: (_cert && _cert.contab_pct_a) || 0
+    };
+    if (typeof autoJournalEntryABImp === 'function') {
+      autoJournalEntryABImp('fact_proveedor', imputacion, sub, data.total, jeTaxes, data.date, data.number, _jeOpts);
+    } else {
+      autoJournalEntryFromImputacion('fact_proveedor', imputacion, sub, data.total, jeTaxes, data.date, data.number, _jeOpts);
+    }
   }
 
   // Upload pending files async (after save so we have the record ID)
