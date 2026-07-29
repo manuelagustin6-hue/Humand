@@ -251,19 +251,51 @@ function usrBuildRolesList() {
 }
 
 // ---- USER FORM ----
+// Reúne los proyectos de TODAS las empresas (usuarios globales → acceso por obra
+// entre razones sociales). Lee cada blob de empresa de localStorage + la activa.
+function _allProjectsAcrossCompanies() {
+  var companies = {};
+  try { (DB.getAllCompanies() || []).forEach(function(c) { companies[c.id] = c.name || c.id; }); } catch (e) {}
+  var out = [], seen = {};
+  function collect(cid, projects) {
+    (projects || []).forEach(function(p) {
+      if (!p || !p.id || seen[p.id]) return;
+      seen[p.id] = true;
+      out.push({ id: p.id, name: p.name, client: p.client, companyName: companies[cid] || cid });
+    });
+  }
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key && /^erp_company_.+_v1$/.test(key)) {
+        var cid = key.replace('erp_company_', '').replace(/_v1$/, '');
+        try { collect(cid, JSON.parse(localStorage.getItem(key)).projects); } catch (e) {}
+      }
+    }
+  } catch (e) {}
+  collect(DB._companyId, DB.getAll('projects'));   // la activa, con datos frescos del cache
+  return out;
+}
+
 function openUserForm(id = null) {
   const u = id ? DB.getById('users', id) : null;
   const roles = usrGetAllRoles();
-  const projects = DB.getAll('projects');
+  const projects = _allProjectsAcrossCompanies();
   const userProjIds = (u && u.project_ids && u.project_ids.length) ? u.project_ids : null;
   const accessMode = userProjIds ? 'specific' : 'all';
 
-  const projCheckboxes = projects.map(function(p) {
-    var checked = !userProjIds || userProjIds.indexOf(p.id) !== -1 ? 'checked' : '';
-    return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg);border-radius:6px;cursor:pointer">' +
-      '<input type="checkbox" class="usr-proj-cb" value="' + p.id + '" ' + checked + '>' +
-      '<span><strong>' + escapeHtml(p.name) + '</strong>' + (p.client ? ' <span style="color:var(--text-muted)">— ' + escapeHtml(p.client) + '</span>' : '') + '</span>' +
-      '</label>';
+  // Checkboxes agrupados por razón social (empresa)
+  const _byCompany = {};
+  projects.forEach(function(p) { (_byCompany[p.companyName] = _byCompany[p.companyName] || []).push(p); });
+  const projCheckboxes = Object.keys(_byCompany).sort().map(function(cn) {
+    return '<div style="grid-column:1/-1;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-top:8px">' + escapeHtml(cn) + '</div>' +
+      _byCompany[cn].map(function(p) {
+        var checked = !userProjIds || userProjIds.indexOf(p.id) !== -1 ? 'checked' : '';
+        return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg);border-radius:6px;cursor:pointer">' +
+          '<input type="checkbox" class="usr-proj-cb" value="' + p.id + '" ' + checked + '>' +
+          '<span><strong>' + escapeHtml(p.name) + '</strong>' + (p.client ? ' <span style="color:var(--text-muted)">— ' + escapeHtml(p.client) + '</span>' : '') + '</span>' +
+          '</label>';
+      }).join('');
   }).join('');
 
   openModal(u ? 'Editar Usuario' : 'Nuevo Usuario',
@@ -295,11 +327,12 @@ function openUserForm(id = null) {
       '</div>' +
     '</div>' +
     '<div class="divider" style="margin:14px 0"></div>' +
-    '<div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="fas fa-building" style="color:var(--primary);margin-right:6px"></i>Acceso a Proyectos</div>' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:4px"><i class="fas fa-diagram-project" style="color:var(--primary);margin-right:6px"></i>Acceso a Proyectos</div>' +
+    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">El usuario accede a <strong>todas las empresas</strong> (razones sociales). Acá restringís a qué <strong>obras</strong> puede entrar.</div>' +
     '<div style="display:flex;flex-direction:column;gap:6px">' +
       '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
         '<input type="radio" name="usr-proj-mode" value="all" id="usr-proj-all"' + (accessMode==='all' ? ' checked' : '') + ' onchange="usrToggleProjMode(this.value)">' +
-        '<span>Todos los proyectos <span style="color:var(--text-muted);font-size:11px">(sin restricción)</span></span>' +
+        '<span>Todas las obras <span style="color:var(--text-muted);font-size:11px">(sin restricción)</span></span>' +
       '</label>' +
       '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
         '<input type="radio" name="usr-proj-mode" value="specific" id="usr-proj-specific"' + (accessMode==='specific' ? ' checked' : '') + ' onchange="usrToggleProjMode(this.value)">' +
@@ -319,6 +352,7 @@ function usrToggleProjMode(mode) {
 }
 
 function saveUser(id) {
+  if (!requireEdit('usuarios')) return;
   const name = document.getElementById('usr-name').value.trim();
   const email = document.getElementById('usr-email').value.trim();
   if (!name || !email) { toast('Nombre y email son obligatorios', 'error'); return; }
@@ -347,20 +381,65 @@ function saveUser(id) {
     data.password = null;
   }
 
-  if (id) { DB.update('users', id, data); toast('Usuario actualizado', 'success'); }
-  else { DB.insert('users', { ...data, last_login: null }); toast('Usuario creado', 'success'); }
+  if (id) {
+    DB.update('users', id, data);
+    toast('Usuario actualizado', 'success');
+    // Sincronizar acceso server-side (RLS): rol/escritura o baja si se desactivó.
+    if (data.active === false) _SUPA.revokeMembership(email, DB._companyId);
+    else                       _SUPA.grantMembership(email, DB._companyId, data.role);
+  } else {
+    DB.insert('users', { ...data, last_login: null });
+    // Register in Supabase Auth for cross-device login
+    if (pin && _SUPA.online) {
+      var co = DB._companyId;
+      _SUPA.signUp(email, pin, { company_id: co, role: data.role, name: data.name })
+        .then(function(res) {
+          // Otorgar membresía server-side (RLS). Best-effort: si el SQL de RLS no
+          // está aplicado o la sesión de admin se reemplazó, se resiembra con el PASO 2.
+          _SUPA.grantMembership(email, co, data.role);
+          if (res.error) {
+            var msg = (res.error.message || '').toLowerCase();
+            if (msg.indexOf('already registered') !== -1 || msg.indexOf('user_already_exists') !== -1) {
+              toast('Usuario creado. Ya existe en Supabase Auth — puede ingresar desde cualquier dispositivo.', 'success');
+            } else {
+              toast('Usuario creado. Supabase Auth: ' + res.error.message, 'warning');
+            }
+          } else if (res.data && res.data.session) {
+            // Email confirmation disabled — user can sign in immediately
+            toast('Usuario creado y activado. Puede ingresar desde cualquier dispositivo.', 'success');
+          } else {
+            // Email confirmation required — session is null
+            toast('Usuario creado. Se envió un email de confirmación a ' + email + ' — debe hacer clic en el enlace antes de poder ingresar desde otro dispositivo.', 'info');
+          }
+        }).catch(function() {
+          toast('Usuario creado (sin conexión a Supabase — solo disponible en este dispositivo por ahora).', 'warning');
+        });
+    } else {
+      toast('Usuario creado. Para acceso multi-dispositivo, activá Supabase en Ajustes.', 'info');
+    }
+  }
   closeModal();
   renderUsuarios();
 }
 
 function toggleUser(id, active) {
+  if (!requireEdit('usuarios')) return;
+  var u = DB.getById('users', id);
   DB.update('users', id, { active });
+  // Sincronizar acceso server-side (RLS): baja = revocar; alta = re-otorgar.
+  if (u && u.email) {
+    if (active) _SUPA.grantMembership(u.email, DB._companyId, u.role);
+    else        _SUPA.revokeMembership(u.email, DB._companyId);
+  }
   toast(`Usuario ${active ? 'activado' : 'desactivado'}`, active ? 'success' : 'warning');
   renderUsuarios();
 }
 
 function deleteUser(id) {
+  if (!requireEdit('usuarios')) return;
   confirmDialog('¿Eliminar este usuario?', () => {
+    var u = DB.getById('users', id);
+    if (u && u.email) _SUPA.revokeMembership(u.email, DB._companyId);   // revocar acceso (RLS)
     DB.remove('users', id);
     toast('Usuario eliminado', 'warning');
     renderUsuarios();
@@ -439,6 +518,7 @@ function roleSetAll(level) {
 }
 
 function saveRole(id) {
+  if (!requireEdit('usuarios')) return;
   const label = document.getElementById('role-name').value.trim();
   if (!label) { toast('El nombre del rol es obligatorio', 'error'); return; }
   const color = document.getElementById('role-color').value;
@@ -460,6 +540,7 @@ function saveRole(id) {
 }
 
 function deleteRole(id) {
+  if (!requireEdit('usuarios')) return;
   const usersWithRole = DB.getAll('users').filter(u => u.role === id);
   const msg = usersWithRole.length
     ? `Este rol está asignado a ${usersWithRole.length} usuario(s). Si lo eliminás, esos usuarios quedarán sin rol válido. ¿Continuar?`
@@ -533,9 +614,10 @@ function getEffectivePermissions(roleId) {
   // Hardcoded defaults for built-in roles without explicit permissions
   var defaults = {
     project_manager: {
-      pedidos:'edit', ordenes_compra:'edit',
+      pedidos:'edit', ordenes_compra:'edit', licitaciones:'edit',
       projects:'edit', contratos:'edit', certificaciones:'edit',
       presupuesto:'edit', seguimiento:'edit', gantt:'edit',
+      panel_obra:'view', rfis:'edit', submittals:'edit', minutas:'edit',
       rubros:'edit', apu:'edit', indices:'edit',
       cuentas_prov:'view', documentos_prov:'view',
       ordenes_pago:'view', retenciones:'view',
@@ -549,12 +631,13 @@ function getEffectivePermissions(roleId) {
       contabilidad:'edit', conta_diario:'edit', conta_balance:'edit',
       conta_resultados:'edit', conta_plan:'edit', conta_mayores:'edit',
       conta_sumas:'edit', libro_iva:'edit',
-      tesoreria:'edit', cuentas_banco:'edit', cheques:'edit',
+      tesoreria:'edit', cuentas_banco:'edit', cheques:'edit', conciliaciones:'edit',
       notas:'edit', reportes:'view', aprobaciones:'view',
     },
     inspector: {
       projects:'view', contratos:'view', certificaciones:'view',
       presupuesto:'view', seguimiento:'view', gantt:'view', rubros:'view',
+      panel_obra:'view', rfis:'edit', submittals:'view',
     },
   };
   return defaults[roleId] || {};
@@ -579,6 +662,7 @@ function canAccessProject(projectId) {
 function canView(moduleId) {
   var user = window.APP_STATE && window.APP_STATE.currentUser;
   if (!user) return true; // no session → admin-mode (dev)
+  if (user.role === 'admin') return true; // admin sees everything
   var perms = getEffectivePermissions(user.role);
   return !!(perms[moduleId] === 'view' || perms[moduleId] === 'edit');
 }
@@ -587,9 +671,20 @@ function canView(moduleId) {
 function canEdit(moduleId) {
   var user = window.APP_STATE && window.APP_STATE.currentUser;
   if (!user) return true;
+  if (user.role === 'admin') return true; // admin can edit everything
   var perms = getEffectivePermissions(user.role);
   return perms[moduleId] === 'edit';
 }
+
+// Guarda de escritura: llamar al inicio de cada handler save*/delete*. Si el
+// usuario no tiene permiso de edición en el módulo, avisa y devuelve false para
+// abortar. (Refuerzo client-side; el control real vendrá con Supabase RLS.)
+function requireEdit(moduleId) {
+  if (canEdit(moduleId)) return true;
+  if (typeof toast === 'function') toast('No tenés permiso para modificar este módulo', 'error');
+  return false;
+}
+window.requireEdit = requireEdit;
 
 // =====================================================
 // LOGIN UI
@@ -662,24 +757,123 @@ function _loginEnsureUsers(companyId) {
 function doLogin() {
   var email    = ((document.getElementById('login-email')    || {}).value || '').trim().toLowerCase();
   var password = ((document.getElementById('login-password') || {}).value || '');
-
   if (!email) { _loginError('Ingresá tu email'); return; }
 
-  var companyIds = _loginScanCompanyIds();
-  var foundUser = null;
-  var foundCompanyId = null;
-  var allEmails = []; // collect for debug
-
-  for (var i = 0; i < companyIds.length; i++) {
-    var users = _loginEnsureUsers(companyIds[i]);
-    users.forEach(function(u) { if (u.email) allEmails.push(u.email); });
-    var match = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; });
-    if (match) { foundUser = match; foundCompanyId = companyIds[i]; break; }
+  var btn = document.querySelector('#login-screen button[onclick="doLogin()"]');
+  function _btnBusy(busy) {
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.innerHTML = busy
+      ? '<i class="fas fa-spinner fa-spin"></i> Verificando…'
+      : '<i class="fas fa-sign-in-alt"></i> Ingresar';
   }
+  _btnBusy(true);
+
+  // Try Supabase Auth first
+  _SUPA.signIn(email, password).then(function(result) {
+    if (!result.error && result.data && result.data.session) {
+      // Full Supabase Auth session — reload data with JWT
+      _afterSupaLogin(result.data.session, email);
+
+    } else {
+      // signIn no devolvió sesión: error de credenciales, o cuenta pendiente de
+      // confirmar por email (con "Confirm email" encendido, la migración crea la
+      // cuenta pero Auth no deja entrar hasta confirmar). No error + sin sesión
+      // también = pendiente de confirmación.
+      var errMsg = ((result.error && result.error.message) || '').toLowerCase();
+      var notConfirmed = !result.error
+        || errMsg.indexOf('not confirmed') !== -1
+        || errMsg.indexOf('email_not_confirmed') !== -1;
+      // Nunca dejar al usuario afuera: si existe local con contraseña válida, entra
+      // por login local (la cuenta Auth puede estar pendiente de confirmar).
+      var localExists = _loginScanCompanyIds().some(function(cid) {
+        DB.setCompany(cid);
+        return (DB.getAll('users') || []).some(function(u) { return (u.email||'').toLowerCase() === email && u.active; });
+      });
+      _btnBusy(false);
+      if (localExists) {
+        _doLoginLocal(email, password, false);
+      } else if (notConfirmed) {
+        _loginError('Confirmá tu email: revisá tu casilla de correo y hacé clic en el enlace de activación que te enviamos. (O pedile al admin que desactive la confirmación por email.)');
+      } else {
+        _loginError(errMsg.indexOf('invalid login credentials') !== -1
+          ? 'Email o contraseña incorrectos'
+          : ((result.error && result.error.message) || 'Error de autenticación'));
+      }
+    }
+  }).catch(function() {
+    // Network error: Supabase unreachable
+    _btnBusy(false);
+    _doLoginLocal(email, password, true /* supaUnavailable */);
+  });
+}
+
+// Elige una empresa activa VÁLIDA. Como los usuarios son globales (acceso a todas
+// las empresas), no hace falta buscar al usuario por empresa: alcanza con abrir una
+// empresa real (la preferida, la última usada, o la primera disponible).
+function _pickActiveCompany(preferred) {
+  var companies = [];
+  try { companies = DB.getAllCompanies() || []; } catch (e) {}
+  function valid(cid) { return !!cid && companies.some(function(c) { return c.id === cid; }); }
+  if (valid(preferred)) return preferred;
+  var last = ''; try { last = localStorage.getItem('erp_active_company') || ''; } catch (e) {}
+  if (valid(last)) return last;
+  if (companies.length) return companies[0].id;
+  return preferred || 'comp-001';
+}
+
+// Called after a successful Supabase signIn
+function _afterSupaLogin(session, email) {
+  // CRITICAL: set _SUPA.session so all subsequent DB operations use the JWT
+  // Without this, upserts fire with the anon key → RLS rejects them → data lost on refresh
+  _SUPA.session = session;
+  _SUPA.selfMembership();   // completa la membresía (RLS) según los usuarios de la app
+
+  var meta = (session.user && session.user.user_metadata) || {};
+  // Usuarios globales: el usuario existe una sola vez y accede a todas las empresas.
+  // Solo elegimos una empresa activa válida para abrir.
+  var candidate = meta.company_id || window.APP_STATE.activeCompany || 'comp-001';
+  var companyId = _pickActiveCompany(candidate);
+  DB.setCompany(companyId);
+  window.APP_STATE.activeCompany = companyId;
+  try { localStorage.setItem('erp_active_company', companyId); } catch(e) {}
+
+  // Reload data with JWT so RLS filters correctly
+  DB.load().then(function() {
+    if (typeof _updateSyncBadge === 'function') _updateSyncBadge();
+    var dbUser = DB.getAll('users').find(function(u) { return (u.email||'').toLowerCase() === email && u.active; });
+    if (!dbUser) {
+      dbUser = {
+        id: session.user.id,
+        name: meta.name || email.split('@')[0],
+        email: email,
+        role: meta.role || 'viewer',
+        active: true,
+        created_at: session.user.created_at || new Date().toISOString(),
+      };
+    }
+    window.APP_STATE.currentUser = dbUser;
+    var remEl = document.getElementById('login-remember');
+    completeLogin(dbUser.id, !!(remEl && remEl.checked));
+  });
+}
+
+// Local auth fallback (used when user is not yet in Supabase Auth)
+function _doLoginLocal(email, password, supaUnavailable) {
+  // Usuarios GLOBALES: se busca en el store global (acceso a todas las empresas),
+  // no por empresa. La empresa activa se elige aparte (última usada / primera).
+  var users = DB.getAll('users');
+  var foundUser = users.find(function(u) { return (u.email || '').trim().toLowerCase() === email && u.active; }) || null;
+  var foundCompanyId = _pickActiveCompany(window.APP_STATE && window.APP_STATE.activeCompany);
+  var allEmails = users.filter(function(u) { return u.active && u.email; }).map(function(u) { return u.email; });
 
   if (!foundUser) {
     DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
-    _loginError('Email no encontrado. Probá con: ' + (allEmails.length ? allEmails.slice(0,3).join(', ') : 'ningún usuario activo aún'));
+    if (supaUnavailable) {
+      _loginError('No se pudo conectar al servidor. En una computadora nueva necesitás internet para la primera sesión — revisá tu conexión e intentá nuevamente.');
+    } else {
+      _loginError('Email no encontrado. Probá con: ' + (allEmails.length ? allEmails.slice(0,3).join(', ') : 'ningún usuario activo aún'));
+    }
     return;
   }
 
@@ -693,20 +887,80 @@ function doLogin() {
       if (pwEl) pwEl.select();
       return;
     }
+  } else {
+    // Cuenta sin contraseña (semilla/bootstrap). ANTES: cualquier clave entraba
+    // como admin — escalada crítica. AHORA: el primer ingreso DEFINE la
+    // contraseña de la cuenta; los siguientes la exigen. Nunca se acepta login
+    // sin que se haya fijado una contraseña.
+    if (!password || password.length < 4) {
+      DB.setCompany(window.APP_STATE.activeCompany || 'comp-001');
+      _loginError('Esta cuenta aún no tiene contraseña. Definí una (mínimo 4 caracteres) en este primer ingreso.');
+      var pwEl0 = document.getElementById('login-password');
+      if (pwEl0) pwEl0.focus();
+      return;
+    }
+    var enc0;
+    try { enc0 = btoa(password); } catch(e) { enc0 = password; }
+    try {
+      DB.setCompany(foundCompanyId);
+      DB.update('users', foundUser.id, { password: enc0 });
+      foundUser.password = enc0;
+    } catch(e) {}
+    if (typeof toast === 'function') toast('Contraseña establecida para esta cuenta', 'success');
   }
 
   window.APP_STATE.activeCompany = foundCompanyId;
   try { localStorage.setItem('erp_active_company', foundCompanyId); } catch(e) {}
-
   var remEl = document.getElementById('login-remember');
   completeLogin(foundUser.id, !!(remEl && remEl.checked));
+
+  // Migración gradual a Supabase Auth: si esta cuenta todavía entra por login
+  // local, la provisionamos en Auth con la misma contraseña. Es el requisito para
+  // la seguridad server-side (RLS): a futuro autentica de verdad y sus escrituras
+  // salen con JWT (hoy, sin sesión, la nube las rechaza y quedan solo locales).
+  if (!supaUnavailable && _SUPA.online && password) {
+    _provisionSupaAuth(email, password, foundUser, foundCompanyId);
+  }
+}
+
+// Crea (o reconcilia) la cuenta de Supabase Auth de un usuario que venía entrando
+// por login local, en segundo plano y sin bloquear. Al obtener sesión: siembra su
+// membresía y recarga con JWT para que las escrituras salgan autenticadas.
+function _provisionSupaAuth(email, password, dbUser, companyId) {
+  try {
+    var meta = { company_id: companyId, role: (dbUser && dbUser.role) || 'viewer', name: (dbUser && dbUser.name) || '' };
+    function _adopt(session) {
+      if (!session) return;
+      _SUPA.session = session;
+      _SUPA.selfMembership();
+      try { DB.load(); } catch(e) {}   // repull con JWT (escrituras autenticadas)
+    }
+    function _trySignIn() {
+      _SUPA.signIn(email, password).then(function(r2) {
+        if (r2 && r2.data && r2.data.session) _adopt(r2.data.session);
+      }).catch(function() {});
+    }
+    _SUPA.signUp(email, password, meta).then(function(res) {
+      if (res && res.data && res.data.session) _adopt(res.data.session);  // confirmación off
+      else _trySignIn();   // ya existía, o quedó pendiente de confirmar por email
+    }).catch(function() { _trySignIn(); });
+  } catch(e) {}
 }
 
 function completeLogin(uid, remember) {
   sessionSet(uid, remember);
-  var user = DB.getById('users', uid);
-  window.APP_STATE.currentUser = user;
-  DB.update('users', uid, { last_login: new Date().toISOString() });
+  // Prefer user already set in APP_STATE (e.g. from Supabase metadata) over DB lookup
+  var dbUser = DB.getById('users', uid);
+  if (dbUser) {
+    window.APP_STATE.currentUser = dbUser;
+    try { DB.update('users', uid, { last_login: new Date().toISOString() }); } catch(e) {}
+  }
+  var user = window.APP_STATE.currentUser;
+  if (!user) { showLoginScreen(); return; }
+
+  // Reset login button (in case it was busy)
+  var btn = document.querySelector('#login-screen button[onclick="doLogin()"]');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Ingresar'; }
 
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
@@ -726,6 +980,7 @@ function completeLogin(uid, remember) {
 }
 
 function doLogout() {
+  _SUPA.signOut().catch(function() {});
   sessionClear();
   showLoginScreen();
 }
@@ -784,9 +1039,15 @@ function saveProfile() {
     if (pwNew !== pwConfirm) { toast('Las contraseñas nuevas no coinciden', 'error'); return; }
     if (pwNew.length < 6) { toast('La contraseña debe tener al menos 6 caracteres', 'error'); return; }
     try { update.password = btoa(pwNew); } catch(e) { update.password = pwNew; }
+    // Also update in Supabase Auth (if authenticated via JWT)
+    if (_SUPA.session) {
+      _SUPA.updatePassword(pwNew).then(function(res) {
+        if (res && res.error) console.warn('[Auth] updatePassword:', res.error.message);
+      }).catch(function() {});
+    }
   }
   DB.update('users', user.id, update);
-  var updated = DB.getById('users', user.id);
+  var updated = DB.getById('users', user.id) || window.APP_STATE.currentUser;
   window.APP_STATE.currentUser = updated;
   updateSidebarUserInfo();
   toast('Perfil actualizado correctamente', 'success');

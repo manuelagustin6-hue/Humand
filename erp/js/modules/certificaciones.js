@@ -1,7 +1,12 @@
 /* ===== CERTIFICACIONES DE OBRA ===== */
 function renderCertificaciones() {
-  const certs = filterByActiveProject(DB.getAll('certificates'));
-  const projects = DB.getAll('projects');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._certLoadedAll) {
+    window._certLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderCertificaciones(); } catch(e) {} } });
+  }
+  const certs = rsScoped('certificates', 'certificates');
+  const projects = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
+  const _multiCur = rsIsAll('certificates') && Object.keys(certs.reduce(function(m,c){ m[rsCur(c)]=1; return m; }, {})).length > 1;
 
   const totalCertified = certs.reduce((s,c) => s + (c.subtotal || 0), 0);
   const totalRetention = certs.reduce((s,c) => s + (c.retention_amount || 0), 0);
@@ -19,6 +24,8 @@ function renderCertificaciones() {
     <button class="btn btn-primary" onclick="certGoToContracts()"><i class="fas fa-plus"></i> Nueva (desde Contrato)</button>
   </div>
 </div>
+
+${rsSelectorHtml('certificates', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — filtrá por razón social para totales exactos</span>' : '')}
 
 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-certificate"></i></div><div>
@@ -86,13 +93,14 @@ function buildCertTable(certs, projects) {
         ' onclick="viewCert(\'' + c.id + '\')"' +
         ' onmouseenter="this.style.background=\'#eef4ff\'" onmouseleave="this.style.background=\'' + rowBg + '\'">' +
       '<td style="padding:10px 12px"><strong style="color:#2563eb">' + escapeHtml(c.number) + '</strong></td>' +
+      (rsIsAll('certificates') ? '<td style="padding:10px 12px;font-size:11px;color:#2563eb">' + escapeHtml(c._company_name || '—') + '</td>' : '') +
       '<td style="padding:10px 12px;font-size:12px">' + ctrCell + '</td>' +
       '<td style="padding:10px 12px;font-size:12px">' + escapeHtml(proj ? proj.name : '-') + '</td>' +
       '<td style="padding:10px 12px;font-size:11px;color:#64748b;white-space:nowrap">' + fmtDate(c.period_from) + ' — ' + fmtDate(c.period_to) + '</td>' +
       '<td style="padding:10px 12px;font-size:12px;white-space:nowrap">' + fmtDate(c.date) + '</td>' +
-      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(c.subtotal) + '</td>' +
-      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#d97706">' + fmtMoney(c.retention_amount||0) + '</td>' +
-      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums"><strong>' + fmtMoney(c.net_amount) + '</strong></td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(c.subtotal, rsCur(c)) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#d97706">' + fmtMoney(c.retention_amount||0, rsCur(c)) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums"><strong>' + fmtMoney(c.net_amount, rsCur(c)) + '</strong></td>' +
       '<td style="padding:10px 12px">' +
         '<span style="background:' + st.bg + ';color:' + st.color + ';border:1px solid ' + st.border + ';font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:.4px">' + st.label + '</span>' +
       '</td>' +
@@ -112,6 +120,7 @@ function buildCertTable(certs, projects) {
   return '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
     '<thead><tr style="background:#f8f9fb;border-bottom:2px solid #e2e8f0">' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">N° Cert.</th>' +
+      (rsIsAll('certificates') ? '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Razón Social</th>' : '') +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Contrato</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proyecto</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Período</th>' +
@@ -131,7 +140,7 @@ function filterCerts(q, status, project) {
   if (q !== undefined) window._certFilters.q = q.toLowerCase();
   if (status !== undefined) window._certFilters.status = status;
   if (project !== undefined) window._certFilters.project = project;
-  let certs = filterByActiveProject(DB.getAll('certificates'));
+  let certs = rsScoped('certificates', 'certificates');
   const f = window._certFilters;
   if (f.q) certs = certs.filter(c => c.number.toLowerCase().includes(f.q));
   if (f.status) certs = certs.filter(c => c.status === f.status);
@@ -141,6 +150,7 @@ function filterCerts(q, status, project) {
 }
 
 function viewCert(id) {
+  rsEnsureCompany('certificates', id);
   const cert = DB.getById('certificates', id);
   if (!cert) { toast('Certificación no encontrada', 'error'); return; }
   const proj = DB.getById('projects', cert.project_id);
@@ -408,6 +418,7 @@ function rejectCert(id) {
 }
 
 function deleteCert(id) {
+  rsEnsureCompany('certificates', id);
   confirmDialog('¿Eliminar esta certificación?', () => {
     DB.remove('certificates', id);
     toast('Certificación eliminada', 'warning');
@@ -416,6 +427,7 @@ function deleteCert(id) {
 }
 
 function printCertificacion(id) {
+  rsEnsureCompany('certificates', id);
   var cert = DB.getById('certificates', id);
   if (!cert) return;
   var proj = DB.getById('projects', cert.project_id);
