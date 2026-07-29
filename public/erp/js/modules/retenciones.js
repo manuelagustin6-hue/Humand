@@ -16,19 +16,27 @@ function retRuleBase(rule) {
 }
 
 function renderRetenciones() {
-  const retentions = DB.getAll('retentions');
-  const paymentOrders = DB.getAll('paymentOrders');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._retLoadedAll) {
+    window._retLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderRetenciones(); } catch(e) {} } });
+  }
+  const retentions = DB.getAll('retentions');   // reglas: config por empresa
+  const paymentOrders = rsScoped('paymentOrders', 'retenciones');   // historial: consolidado
+  var supById = {};
+  ((typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('suppliers') : DB.getAll('suppliers')).forEach(function(s){ supById[s.id] = s; });
 
   // Build full applied list with supplier details
   const applied = [];
   paymentOrders.forEach(o => {
-    const sup = DB.getById('suppliers', o.supplier_id);
+    const sup = supById[o.supplier_id];
     (o.retentions||[]).forEach(r => {
       applied.push({
         ...r,
         date: o.date,
         order_id: o.id,
         order_number: o.number,
+        company_name: o._company_name || '',
+        currency: rsCur(o),
         supplier: sup ? sup.name : '-',
         supplier_cuit: sup ? (sup.cuit||'') : '',
         gross_amount: o.gross_amount,
@@ -39,6 +47,7 @@ function renderRetenciones() {
 
   const totalApplied = applied.reduce((s,r) => s + (r.amount||0), 0);
   const retTypes = [...new Set(applied.map(r => r.name))].sort();
+  const _multiCur = [...new Set(paymentOrders.map(o => rsCur(o)))].length > 1;
 
   document.getElementById('content').innerHTML = `
 <div class="page-header">
@@ -50,6 +59,8 @@ function renderRetenciones() {
     <button class="btn btn-primary" onclick="openRetentionForm()"><i class="fas fa-plus"></i> Nueva Retención</button>
   </div>
 </div>
+
+${rsSelectorHtml('retenciones', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Historial en varias monedas — filtrá por razón social para totales exactos</span>' : '')}
 
 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-percentage"></i></div><div>
@@ -179,22 +190,28 @@ function renderRetenciones() {
 function buildRetHistoryTable(rows) {
   if (!rows.length) return '<div class="empty-state"><i class="fas fa-history"></i><p>Sin historial de retenciones</p></div>';
   const sorted = rows.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const total = rows.reduce((s,r)=>s+(r.amount||0),0);
+  const showCompany = !rsGet('retenciones') && [...new Set(rows.map(r => r.company_name || ''))].filter(Boolean).length > 1;
+  // Total por moneda (consolidado puede mezclar ARS/USD/UYU)
+  const byCur = {};
+  rows.forEach(r => { const c = r.currency || 'ARS'; byCur[c] = (byCur[c]||0) + (r.amount||0); });
+  const totalCells = Object.keys(byCur).map(c => fmtMoney(byCur[c], c)).join(' · ');
+  const colspanTotal = showCompany ? 8 : 7;
   return '<table><thead><tr>' +
-    '<th>Fecha</th><th>Orden de Pago</th><th>Razón Social</th><th>CUIT</th><th>Tipo Retención</th><th>Tasa</th><th style="text-align:right">Base Imponible</th><th style="text-align:right">Importe Retenido</th><th></th>' +
+    '<th>Fecha</th><th>Orden de Pago</th>' + (showCompany ? '<th>Razón Social (Grupo)</th>' : '') + '<th>Proveedor</th><th>CUIT</th><th>Tipo Retención</th><th>Tasa</th><th style="text-align:right">Base Imponible</th><th style="text-align:right">Importe Retenido</th><th></th>' +
     '</tr></thead><tbody>' +
     sorted.map(r => '<tr>' +
       '<td>' + fmtDate(r.date) + '</td>' +
       '<td><strong>' + escapeHtml(r.order_number) + '</strong></td>' +
+      (showCompany ? '<td style="font-size:11px;color:#64748b">' + escapeHtml(r.company_name || '') + '</td>' : '') +
       '<td>' + escapeHtml(r.supplier) + '</td>' +
       '<td style="font-size:11px;color:#64748b">' + escapeHtml(r.supplier_cuit) + '</td>' +
       '<td><span class="badge badge-blue">' + escapeHtml(r.name) + '</span></td>' +
       '<td>' + r.rate + '%</td>' +
-      '<td style="text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(r.gross_amount) + '</td>' +
-      '<td style="text-align:right;font-variant-numeric:tabular-nums;color:#d97706"><strong>' + fmtMoney(r.amount) + '</strong></td>' +
+      '<td style="text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(r.gross_amount, r.currency) + '</td>' +
+      '<td style="text-align:right;font-variant-numeric:tabular-nums;color:#d97706"><strong>' + fmtMoney(r.amount, r.currency) + '</strong></td>' +
       '<td><button class="btn-ghost btn btn-sm" title="Comprobante PDF" onclick="printRetencion(\'' + r.order_id + '\')"><i class="fas fa-file-pdf"></i></button></td>' +
     '</tr>').join('') +
-    '<tr class="total-row"><td colspan="7">Total Retenido</td><td style="text-align:right">' + fmtMoney(total) + '</td><td></td></tr>' +
+    '<tr class="total-row"><td colspan="' + colspanTotal + '">Total Retenido</td><td style="text-align:right">' + totalCells + '</td><td></td></tr>' +
     '</tbody></table>';
 }
 

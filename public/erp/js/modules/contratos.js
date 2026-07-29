@@ -65,10 +65,15 @@ function renderContratos() {
 }
 
 function renderContractsListTab() {
-  const contracts = filterByActiveProject(DB.getAll('contracts'));
-  const projects  = DB.getAll('projects');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._ctrLoadedAll) {
+    window._ctrLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { navigate('contratos'); } catch(e) {} } });
+  }
+  const contracts = rsScoped('contracts', 'contracts');
+  const projects  = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
-  const certs     = DB.getAll('certificates');
+  const certs     = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('certificates') : DB.getAll('certificates');
+  const _multiCur = rsIsAll('contracts') && Object.keys(contracts.reduce(function(m,c){ m[rsCur(c)]=1; return m; }, {})).length > 1;
 
   const active     = contracts.filter(c => c.status === 'active').length;
   const totalAmt   = contracts.reduce((s, c) => s + (c.total_amount || 0), 0);
@@ -76,6 +81,7 @@ function renderContractsListTab() {
   const avancePct  = totalAmt > 0 ? totalCert / totalAmt * 100 : 0;
 
   return `
+${rsSelectorHtml('contracts', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — filtrá por razón social para totales exactos</span>' : '')}
 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-contract"></i></div><div>
     <div class="stat-value">${contracts.length}</div><div class="stat-label">Total Contratos</div>
@@ -116,7 +122,7 @@ function buildContractsTable(contracts, projects, suppliers, allCerts) {
   if (!contracts.length) return '<div class="empty-state"><i class="fas fa-file-contract"></i><p>No hay contratos registrados. Crea el primero.</p></div>';
 
   return '<table><thead><tr>' +
-    '<th>N° Contrato</th><th>Proyecto</th><th>Contratista</th><th>Tipo</th><th>Inicio</th><th>Fin</th>' +
+    '<th>N° Contrato</th>' + (rsIsAll('contracts') ? '<th>Razón Social</th>' : '') + '<th>Proyecto</th><th>Contratista</th><th>Tipo</th><th>Inicio</th><th>Fin</th>' +
     '<th class="text-right">Monto</th><th class="text-right">Certificado</th><th>Avance</th>' +
     '<th>Estado</th><th>Acciones</th>' +
   '</tr></thead><tbody>' +
@@ -128,13 +134,14 @@ function buildContractsTable(contracts, projects, suppliers, allCerts) {
     const sCfg = CONTRACT_STATUS[c.status] || { label: c.status || '-', cls: 'badge-gray' };
     return '<tr>' +
       '<td><a href="#" onclick="renderContractDetail(\'' + c.id + '\');return false" style="color:var(--primary);font-weight:700">' + c.number + '</a></td>' +
-      '<td>' + (proj ? proj.name : '-') + '</td>' +
-      '<td>' + (sup ? sup.name : '-') + '</td>' +
+      (rsIsAll('contracts') ? '<td style="font-size:11px;color:#2563eb">' + escapeHtml(c._company_name || '—') + '</td>' : '') +
+      '<td>' + (proj ? escapeHtml(proj.name) : '-') + '</td>' +
+      '<td>' + (sup ? escapeHtml(sup.name) : '-') + '</td>' +
       '<td style="font-size:11px">' + (CONTRACT_TYPES[c.type] || c.type || '-') + '</td>' +
       '<td>' + fmtDate(c.start_date) + '</td>' +
       '<td>' + fmtDate(c.end_date) + '</td>' +
-      '<td class="number-cell text-right"><strong>' + fmtMoney(c.total_amount || 0) + '</strong></td>' +
-      '<td class="number-cell text-right">' + fmtMoney(certified) + '</td>' +
+      '<td class="number-cell text-right"><strong>' + fmtMoney(c.total_amount || 0, rsCur(c)) + '</strong></td>' +
+      '<td class="number-cell text-right">' + fmtMoney(certified, rsCur(c)) + '</td>' +
       '<td style="min-width:120px">' + progressBar(avance) + '</td>' +
       '<td><span class="badge ' + sCfg.cls + '">' + sCfg.label + '</span></td>' +
       '<td><div class="table-actions">' +
@@ -152,8 +159,8 @@ function filterContracts(q, project, status) {
   if (q !== undefined) window._contractFilters.q = q.toLowerCase();
   if (project !== undefined) window._contractFilters.project = project;
   if (status !== undefined) window._contractFilters.status = status;
-  let contracts = filterByActiveProject(DB.getAll('contracts'));
-  const projects  = DB.getAll('projects');
+  let contracts = rsScoped('contracts', 'contracts');
+  const projects  = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
   const suppliers = DB.getAll('suppliers');
   const f = window._contractFilters;
   if (f.q) contracts = contracts.filter(c => {
@@ -166,7 +173,7 @@ function filterContracts(q, project, status) {
   if (f.project) contracts = contracts.filter(c => c.project_id === f.project);
   if (f.status)  contracts = contracts.filter(c => c.status === f.status);
   const wrap = document.getElementById('contracts-table-wrap');
-  if (wrap) wrap.innerHTML = buildContractsTable(contracts, projects, suppliers, DB.getAll('certificates'));
+  if (wrap) wrap.innerHTML = buildContractsTable(contracts, projects, suppliers, (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('certificates') : DB.getAll('certificates'));
 }
 
 // ==== PLANILLA DE CERTIFICACIONES (previsión financiera) ====
@@ -255,6 +262,7 @@ function exportCertSchedule() {
 
 // ---- CONTRACT DETAIL PAGE (full page, not modal) ----
 function renderContractDetail(id) {
+  rsEnsureCompany('contracts', id);
   var _c = document.getElementById('content'); if (_c) _c.scrollTop = 0;
   const contract = DB.getById('contracts', id);
   if (!contract) { renderContratos(); return; }
@@ -923,6 +931,7 @@ function renderCronograma(contractId, mode) {
 
 // ---- CONTRACT FORM ----
 function openContractForm(id = null) {
+  if (id) rsEnsureCompany('contracts', id);
   const contract  = id ? DB.getById('contracts', id) : null;
   // Un contrato ya enviado/aprobado/iniciado no se edita (invalidaría aprobación y avance).
   if (contract && !(contract.status === 'draft' || contract.status === 'rejected')) {
@@ -1326,6 +1335,7 @@ function saveContract(id) {
 }
 
 function deleteContract(id) {
+  rsEnsureCompany('contracts', id);
   confirmDialog('¿Eliminar este contrato? Las certificaciones asociadas quedarán sin contrato.', function() {
     DB.remove('contracts', id);
     toast('Contrato eliminado', 'warning');
