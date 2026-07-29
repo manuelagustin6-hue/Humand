@@ -7,6 +7,9 @@ var ATT_LABELS = {
   collections:      'Recibo de Cobranza',
   rfis:             'RFI',
   submittals:       'Submittal',
+  certificates:     'Certificación',
+  contracts:        'Contrato',
+  meetingMinutes:   'Minuta',
 };
 
 var ATT_ICONS = {
@@ -34,6 +37,8 @@ function openAttachmentsModal(collection, recordId) {
     toast('Necesitás estar autenticado con Supabase para usar adjuntos', 'warning');
     return;
   }
+  // En vistas consolidadas el registro puede pertenecer a otra razón social.
+  if (typeof rsEnsureCompany === 'function') rsEnsureCompany(collection, recordId);
   var record = DB.getById(collection, recordId);
   if (!record) { toast('Registro no encontrado', 'error'); return; }
 

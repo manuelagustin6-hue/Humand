@@ -108,6 +108,7 @@ function buildCertTable(certs, projects) {
         '<div class="table-actions">' +
           '<button class="btn-ghost btn btn-sm" title="Ver" onclick="viewCert(\'' + c.id + '\')"><i class="fas fa-eye"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="PDF" onclick="printCertificacion(\'' + c.id + '\')"><i class="fas fa-file-pdf"></i></button>' +
+          (typeof attBadge === 'function' ? attBadge(c).replace(/\{col\}/g, 'certificates').replace(/\{id\}/g, c.id) : '') +
           (c.status === 'pending' ?
             '<button class="btn-ghost btn btn-sm" title="Aprobar en el módulo Aprobaciones" onclick="navigate(\'aprobaciones\')"><i class="fas fa-clipboard-check"></i></button>'
           : '') +

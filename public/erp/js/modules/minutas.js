@@ -68,6 +68,7 @@ function _buildMinutasList(minutas, projects) {
       '<button class="btn-ghost btn btn-sm" onclick="viewMinuta(\'' + m.id + '\')"><i class="fas fa-eye"></i></button>' +
       '<button class="btn-ghost btn btn-sm" onclick="openMinutaForm(\'' + m.id + '\')"><i class="fas fa-edit"></i></button>' +
       '<button class="btn btn-sm btn-secondary" onclick="printMinuta(\'' + m.id + '\')"><i class="fas fa-print"></i></button>' +
+      (typeof attBadge === 'function' ? attBadge(m).replace(/\{col\}/g, 'meetingMinutes').replace(/\{id\}/g, m.id) : '') +
       '<button class="btn-ghost btn btn-sm danger" onclick="deleteMinuta(\'' + m.id + '\')"><i class="fas fa-trash"></i></button>' +
       '</div></td>' +
       '</tr>';
