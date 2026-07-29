@@ -1,8 +1,13 @@
 /* ===== ÓRDENES DE PAGO ===== */
 function renderOrdenesPago() {
-  const orders = filterByActiveProject(DB.getAll('paymentOrders'));
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._opLoadedAll) {
+    window._opLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderOrdenesPago(); } catch(e) {} } });
+  }
+  const orders = rsScoped('paymentOrders', 'paymentOrders');
   const suppliers = DB.getAll('suppliers');
-  const projects = DB.getAll('projects');
+  const projects = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
+  const _multiCur = rsIsAll('paymentOrders') && Object.keys(orders.reduce(function(m,o){ m[rsCur(o)]=1; return m; }, {})).length > 1;
 
   const totalGross = orders.reduce((s,o) => s + o.gross_amount, 0);
   const totalRetentions = orders.reduce((s,o) => s + (o.total_retentions||0), 0);
@@ -20,6 +25,8 @@ function renderOrdenesPago() {
     <button class="btn btn-primary" onclick="openPaymentOrderForm()"><i class="fas fa-plus"></i> Nueva Orden de Pago</button>
   </div>
 </div>
+
+${rsSelectorHtml('paymentOrders', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — ver cada orden</span>' : '')}
 
 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice"></i></div><div>
@@ -89,14 +96,15 @@ function buildPO2Table(orders, suppliers, projects) {
         ' onclick="viewPaymentOrder(\'' + o.id + '\')"' +
         ' onmouseenter="this.style.background=\'#eef4ff\'" onmouseleave="this.style.background=\'' + rowBg + '\'">' +
       '<td style="padding:10px 12px"><strong style="color:#2563eb">' + escapeHtml(o.number) + '</strong></td>' +
+      (rsIsAll('paymentOrders') ? '<td style="padding:10px 12px;font-size:11px;color:#2563eb">' + escapeHtml(o._company_name || '—') + '</td>' : '') +
       '<td style="padding:10px 12px;font-size:12px">' + escapeHtml(sup ? sup.name : '-') + '</td>' +
       '<td style="padding:10px 12px;font-size:11px;color:#64748b">' + escapeHtml(proj ? proj.name : '-') + '</td>' +
       '<td style="padding:10px 12px;font-size:12px;white-space:nowrap">' + fmtDate(o.date) + '</td>' +
       '<td style="padding:10px 12px;font-size:11px">' + (si ? '<span style="color:#2563eb;font-weight:600">' + escapeHtml(si.number) + '</span>' : '<span style="color:#94a3b8">—</span>') + '</td>' +
       '<td style="padding:10px 12px;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(o.concept || '') + '</td>' +
-      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(o.gross_amount) + '</td>' +
-      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#d97706">' + fmtMoney(o.total_retentions||0) + '</td>' +
-      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums"><strong>' + fmtMoney(o.net_amount) + '</strong></td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(o.gross_amount, rsCur(o)) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#d97706">' + fmtMoney(o.total_retentions||0, rsCur(o)) + '</td>' +
+      '<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums"><strong>' + fmtMoney(o.net_amount, rsCur(o)) + '</strong></td>' +
       '<td style="padding:10px 12px">' +
         '<span style="background:' + st.bg + ';color:' + st.color + ';border:1px solid ' + st.border + ';font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:.4px">' + st.label + '</span>' +
       '</td>' +
@@ -118,6 +126,7 @@ function buildPO2Table(orders, suppliers, projects) {
   return '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
     '<thead><tr style="background:#f8f9fb;border-bottom:2px solid #e2e8f0">' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">N° Orden</th>' +
+      (rsIsAll('paymentOrders') ? '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Razón Social</th>' : '') +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proveedor</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proyecto</th>' +
       '<th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Fecha</th>' +
@@ -139,7 +148,7 @@ function filterPOs2(q, status, period) {
   if (q !== undefined) window._po2Filters.q = q.toLowerCase();
   if (status !== undefined) window._po2Filters.status = status;
   if (period !== undefined) window._po2Filters.period = period;
-  let orders = filterByActiveProject(DB.getAll('paymentOrders'));
+  let orders = rsScoped('paymentOrders', 'paymentOrders');
   const f = window._po2Filters;
   if (f.q) orders = orders.filter(o => {
     var prov = DB.getById('suppliers', o.supplier_id);
@@ -148,11 +157,13 @@ function filterPOs2(q, status, period) {
   });
   if (f.status) orders = orders.filter(o => o.status === f.status);
   if (f.period) { const r = _periodRange(f.period); orders = orders.filter(o => o.date && o.date >= r.from && o.date <= r.to); }
+  const _projs = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
   const wrap = document.getElementById('po2-table-wrap');
-  if (wrap) wrap.innerHTML = buildPO2Table(orders, DB.getAll('suppliers'), DB.getAll('projects'));
+  if (wrap) wrap.innerHTML = buildPO2Table(orders, DB.getAll('suppliers'), _projs);
 }
 
 function viewPaymentOrder(id) {
+  rsEnsureCompany('paymentOrders', id);
   const o = DB.getById('paymentOrders', id);
   if (!o) { toast('Orden no encontrada', 'error'); return; }
   const sup = DB.getById('suppliers', o.supplier_id);
@@ -214,6 +225,7 @@ ${o.status === 'pending' ? `<button class="btn btn-success" onclick="markPOPaid(
 }
 
 function openPaymentOrderForm(id = null, prefillSIId = null) {
+  if (id) rsEnsureCompany('paymentOrders', id);
   const o = id ? DB.getById('paymentOrders', id) : null;
   DB.markEdit('paymentOrders', id);   // control de concurrencia: revisión base al abrir
   const suppliers = DB.getAll('suppliers');
@@ -515,6 +527,7 @@ function savePaymentOrder(id) {
 }
 
 function markPOPaid(id) {
+  rsEnsureCompany('paymentOrders', id);
   if (!isApproved('payment_order', id)) {
     toast('La orden de pago debe estar aprobada antes de ejecutarla', 'error');
     return;
@@ -557,6 +570,7 @@ function markPOPaid(id) {
 }
 
 function deletePaymentOrder(id) {
+  rsEnsureCompany('paymentOrders', id);
   confirmDialog('¿Eliminar esta orden de pago?', () => {
     // Cascada: remover el egreso de tesorería generado por esta OP
     DB.getAll('treasuryTx').filter(function(t) { return t.source === 'payment_order' && t.source_id === id; })
@@ -568,6 +582,7 @@ function deletePaymentOrder(id) {
 }
 
 function printPaymentOrder(id) {
+  rsEnsureCompany('paymentOrders', id);
   var o = DB.getById('paymentOrders', id);
   if (!o) return;
   var sup  = DB.getById('suppliers', o.supplier_id);

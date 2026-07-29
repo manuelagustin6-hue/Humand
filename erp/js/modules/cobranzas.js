@@ -1,11 +1,17 @@
 /* ===== COBRANZAS ===== */
 function renderCobranzas() {
-  const invoices = filterByActiveProject(DB.getAll('invoices'));
-  const collections = filterByActiveProject(DB.getAll('collections'), function(c) {
-    // la cobranza puede no tener project_id propio: derivar de su factura
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._cobLoadedAll) {
+    window._cobLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderCobranzas(); } catch(e) {} } });
+  }
+  const _rk = 'cobranzas';
+  const invoices = rsScoped('invoices', _rk);
+  let collections = filterByActiveProject((typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('collections') : DB.getAll('collections'), function(c) {
     return c.project_id || (DB.getById('invoices', c.invoice_id) || {}).project_id || '';
   });
-  const projects = DB.getAll('projects');
+  if (rsGet(_rk)) collections = collections.filter(function(c){ return c._company_id === rsGet(_rk); });
+  const projects = (typeof DB.getAllProjectsConsolidated === 'function') ? DB.getAllProjectsConsolidated() : DB.getAll('projects');
+  const _multiCur = rsIsAll(_rk) && Object.keys(invoices.reduce(function(m,i){ m[rsCur(i)]=1; return m; }, {})).length > 1;
 
   const totalInvoiced = invoices.filter(i => i.status !== 'cancelled').reduce((s,i) => s+i.total, 0);
   const totalCollected = collections.reduce((s,c) => s+c.amount, 0);
@@ -26,6 +32,8 @@ function renderCobranzas() {
     <button class="btn btn-primary" onclick="openCollectionForm()"><i class="fas fa-plus"></i> Registrar Cobro</button>
   </div>
 </div>
+
+${rsSelectorHtml('cobranzas', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — filtrá por razón social para totales exactos</span>' : '')}
 
 <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
   <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice"></i></div><div>
@@ -244,6 +252,7 @@ function _cobrCompanyOpts(selId) {
 
 function openCollectionForm(invoiceId) {
   invoiceId = invoiceId || null;
+  if (invoiceId) rsEnsureCompany('invoices', invoiceId);
   const invoices = DB.getAll('invoices').filter(function(i) { return ['sent','overdue'].includes(i.status); });
   const projects = DB.getAll('projects');
   const tipo = invoiceId ? 'factura' : 'factura';
@@ -501,6 +510,7 @@ function saveCollection() {
 }
 
 function deleteCollection(id) {
+  rsEnsureCompany('collections', id);
   confirmDialog('¿Eliminar este cobro?', () => {
     // Cascada: remover el ingreso de tesorería generado por este cobro
     DB.getAll('treasuryTx').filter(function(t) { return t.source === 'collection' && t.source_id === id; })
