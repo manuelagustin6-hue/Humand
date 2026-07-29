@@ -176,20 +176,29 @@ function clienteDelete(id) {
 var _cprovState = { supplierId: null, tab: 'actividad' };
 
 function renderCuentasProv() {
-  var suppliers = DB.getAll('suppliers');
-  var invoices  = DB.getAll('supplierInvoices');
-  var payments  = DB.getAll('paymentOrders');
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._cprovLoadedAll) {
+    window._cprovLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderCuentasProv(); } catch(e) {} } });
+  }
+  var suppliers = rsScoped('suppliers', 'cprov');
+  var invoices  = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('supplierInvoices') : DB.getAll('supplierInvoices');
+  var payments  = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('paymentOrders') : DB.getAll('paymentOrders');
 
-  var totalFacturado = 0, totalPagado = 0;
+  var showCompany = !rsGet('cprov') && [...new Set(suppliers.map(function(s){return s._company_id||'';}))].filter(Boolean).length > 1;
+  // Totales por moneda (consolidado puede mezclar ARS/USD/UYU)
+  var facByCur = {}, pagByCur = {};
   var rows = '';
 
   suppliers.forEach(function(s) {
-    var invs = invoices.filter(function(i) { return i.supplier_id === s.id; });
-    var pays = payments.filter(function(p) { return p.supplier_id === s.id; });
+    var cid = s._company_id || '';
+    var cur = rsCur(s);
+    var invs = invoices.filter(function(i) { return i.supplier_id === s.id && (i._company_id||'') === cid; });
+    var pays = payments.filter(function(p) { return p.supplier_id === s.id && (p._company_id||'') === cid; });
     var facturado = invs.reduce(function(sum, i) { return sum + (i.total || 0); }, 0);
     var pagado    = pays.reduce(function(sum, p) { return sum + (p.net_amount || 0); }, 0);
     var saldo     = facturado - pagado;
-    totalFacturado += facturado; totalPagado += pagado;
+    facByCur[cur] = (facByCur[cur]||0) + facturado;
+    pagByCur[cur] = (pagByCur[cur]||0) + pagado;
 
     var catArr = Array.isArray(s.category) ? s.category : (s.category ? [s.category] : []);
     var catHtml = catArr.map(function(c) {
@@ -197,8 +206,8 @@ function renderCuentasProv() {
     }).join(' ');
 
     var saldoBadge = saldo > 0
-      ? '<span class="badge badge-red">' + fmtMoney(saldo) + '</span>'
-      : (saldo < 0 ? '<span class="badge badge-yellow">' + fmtMoney(saldo) + '</span>'
+      ? '<span class="badge badge-red">' + fmtMoney(saldo, cur) + '</span>'
+      : (saldo < 0 ? '<span class="badge badge-yellow">' + fmtMoney(saldo, cur) + '</span>'
                    : '<span class="badge badge-green">Saldado</span>');
 
     rows += '<tr style="cursor:pointer" onclick="cprovOpenDetail(\'' + s.id + '\')">' +
@@ -212,9 +221,10 @@ function renderCuentasProv() {
           '</div>' +
         '</div>' +
       '</td>' +
+      (showCompany ? '<td style="font-size:11px;color:#64748b">' + escapeHtml(s._company_name||'') + '</td>' : '') +
       '<td>' + catHtml + '</td>' +
-      '<td class="number-cell">' + fmtMoney(facturado) + '</td>' +
-      '<td class="number-cell">' + fmtMoney(pagado) + '</td>' +
+      '<td class="number-cell">' + fmtMoney(facturado, cur) + '</td>' +
+      '<td class="number-cell">' + fmtMoney(pagado, cur) + '</td>' +
       '<td class="number-cell">' + saldoBadge + '</td>' +
       '<td><button class="btn btn-sm btn-primary" onclick="event.stopPropagation();cprovOpenDetail(\'' + s.id + '\')">' +
         '<i class="fas fa-arrow-right"></i> Ver cuenta' +
@@ -222,25 +232,32 @@ function renderCuentasProv() {
     '</tr>';
   });
 
-  if (!rows) rows = '<tr><td colspan="6"><div class="empty-state"><i class="fas fa-building"></i><p>No hay proveedores registrados</p></div></td></tr>';
+  var colspanEmpty = showCompany ? 7 : 6;
+  if (!rows) rows = '<tr><td colspan="' + colspanEmpty + '"><div class="empty-state"><i class="fas fa-building"></i><p>No hay proveedores registrados</p></div></td></tr>';
 
-  var totalSaldo = totalFacturado - totalPagado;
+  var curKeys = [...new Set(Object.keys(facByCur).concat(Object.keys(pagByCur)))];
+  var facCells = curKeys.map(function(c){ return fmtMoney(facByCur[c]||0, c); }).join(' · ') || fmtMoney(0);
+  var pagCells = curKeys.map(function(c){ return fmtMoney(pagByCur[c]||0, c); }).join(' · ') || fmtMoney(0);
+  var saldoCells = curKeys.map(function(c){ return fmtMoney((facByCur[c]||0)-(pagByCur[c]||0), c); }).join(' · ') || fmtMoney(0);
+  var _multiCur = curKeys.length > 1;
+
   document.getElementById('content').innerHTML =
     '<div class="page-header"><div>' +
       '<div class="page-title"><i class="fas fa-building-columns" style="margin-right:8px;color:var(--primary)"></i>Cuentas Corrientes Proveedores</div>' +
       '<div class="page-subtitle">Saldos, facturas y pagos por proveedor</div>' +
     '</div></div>' +
+    rsSelectorHtml('cprov', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Saldos en varias monedas — filtrá por razón social para totales exactos</span>' : '') +
     '<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">' +
       '<div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalFacturado) + '</div><div class="stat-label">Total Facturado</div></div></div>' +
+        '<div><div class="stat-value" style="font-size:16px">' + facCells + '</div><div class="stat-label">Total Facturado</div></div></div>' +
       '<div class="stat-card"><div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalPagado) + '</div><div class="stat-label">Total Pagado</div></div></div>' +
-      '<div class="stat-card"><div class="stat-icon ' + (totalSaldo > 0 ? 'red' : 'green') + '"><i class="fas fa-scale-balanced"></i></div>' +
-        '<div><div class="stat-value">' + fmtMoney(totalSaldo) + '</div><div class="stat-label">Saldo a Pagar</div></div></div>' +
+        '<div><div class="stat-value" style="font-size:16px">' + pagCells + '</div><div class="stat-label">Total Pagado</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon red"><i class="fas fa-scale-balanced"></i></div>' +
+        '<div><div class="stat-value" style="font-size:16px">' + saldoCells + '</div><div class="stat-label">Saldo a Pagar</div></div></div>' +
     '</div>' +
     '<div class="card" style="padding:0">' +
       '<table class="table"><thead><tr>' +
-        '<th>Proveedor</th><th>Categoría</th>' +
+        '<th>Proveedor</th>' + (showCompany ? '<th>Razón Social</th>' : '') + '<th>Categoría</th>' +
         '<th class="text-right">Facturado</th><th class="text-right">Pagado</th>' +
         '<th class="text-right">Saldo</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
@@ -253,6 +270,7 @@ function _cprovInitials(name) {
 
 // ---- SUPPLIER DETAIL PAGE ----
 function cprovOpenDetail(supplierId) {
+  if (typeof rsEnsureCompany === 'function') rsEnsureCompany('suppliers', supplierId);
   _cprovState.supplierId = supplierId;
   _cprovState.tab = 'actividad';
   var _c = document.getElementById('content'); if (_c) _c.scrollTop = 0;
@@ -620,24 +638,31 @@ function cprovPaymentDetail(paymentId) {
 var _ccliSelectedId = null;
 
 function renderCuentasCli() {
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._ccliLoadedAll) {
+    window._ccliLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderCuentasCli(); } catch(e) {} } });
+  }
   _ccliSelectedId = null;
-  var ventas = DB.getAll('ventasUnidades');
-  var cobros = DB.getAll('cobrosVentas');
-  var units  = DB.getAll('unidades');
-  var projects = DB.getAll('projects');
+  var ventas = rsScoped('ventasUnidades', 'ccli');
+  var cobros = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('cobrosVentas') : DB.getAll('cobrosVentas');
+  var units  = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('unidades') : DB.getAll('unidades');
+  var projects = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('projects') : DB.getAll('projects');
 
-  var totalVendido = 0, totalCobrado = 0;
+  var showCompany = !rsGet('ccli') && [...new Set(ventas.map(function(v){return v._company_id||'';}))].filter(Boolean).length > 1;
+  var vendByCur = {}, cobrByCur = {};
   var rows = '';
   var today = todayStr();
 
   ventas.forEach(function(v) {
-    var unit = units.find(function(u) { return u.id === v.unit_id; });
-    var proj = unit ? projects.find(function(p) { return p.id === unit.project_id; }) : null;
-    var ventaCobros = cobros.filter(function(c) { return c.sale_id === v.id; });
+    var cid = v._company_id || '';
+    var cur = v.currency || rsCur(v);
+    var unit = units.find(function(u) { return u.id === v.unit_id && (u._company_id||'') === cid; });
+    var proj = unit ? projects.find(function(p) { return p.id === unit.project_id && (p._company_id||'') === cid; }) : null;
+    var ventaCobros = cobros.filter(function(c) { return c.sale_id === v.id && (c._company_id||'') === cid; });
     var cobrado = ventaCobros.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
     var saldo = (v.sale_price || 0) - cobrado;
-    totalVendido += v.sale_price || 0;
-    totalCobrado += cobrado;
+    vendByCur[cur] = (vendByCur[cur]||0) + (v.sale_price || 0);
+    cobrByCur[cur] = (cobrByCur[cur]||0) + cobrado;
 
     var insts = v.installments || [];
     var vencidas = insts.filter(function(i) { return i.status !== 'paid' && i.due_date < today; }).length;
@@ -655,11 +680,12 @@ function renderCuentasCli() {
         '<td><b>' + (v.buyer_name || '—') + '</b>' +
           '<div style="font-size:11px;color:var(--text-muted)">' + (v.buyer_doc_type || '') + ' ' + (v.buyer_doc || '') + '</div>' +
         '</td>' +
+        (showCompany ? '<td style="font-size:11px;color:#64748b">' + escapeHtml(v._company_name||'') + '</td>' : '') +
         '<td>' + (unit ? unit.number : '—') + '<div style="font-size:11px;color:var(--text-muted)">' + (proj ? proj.name : '') + '</div></td>' +
-        '<td>' + fmtMoney(v.list_price || 0, v.currency) + '</td>' +
-        '<td><b>' + fmtMoney(v.sale_price || 0, v.currency) + '</b></td>' +
-        '<td style="color:var(--success)">' + fmtMoney(cobrado, v.currency) + '</td>' +
-        '<td style="color:' + (saldo > 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmtMoney(saldo, v.currency) + '</td>' +
+        '<td>' + fmtMoney(v.list_price || 0, cur) + '</td>' +
+        '<td><b>' + fmtMoney(v.sale_price || 0, cur) + '</b></td>' +
+        '<td style="color:var(--success)">' + fmtMoney(cobrado, cur) + '</td>' +
+        '<td style="color:' + (saldo > 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmtMoney(saldo, cur) + '</td>' +
         '<td>' + stBadge + '</td>' +
         '<td style="white-space:nowrap;">' +
           '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ccliSelectRow(\'' + v.id + '\')">' +
@@ -669,11 +695,16 @@ function renderCuentasCli() {
       '</tr>';
   });
 
+  var colspanEmpty = showCompany ? 9 : 8;
   if (!rows) {
-    rows = '<tr><td colspan="8"><div class="empty-state" style="padding:40px"><i class="fas fa-users"></i><p>No hay cuentas corrientes. Crea una nueva.</p></div></td></tr>';
+    rows = '<tr><td colspan="' + colspanEmpty + '"><div class="empty-state" style="padding:40px"><i class="fas fa-users"></i><p>No hay cuentas corrientes. Crea una nueva.</p></div></td></tr>';
   }
 
-  var totalSaldo = totalVendido - totalCobrado;
+  var curKeys = [...new Set(Object.keys(vendByCur).concat(Object.keys(cobrByCur)))];
+  var vendCells = curKeys.map(function(c){ return fmtMoney(vendByCur[c]||0, c); }).join(' · ') || fmtMoney(0);
+  var cobrCells = curKeys.map(function(c){ return fmtMoney(cobrByCur[c]||0, c); }).join(' · ') || fmtMoney(0);
+  var saldoCells = curKeys.map(function(c){ return fmtMoney((vendByCur[c]||0)-(cobrByCur[c]||0), c); }).join(' · ') || fmtMoney(0);
+  var _multiCur = curKeys.length > 1;
 
   document.getElementById('content').innerHTML =
     '<div class="page-header"><div>' +
@@ -683,21 +714,23 @@ function renderCuentasCli() {
     '<button class="btn btn-primary" onclick="ccliNuevaCuenta()"><i class="fas fa-plus"></i> Nueva Cuenta Corriente</button>' +
     '</div>' +
 
+    rsSelectorHtml('ccli', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — filtrá por razón social para totales exactos</span>' : '') +
+
     '<div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">' +
       '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
         '<div style="font-size:22px;font-weight:700;color:var(--primary)">' + ventas.length + '</div>' +
         '<div style="font-size:12px;color:var(--text-muted)">Cuentas abiertas</div>' +
       '</div>' +
       '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
-        '<div style="font-size:22px;font-weight:700;">' + fmtMoney(totalVendido) + '</div>' +
+        '<div style="font-size:18px;font-weight:700;">' + vendCells + '</div>' +
         '<div style="font-size:12px;color:var(--text-muted)">Total vendido</div>' +
       '</div>' +
       '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
-        '<div style="font-size:22px;font-weight:700;color:var(--success)">' + fmtMoney(totalCobrado) + '</div>' +
+        '<div style="font-size:18px;font-weight:700;color:var(--success)">' + cobrCells + '</div>' +
         '<div style="font-size:12px;color:var(--text-muted)">Total cobrado</div>' +
       '</div>' +
       '<div class="card" style="flex:1;min-width:130px;padding:16px;text-align:center;">' +
-        '<div style="font-size:22px;font-weight:700;color:' + (totalSaldo > 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmtMoney(totalSaldo) + '</div>' +
+        '<div style="font-size:18px;font-weight:700;color:var(--danger)">' + saldoCells + '</div>' +
         '<div style="font-size:12px;color:var(--text-muted)">Saldo pendiente</div>' +
       '</div>' +
     '</div>' +
@@ -705,7 +738,7 @@ function renderCuentasCli() {
     '<div class="card" style="padding:0;">' +
       '<table class="table">' +
         '<thead><tr>' +
-          '<th>Comprador</th><th>Unidad</th><th>Precio Lista</th><th>Precio Cerrado</th>' +
+          '<th>Comprador</th>' + (showCompany ? '<th>Razón Social</th>' : '') + '<th>Unidad</th><th>Precio Lista</th><th>Precio Cerrado</th>' +
           '<th>Cobrado</th><th>Saldo</th><th>Estado</th><th></th>' +
         '</tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
@@ -717,11 +750,13 @@ function renderCuentasCli() {
 }
 
 function ccliSelectRow(saleId) {
+  if (typeof rsEnsureCompany === 'function') rsEnsureCompany('ventasUnidades', saleId);
   _ccliSelectedId = (_ccliSelectedId === saleId) ? null : saleId;
   renderCuentasCli();
 }
 
 function ccliRenderDetail(saleId) {
+  if (typeof rsEnsureCompany === 'function') rsEnsureCompany('ventasUnidades', saleId);
   var venta = DB.getById('ventasUnidades', saleId);
   if (!venta) return;
   var cobros = DB.getAll('cobrosVentas').filter(function(c) { return c.sale_id === saleId; });
