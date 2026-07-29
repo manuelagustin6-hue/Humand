@@ -369,6 +369,13 @@ function openInvoiceForm(id = null) {
       ${['draft','sent','paid','overdue','cancelled'].map(s => `<option value="${s}" ${inv?.status===s?'selected':''}>${s}</option>`).join('')}
     </select>
   </div>
+  <div class="form-group">
+    <label class="form-label">Libro Contable</label>
+    <select class="form-control" id="if-contab-tipo" title="Determina en qué libro (A/B) se postea el asiento automático">
+      <option value="A" ${(!inv?.contab_tipo||inv?.contab_tipo==='A')?'selected':''}>Contabilidad A</option>
+      <option value="B" ${inv?.contab_tipo==='B'?'selected':''}>Contabilidad B</option>
+    </select>
+  </div>
   <div class="form-group full">
     <label class="form-label">Razon Social Cliente *</label>
     <input class="form-control" id="if-client" value="${inv?.client_name || ''}">
@@ -711,6 +718,7 @@ async function saveInvoice(id) {
     notes: document.getElementById('if-notes').value.trim(),
     source: source,
     source_ref: document.getElementById('if-ref').value.trim(),
+    contab_tipo: document.getElementById('if-contab-tipo')?.value || 'A',
     items,
     imputacion,
     subtotal,
@@ -726,10 +734,13 @@ async function saveInvoice(id) {
   }
   else { DB.insert('invoices', data); toast('Factura creada', 'success'); }
 
-  // Generate journal entry from imputacion lines
-  if (typeof autoJournalEntryFromImputacion === 'function') {
+  // Generate journal entry from imputacion lines — en el libro A/B elegido.
+  if (typeof autoJournalEntryABImp === 'function') {
+    autoJournalEntryABImp('fact_emitida', imputacion, subtotal, data.total, { iva: tax }, data.date, data.number,
+      { project_id: data.project_id || '', counterparty: data.client_name || '', currency: data.currency || '', contab_tipo: data.contab_tipo || 'A' });
+  } else if (typeof autoJournalEntryFromImputacion === 'function') {
     autoJournalEntryFromImputacion('fact_emitida', imputacion, subtotal, data.total, { iva: tax }, data.date, data.number,
-      { project_id: data.project_id || '', counterparty: data.client_name || '', currency: data.currency || '' });
+      { project_id: data.project_id || '', counterparty: data.client_name || '', currency: data.currency || '', book: data.contab_tipo === 'B' ? 'B' : 'A' });
   }
 
   window._invItems = [];

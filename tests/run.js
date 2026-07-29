@@ -225,5 +225,34 @@ const { withApp, check, near, summary } = require('./harness');
     check('rsCur usa la moneda de la empresa (UYU)', r.cur2 === 'UYU');
   }
 
+  // ---- 14) Asientos A/B automáticos (wrapper autoJournalEntryABImp) ----
+  console.log('\n▶ Asientos A/B automáticos');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'modules/asientos.js'], () => {
+      // Stub del generador real: captura cada llamada (libro + montos) sin tocar el plan de cuentas.
+      var calls = [];
+      window.autoJournalEntryFromImputacion = function (op, imp, neto, total, taxes, date, ref, opts) {
+        calls.push({ book: opts.book, neto: neto, total: total, iva: (taxes || {}).iva || 0, imp: (imp || []).map(function (l) { return l.amount; }) });
+        return { id: 'e' + calls.length };
+      };
+      var imp = [{ account_code: '5', amount: 100 }];
+      // Caso A (default)
+      autoJournalEntryABImp('fact_emitida', imp, 100, 121, { iva: 21 }, '2025-01-01', 'F1', { contab_tipo: 'A' });
+      var a = calls.slice(); calls.length = 0;
+      // Caso B
+      autoJournalEntryABImp('fact_emitida', imp, 100, 121, { iva: 21 }, '2025-01-01', 'F2', { contab_tipo: 'B' });
+      var b = calls.slice(); calls.length = 0;
+      // Caso AB 60/40
+      autoJournalEntryABImp('fact_emitida', imp, 100, 121, { iva: 21 }, '2025-01-01', 'F3', { contab_tipo: 'AB', contab_pct_a: 60 });
+      var ab = calls.slice();
+      return { a: a, b: b, ab: ab };
+    });
+    check('A → 1 asiento en libro A', r.a.length === 1 && r.a[0].book === 'A' && near(r.a[0].total, 121));
+    check('B → 1 asiento en libro B', r.b.length === 1 && r.b[0].book === 'B' && near(r.b[0].total, 121));
+    check('AB 60/40 → 2 asientos (A y B)', r.ab.length === 2 && r.ab[0].book === 'A' && r.ab[1].book === 'B');
+    check('AB: libro A = 60% del total', near(r.ab[0].total, 72.6) && near(r.ab[0].iva, 12.6) && near(r.ab[0].imp[0], 60));
+    check('AB: libro B = 40% del total', near(r.ab[1].total, 48.4) && near(r.ab[1].iva, 8.4) && near(r.ab[1].imp[0], 40));
+  }
+
   summary();
 })();
