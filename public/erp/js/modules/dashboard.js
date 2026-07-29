@@ -1,19 +1,35 @@
 /* ===== DASHBOARD ===== */
 function renderDashboard() {
-  const projects      = DB.getAll('projects');
-  const invoices      = DB.getAll('invoices');
-  const pos           = DB.getAll('purchaseOrders');
-  const collections   = DB.getAll('collections');
-  const tasks         = DB.getAll('ganttTasks');
-  const supplierInvs  = DB.getAll('supplierInvoices');
-  const approvalInsts = DB.getAll('approvalInstances');
-  const actualCosts   = DB.getAll('actualCosts');
-  const lics          = DB.getAll('licitaciones');
-  const partes        = DB.getAll('partesDiarios');
-  const bankAccounts  = DB.getAll('bankAccounts');
-  const treasuryTx    = DB.getAll('treasuryTx');
-  const paymentOrders = DB.getAll('paymentOrders');
-  const fiscalCal     = DB.getAll('fiscalCalendar');
+  // El dashboard agrega todas las razones sociales (vista de grupo) y respeta el
+  // proyecto activo del header: sin proyecto = General (todo el grupo), con proyecto
+  // = solo esa obra. Así el tablero refleja el mismo modelo que el resto de la app.
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._dashLoadedAll) {
+    window._dashLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function(ok){ if (ok) { try { renderDashboard(); } catch(e) {} } });
+  }
+  function _consAll(col) { return (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated(col) : DB.getAll(col); }
+  function _dashProj(col, getPid) { return filterByActiveProject(_consAll(col), getPid); }   // scoped por proyecto
+  const _actProj = window.APP_STATE && window.APP_STATE.activeProject;
+
+  const projects      = _actProj ? _consAll('projects').filter(function(p){ return p.id === _actProj; }) : _consAll('projects');
+  const invoices      = _dashProj('invoices');
+  const pos           = _dashProj('purchaseOrders');
+  // Cobranzas: consolidadas; si hay proyecto activo, se acotan a las facturas de esa obra.
+  let collections     = _consAll('collections');
+  if (_actProj) {
+    const _invIds = {}; invoices.forEach(function(i){ _invIds[i.id] = true; });
+    collections = collections.filter(function(c){ return c.project_id ? c.project_id === _actProj : (c.invoice_id && _invIds[c.invoice_id]); });
+  }
+  const tasks         = _dashProj('ganttTasks');
+  const supplierInvs  = _dashProj('supplierInvoices');
+  const approvalInsts = _consAll('approvalInstances');
+  const actualCosts   = _dashProj('actualCosts');
+  const lics          = _dashProj('licitaciones');
+  const partes        = _dashProj('partesDiarios');
+  const bankAccounts  = _consAll('bankAccounts');      // nivel razón social, no proyecto
+  const treasuryTx    = _consAll('treasuryTx');
+  const paymentOrders = _dashProj('paymentOrders');
+  const fiscalCal     = _consAll('fiscalCalendar');
 
   const today = todayStr();
   const thisMonth = today.slice(0, 7);
@@ -329,7 +345,7 @@ function renderDashboard() {
       <span class="card-title"><i class="fas fa-bell text-warning"></i> Alertas y Pendientes</span>
     </div>
     <div class="card-body" style="padding:0">
-      ${buildAlerts(invoices, pos, tasks, lics)}
+      ${buildAlerts(invoices, pos, tasks, lics, supplierInvs)}
     </div>
   </div>
 </div>
@@ -493,21 +509,24 @@ function _dashPartesTable(partes) {
   </table></div>`;
 }
 
-function buildAlerts(invoices, pos, tasks, lics) {
+function buildAlerts(invoices, pos, tasks, lics, supplierInvs) {
   const alerts = [];
   const today = todayStr();
   lics = lics || [];
+  // Mapas consolidados para nombres (los getById solo verían la empresa activa).
+  const _projMap = {}; (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('projects') : DB.getAll('projects')).forEach(function(p){ _projMap[p.id] = p; });
+  const _supMap  = {}; (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('suppliers') : DB.getAll('suppliers')).forEach(function(s){ _supMap[s.id] = s; });
 
   // Facturas vencidas
   invoices.filter(i => i.status === 'overdue').forEach(i => {
-    const p = DB.getById('projects', i.project_id);
-    alerts.push({ type: 'danger', icon: 'fa-exclamation-circle', msg: `Factura vencida ${escapeHtml(i.number)} — ${p ? escapeHtml(p.name) : ''} — ${fmtMoney(i.total)}`, action: "navigate('facturacion')" });
+    const p = _projMap[i.project_id];
+    alerts.push({ type: 'danger', icon: 'fa-exclamation-circle', msg: `Factura vencida ${escapeHtml(i.number)} — ${p ? escapeHtml(p.name) : ''} — ${fmtMoney(i.total, i.currency || i._company_currency)}`, action: "navigate('facturacion')" });
   });
 
   // Facturas proveedor vencidas
-  DB.getAll('supplierInvoices').filter(si => si.status === 'pending' && si.due_date && si.due_date < today).forEach(si => {
-    const sup = DB.getById('suppliers', si.supplier_id);
-    alerts.push({ type: 'danger', icon: 'fa-file-invoice-dollar', msg: `Fact. prov. vencida: ${escapeHtml(si.number)} — ${sup ? escapeHtml(sup.name) : ''} — ${fmtMoney(si.total)}`, action: "navigate('compras')" });
+  (supplierInvs || []).filter(si => si.status === 'pending' && si.due_date && si.due_date < today).forEach(si => {
+    const sup = _supMap[si.supplier_id];
+    alerts.push({ type: 'danger', icon: 'fa-file-invoice-dollar', msg: `Fact. prov. vencida: ${escapeHtml(si.number)} — ${sup ? escapeHtml(sup.name) : ''} — ${fmtMoney(si.total, si.currency || si._company_currency)}`, action: "navigate('compras')" });
   });
 
   // Licitaciones en revisión
