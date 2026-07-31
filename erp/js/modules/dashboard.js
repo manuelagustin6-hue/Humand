@@ -130,15 +130,19 @@ function renderDashboard() {
   const partesHoy = partes.filter(p => p.date === today);
   const workersHoy = partesHoy.reduce((s, p) => s + (p.personal || []).reduce((ss, per) => ss + (per.cantidad || 0), 0), 0);
 
-  // Helper de tarjeta KPI (bento) reutilizable.
+  // Helper de tarjeta KPI (bento) reutilizable — estilo mockup: ícono en cuadrado
+  // arriba-izquierda, tendencia arriba-derecha, rótulo + número grande abajo.
+  const _tagIco = (d) => d === 'up' ? '<i class="fas fa-arrow-trend-up"></i>' : d === 'down' ? '<i class="fas fa-arrow-trend-down"></i>' : '';
   const kpi = (o) => `
-    <div class="kpi-card${o.nav ? ' clickable' : ''}"${o.nav ? ` onclick="navigate('${o.nav}')"` : ''}>
+    <div class="kpi-card${o.dark ? ' dark' : ''}${o.nav ? ' clickable' : ''}"${o.nav ? ` onclick="navigate('${o.nav}')"` : ''}>
       <div class="kpi-top">
         <div class="kpi-ico ${o.ico}"><i class="fas ${o.fa}"></i></div>
-        ${o.tag ? `<span class="kpi-tag ${o.tagDir || ''}">${o.tag}</span>` : ''}
+        ${o.tag ? `<span class="kpi-tag ${o.tagDir || ''}">${_tagIco(o.tagDir)}${o.tag}</span>` : ''}
       </div>
-      <div class="kpi-num ${o.numCls || ''}">${o.num}</div>
-      <div class="kpi-lbl">${o.lbl}</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">${o.lbl}</div>
+        <div class="kpi-num ${o.numCls || ''}">${o.num}</div>
+      </div>
     </div>`;
 
   document.getElementById('content').innerHTML = `
