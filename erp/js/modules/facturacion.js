@@ -26,11 +26,11 @@ function _invKpiHtml(invoices) {
   if (curs.length <= 1) {
     var c = curs[0] || (typeof _activeCurrency === 'function' ? _activeCurrency() : 'ARS');
     var d = g[c] || { billed:0,paid:0,pending:0,overdue:0,n:0,np:0,ns:0,no:0 };
-    return '<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">' +
-      _invStat('blue','fa-file-invoice-dollar', fmtMoney(d.billed,c), 'Facturado Total', d.n+' facturas') +
-      _invStat('green','fa-check-circle', fmtMoney(d.paid,c), 'Cobradas', d.np+' facturas') +
-      _invStat('yellow','fa-clock', fmtMoney(d.pending,c), 'Pendientes de Cobro', d.ns+' facturas') +
-      _invStat('red','fa-exclamation-circle', fmtMoney(d.overdue,c), 'Vencidas', d.no+' facturas') +
+    return '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">' +
+      _invStat('blue','fa-file-invoice-dollar', fmtMoney(d.billed,c), 'Facturado Total', d.n+' facturas', '') +
+      _invStat('green','fa-check-circle', fmtMoney(d.paid,c), 'Cobradas', d.np+' facturas', 'up') +
+      _invStat('yellow','fa-clock', fmtMoney(d.pending,c), 'Pendientes de Cobro', d.ns+' facturas', '') +
+      _invStat('red','fa-exclamation-circle', fmtMoney(d.overdue,c), 'Vencidas', d.no+' facturas', d.no>0?'down':'') +
     '</div>';
   }
   return '<div class="card"><div class="table-wrap"><table class="table"><thead><tr>' +
@@ -42,10 +42,10 @@ function _invKpiHtml(invoices) {
       '<td class="number-cell text-right" style="color:var(--danger)">'+fmtMoney(d.overdue,c)+'</td></tr>'; }).join('') +
     '</tbody></table></div></div>';
 }
-function _invStat(color, icon, value, label, delta) {
-  return '<div class="stat-card"><div class="stat-icon '+color+'"><i class="fas '+icon+'"></i></div><div>' +
-    '<div class="stat-value">'+value+'</div><div class="stat-label">'+label+'</div>' +
-    '<div class="stat-delta">'+delta+'</div></div></div>';
+function _invStat(color, icon, value, label, delta, dir) {
+  return '<div class="kpi-card"><div class="kpi-top"><div class="kpi-ico '+color+'"><i class="fas '+icon+'"></i></div>' +
+    (delta ? '<span class="kpi-tag '+(dir||'')+'">'+delta+'</span>' : '') + '</div>' +
+    '<div class="kpi-body"><div class="kpi-lbl">'+label+'</div><div class="kpi-num">'+value+'</div></div></div>';
 }
 function _invCompanyOptions() {
   return '<option value="">Todas las razones sociales</option>' +
@@ -83,8 +83,9 @@ function renderFacturacion() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
-    <div class="page-title">Facturacion</div>
-    <div class="page-subtitle">Gestion de facturas, certificaciones y comprobantes</div>
+    <div class="page-eyebrow"><i class="fas fa-file-invoice-dollar" style="font-size:14px"></i> Ventas</div>
+    <div class="page-title">Facturación</div>
+    <div class="page-subtitle">Gestión de facturas, certificaciones y comprobantes</div>
   </div>
   <div class="page-actions">
     <button class="btn btn-secondary" onclick="exportInvoices()"><i class="fas fa-download"></i> Exportar</button>
@@ -128,6 +129,10 @@ ${_invKpiHtml(invoices)}
 </div>
 
 <div class="card">
+  <div class="card-header">
+    <span class="card-title"><i class="fas fa-receipt" style="color:var(--primary);margin-right:6px"></i> Comprobantes</span>
+    <span style="font-size:12px;color:var(--text-muted)">${invoices.length} ${invoices.length === 1 ? 'comprobante' : 'comprobantes'}</span>
+  </div>
   <div class="card-body" style="padding:0">
     <div class="table-wrap" id="inv-table-wrap">
       ${buildInvoiceRows(invoices, projects, collections)}
