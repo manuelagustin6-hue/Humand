@@ -94,6 +94,20 @@
 }
 .odp-v2 .odp-kpi-lbl { font-size: 12px; font-weight: 500; color: var(--m-on-variant); }
 
+/* KPIs compactos en teléfono (2 por fila, menos alto) */
+@media (max-width: 640px) {
+  .odp-v2 { gap: 16px; }
+  .odp-v2 .odp-bento { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .odp-v2 .odp-kpi { padding: 13px; }
+  .odp-v2 .odp-kpi-top { margin-bottom: 10px; }
+  .odp-v2 .odp-kpi-ico { width: 36px; height: 36px; font-size: 15px; }
+  .odp-v2 .odp-kpi-tag { font-size: 10px; }
+  .odp-v2 .odp-kpi-num { font-size: 28px; line-height: 32px; }
+  .odp-v2 .odp-kpi-lbl { font-size: 11px; }
+  .odp-v2 .odp-title { font-size: 24px; line-height: 30px; }
+  .odp-v2 td, .odp-v2 th { padding: 12px 14px; }
+}
+
 /* ---------- Barra de filtros ---------- */
 .odp-v2 .odp-filters {
   background: var(--m-low); padding: 16px; border-radius: var(--m-radius);
