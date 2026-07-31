@@ -130,11 +130,23 @@ function renderDashboard() {
   const partesHoy = partes.filter(p => p.date === today);
   const workersHoy = partesHoy.reduce((s, p) => s + (p.personal || []).reduce((ss, per) => ss + (per.cantidad || 0), 0), 0);
 
+  // Helper de tarjeta KPI (bento) reutilizable.
+  const kpi = (o) => `
+    <div class="kpi-card${o.nav ? ' clickable' : ''}"${o.nav ? ` onclick="navigate('${o.nav}')"` : ''}>
+      <div class="kpi-top">
+        <div class="kpi-ico ${o.ico}"><i class="fas ${o.fa}"></i></div>
+        ${o.tag ? `<span class="kpi-tag ${o.tagDir || ''}">${o.tag}</span>` : ''}
+      </div>
+      <div class="kpi-num ${o.numCls || ''}">${o.num}</div>
+      <div class="kpi-lbl">${o.lbl}</div>
+    </div>`;
+
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-gauge-high" style="font-size:14px"></i> Resumen ejecutivo</div>
     <div class="page-title">Dashboard</div>
-    <div class="page-subtitle">Resumen ejecutivo del portafolio de obras</div>
+    <div class="page-subtitle">Panorama del portafolio de obras y finanzas del grupo</div>
   </div>
   <div class="page-actions">
     <span style="font-size:12px;color:var(--text-muted)"><i class="fas fa-clock"></i> ${fmtDatetime(new Date().toISOString())}</span>
@@ -143,123 +155,30 @@ function renderDashboard() {
 </div>
 
 <!-- OBRA KPIs -->
-<div style="display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 14px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--primary)">
-  <i class="fas fa-building" style="color:var(--primary);font-size:13px"></i>
-  <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text)">Obras y Financiero</span>
-</div>
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
-  <div class="stat-card" onclick="navigate('projects')" style="cursor:pointer">
-    <div class="stat-icon blue"><i class="fas fa-building"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${projects.length}</div>
-      <div class="stat-label">Proyectos</div>
-      <div class="stat-delta up"><i class="fas fa-circle"></i> ${activeProjects} activos</div>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-icon green"><i class="fas fa-dollar-sign"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(totalBudget)}</div>
-      <div class="stat-label">Presupuesto Total</div>
-      <div class="stat-delta up"><i class="fas fa-info-circle"></i> ${fmtMoney(totalBudget)}</div>
-    </div>
-  </div>
-  <div class="stat-card" onclick="navigate('facturacion')" style="cursor:pointer">
-    <div class="stat-icon cyan"><i class="fas fa-file-invoice-dollar"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(totalBilled)}</div>
-      <div class="stat-label">Facturado Total</div>
-      <div class="stat-delta ${overdueInvoices > 0 ? 'down' : 'up'}">
-        ${overdueInvoices > 0 ? `<i class="fas fa-exclamation-circle"></i> ${overdueInvoices} vencidas` : '<i class="fas fa-check-circle"></i> Al día'}
-      </div>
-    </div>
-  </div>
-  <div class="stat-card" onclick="navigate('cobranzas')" style="cursor:pointer">
-    <div class="stat-icon ${pendingCollection > 0 ? 'yellow' : 'green'}"><i class="fas fa-hand-holding-dollar"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(pendingCollection)}</div>
-      <div class="stat-label">Pendiente de Cobro</div>
-      <div class="stat-delta ${pendingCollection > 0 ? 'down' : 'up'}">
-        ${pendingCollection > 0 ? `<i class="fas fa-check-circle"></i> ${fmtMoneyK(totalCollected)} cobrado` : '<i class="fas fa-check-circle"></i> Todo cobrado'}
-      </div>
-    </div>
-  </div>
-  <div class="stat-card" onclick="navigate('compras')" style="cursor:pointer">
-    <div class="stat-icon yellow"><i class="fas fa-shopping-cart"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(totalPOs)}</div>
-      <div class="stat-label">Órdenes de Compra</div>
-      <div class="stat-delta up"><i class="fas fa-file"></i> ${pos.length} emitidas</div>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-icon ${marginPct >= 15 ? 'green' : marginPct >= 0 ? 'yellow' : 'red'}"><i class="fas fa-percentage"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value ${marginPct >= 0 ? 'text-success' : 'text-danger'}">${fmtPct(marginPct)}</div>
-      <div class="stat-label">Margen Bruto</div>
-      <div class="stat-delta ${marginPct >= 0 ? 'up' : 'down'}">${fmtMoneyK(grossMargin)}</div>
-    </div>
-  </div>
-  <div class="stat-card" onclick="navigate('aprobaciones')" style="cursor:pointer">
-    <div class="stat-icon ${pendingApprovals > 0 ? 'red' : 'green'}"><i class="fas fa-check-double"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${pendingApprovals}</div>
-      <div class="stat-label">Aprobaciones</div>
-      <div class="stat-delta ${pendingApprovals > 0 ? 'down' : 'up'}">
-        ${pendingApprovals > 0 ? '<i class="fas fa-clock"></i> Pendientes' : '<i class="fas fa-check-circle"></i> Al día'}
-      </div>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-icon blue"><i class="fas fa-tasks"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${tasksInProgress}</div>
-      <div class="stat-label">Tareas en Ejecución</div>
-      <div class="stat-delta up"><i class="fas fa-check"></i> ${tasks.filter(t=>t.status==='completed').length} completadas</div>
-    </div>
-  </div>
+<div class="section-label"><i class="fas fa-building"></i> Obras y Financiero</div>
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+  ${kpi({ ico:'blue', fa:'fa-building', num: projects.length, lbl:'Proyectos', nav:'projects', tag: activeProjects + ' activos', tagDir:'up' })}
+  ${kpi({ ico:'green', fa:'fa-dollar-sign', num: fmtMoneyK(totalBudget), lbl:'Presupuesto Total' })}
+  ${kpi({ ico:'cyan', fa:'fa-file-invoice-dollar', num: fmtMoneyK(totalBilled), lbl:'Facturado Total', nav:'facturacion',
+      tag: overdueInvoices > 0 ? (overdueInvoices + ' vencidas') : 'Al día', tagDir: overdueInvoices > 0 ? 'down' : 'up' })}
+  ${kpi({ ico: pendingCollection > 0 ? 'yellow' : 'green', fa:'fa-hand-holding-dollar', num: fmtMoneyK(pendingCollection), lbl:'Pendiente de Cobro', nav:'cobranzas',
+      tag: pendingCollection > 0 ? (fmtMoneyK(totalCollected) + ' cobrado') : 'Todo cobrado', tagDir: pendingCollection > 0 ? 'down' : 'up' })}
+  ${kpi({ ico:'yellow', fa:'fa-shopping-cart', num: fmtMoneyK(totalPOs), lbl:'Órdenes de Compra', nav:'compras', tag: pos.length + ' emitidas' })}
+  ${kpi({ ico: marginPct >= 15 ? 'green' : marginPct >= 0 ? 'yellow' : 'red', fa:'fa-percentage', num: fmtPct(marginPct), numCls: marginPct >= 0 ? 'pos' : 'neg', lbl:'Margen Bruto',
+      tag: fmtMoneyK(grossMargin), tagDir: marginPct >= 0 ? 'up' : 'down' })}
+  ${kpi({ ico: pendingApprovals > 0 ? 'red' : 'green', fa:'fa-check-double', num: pendingApprovals, lbl:'Aprobaciones', nav:'aprobaciones',
+      tag: pendingApprovals > 0 ? 'Pendientes' : 'Al día', tagDir: pendingApprovals > 0 ? 'down' : 'up' })}
+  ${kpi({ ico:'blue', fa:'fa-tasks', num: tasksInProgress, lbl:'Tareas en Ejecución', tag: tasks.filter(t=>t.status==='completed').length + ' completadas', tagDir:'up' })}
 </div>
 
 <!-- TESORERÍA KPIs -->
-<div style="display:flex;align-items:center;gap:10px;margin:16px 0 12px;padding:10px 14px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--success)">
-  <i class="fas fa-landmark" style="color:var(--success);font-size:13px"></i>
-  <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text)">Tesorería</span>
-</div>
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
-  <div class="stat-card" onclick="navigate('cuentas_banco')" style="cursor:pointer">
-    <div class="stat-icon green"><i class="fas fa-university"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(totalARS)}</div>
-      <div class="stat-label">Saldo Total ARS</div>
-      <div class="stat-delta up"><i class="fas fa-university"></i> ${accWithBal.filter(a=>(a.currency||'ARS')==='ARS').length} cuenta(s)</div>
-    </div>
-  </div>
-  <div class="stat-card" onclick="navigate('cuentas_banco')" style="cursor:pointer">
-    <div class="stat-icon cyan"><i class="fas fa-dollar-sign"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">US$ ${fmtNum(Math.round(totalUSD))}</div>
-      <div class="stat-label">Saldo Total USD</div>
-      <div class="stat-delta up"><i class="fas fa-university"></i> ${accWithBal.filter(a=>a.currency==='USD').length} cuenta(s)</div>
-    </div>
-  </div>
-  <div class="stat-card" onclick="navigate('ordenes_pago')" style="cursor:pointer">
-    <div class="stat-icon red"><i class="fas fa-file-invoice"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(paidThisMonth)}</div>
-      <div class="stat-label">Pagado Este Mes</div>
-      <div class="stat-delta down"><i class="fas fa-calendar"></i> ${poThisMonth.length} órdenes de pago</div>
-    </div>
-  </div>
-  <div class="stat-card" onclick="navigate('ordenes_pago')" style="cursor:pointer">
-    <div class="stat-icon ${pendingPO > 0 ? 'yellow' : 'green'}"><i class="fas fa-hourglass-half"></i></div>
-    <div style="min-width:0">
-      <div class="stat-value">${fmtMoneyK(pendingPO)}</div>
-      <div class="stat-label">OP Pendientes</div>
-      <div class="stat-delta ${pendingPO > 0 ? 'down' : 'up'}">
-        ${pendingPO > 0 ? `<i class="fas fa-clock"></i> ${paymentOrders.filter(po=>po.status==='pending').length} sin aprobar` : '<i class="fas fa-check-circle"></i> Al día'}
-      </div>
-    </div>
-  </div>
+<div class="section-label"><i class="fas fa-landmark" style="color:var(--success)"></i> Tesorería</div>
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+  ${kpi({ ico:'green', fa:'fa-university', num: fmtMoneyK(totalARS), lbl:'Saldo Total ARS', nav:'cuentas_banco', tag: accWithBal.filter(a=>(a.currency||'ARS')==='ARS').length + ' cuenta(s)' })}
+  ${kpi({ ico:'cyan', fa:'fa-dollar-sign', num: 'US$ ' + fmtNum(Math.round(totalUSD)), lbl:'Saldo Total USD', nav:'cuentas_banco', tag: accWithBal.filter(a=>a.currency==='USD').length + ' cuenta(s)' })}
+  ${kpi({ ico:'red', fa:'fa-file-invoice', num: fmtMoneyK(paidThisMonth), lbl:'Pagado Este Mes', nav:'ordenes_pago', tag: poThisMonth.length + ' órdenes de pago', tagDir:'down' })}
+  ${kpi({ ico: pendingPO > 0 ? 'yellow' : 'green', fa:'fa-hourglass-half', num: fmtMoneyK(pendingPO), lbl:'OP Pendientes', nav:'ordenes_pago',
+      tag: pendingPO > 0 ? (paymentOrders.filter(po=>po.status==='pending').length + ' sin aprobar') : 'Al día', tagDir: pendingPO > 0 ? 'down' : 'up' })}
 </div>
 
 <!-- CHARTS + CUENTAS A COBRAR + VENCIMIENTOS -->
@@ -392,10 +311,7 @@ function renderDashboard() {
 </div>
 
 <!-- COSTOS POR OBRA -->
-<div style="display:flex;align-items:center;gap:10px;margin:16px 0 12px;padding:10px 14px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--danger)">
-  <i class="fas fa-hard-hat" style="color:var(--danger);font-size:13px"></i>
-  <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text)">Costos de Obra</span>
-</div>
+<div class="section-label"><i class="fas fa-hard-hat" style="color:var(--danger)"></i> Costos de Obra</div>
 <div class="grid-2" style="margin-bottom:16px">
   <div class="card">
     <div class="card-header">
