@@ -1,8 +1,15 @@
 /* ===== COMPRAS ===== */
+// Helper de tarjeta KPI (bento) reutilizable en las vistas de Compras.
+function _cmpKpi(ico, fa, num, lbl, tag, dir) {
+  return '<div class="kpi-card"><div class="kpi-top"><div class="kpi-ico ' + ico + '"><i class="fas ' + fa + '"></i></div>' +
+    (tag ? '<span class="kpi-tag ' + (dir||'') + '">' + tag + '</span>' : '') + '</div>' +
+    '<div class="kpi-body"><div class="kpi-lbl">' + lbl + '</div><div class="kpi-num">' + num + '</div></div></div>';
+}
 function renderCompras() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-cart-shopping" style="font-size:14px"></i> Abastecimiento</div>
     <div class="page-title">Compras</div>
     <div class="page-subtitle">Pedidos de materiales, órdenes de compra y facturas de proveedores</div>
   </div>
@@ -49,6 +56,7 @@ function renderOrdenesCompra() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-file-alt" style="font-size:14px"></i> Abastecimiento</div>
     <div class="page-title">Órdenes de Compra</div>
     <div class="page-subtitle">Órdenes de compra emitidas a proveedores</div>
   </div>
@@ -82,15 +90,11 @@ function renderRequisitionsTab() {
   const totalAmt = reqs.reduce((s, r) => s + (r.total || 0), 0);
 
   return `
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
-  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-clipboard-list"></i></div><div>
-    <div class="stat-value">${reqs.length}</div><div class="stat-label">Total Pedidos</div></div></div>
-  <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-clock"></i></div><div>
-    <div class="stat-value">${pending}</div><div class="stat-label">Pendientes Aprobación</div></div></div>
-  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div><div>
-    <div class="stat-value">${approved}</div><div class="stat-label">Aprobados</div></div></div>
-  <div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-exchange-alt"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalAmt)}</div><div class="stat-label">Monto Total Est.</div></div></div>
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+  ${_cmpKpi('blue','fa-clipboard-list', reqs.length, 'Total Pedidos', '')}
+  ${_cmpKpi('yellow','fa-clock', pending, 'Pendientes Aprobación', pending>0?'a revisar':'', pending>0?'down':'')}
+  ${_cmpKpi('green','fa-check-circle', approved, 'Aprobados', '', 'up')}
+  ${_cmpKpi('cyan','fa-exchange-alt', fmtMoney(totalAmt), 'Monto Total Est.', '')}
 </div>
 <div class="filter-bar">
   <div class="search-input-wrap">
@@ -583,15 +587,11 @@ function renderPOTable() {
   ${_multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Montos en varias monedas — ver cada OC</span>' : ''}
 </div>
 
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
-  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-alt"></i></div><div>
-    <div class="stat-value">${pos.length}</div><div class="stat-label">OC Totales</div></div></div>
-  <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-clock"></i></div><div>
-    <div class="stat-value">${pos.filter(p=>p.status==='sent').length}</div><div class="stat-label">Enviadas</div></div></div>
-  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalReceived)}</div><div class="stat-label">Total Recibido</div></div></div>
-  <div class="stat-card"><div class="stat-icon red"><i class="fas fa-hourglass"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalPending)}</div><div class="stat-label">Pendiente Recepción</div></div></div>
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+  ${_cmpKpi('blue','fa-file-alt', pos.length, 'OC Totales', '')}
+  ${_cmpKpi('yellow','fa-clock', pos.filter(p=>p.status==='sent').length, 'Enviadas', '')}
+  ${_cmpKpi('green','fa-check', fmtMoney(totalReceived), 'Total Recibido', '', 'up')}
+  ${_cmpKpi('red','fa-hourglass', fmtMoney(totalPending), 'Pendiente Recepción', '')}
 </div>
 <div class="filter-bar">
   <div class="search-input-wrap">
@@ -1086,15 +1086,11 @@ function renderSupplierInvoicesTab() {
   const pending = sis.filter(s => s.status === 'pending').length;
 
   return `
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
-  <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-file-invoice"></i></div><div>
-    <div class="stat-value">${sis.length}</div><div class="stat-label">Total Facturas</div></div></div>
-  <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-clock"></i></div><div>
-    <div class="stat-value">${pending}</div><div class="stat-label">Pendientes de Pago</div></div></div>
-  <div class="stat-card"><div class="stat-icon red"><i class="fas fa-dollar-sign"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalPending)}</div><div class="stat-label">Monto Pendiente</div></div></div>
-  <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div><div>
-    <div class="stat-value">${fmtMoney(totalPaid)}</div><div class="stat-label">Monto Pagado</div></div></div>
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+  ${_cmpKpi('blue','fa-file-invoice', sis.length, 'Total Facturas', '')}
+  ${_cmpKpi('yellow','fa-clock', pending, 'Pendientes de Pago', pending>0?'a pagar':'', pending>0?'down':'')}
+  ${_cmpKpi('red','fa-dollar-sign', fmtMoney(totalPending), 'Monto Pendiente', '')}
+  ${_cmpKpi('green','fa-check-circle', fmtMoney(totalPaid), 'Monto Pagado', '', 'up')}
 </div>
 <div class="filter-bar">
   <div class="search-input-wrap">
