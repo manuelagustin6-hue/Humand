@@ -1,0 +1,197 @@
+/* ============================================================
+   PILOTO DE ESTILO — Órdenes de Pedido (mockup Material 3)
+   Todo scopeado bajo .odp-v2 para NO afectar el resto de la app.
+   Paleta y tipografía tomadas del mockup provisto por el cliente.
+   ============================================================ */
+
+.odp-v2 {
+  /* --- Tokens de superficie (tinte azul) --- */
+  --m-bg:            #f8f9ff;
+  --m-white:         #ffffff;   /* surface-container-lowest */
+  --m-low:           #eff4ff;   /* surface-container-low     */
+  --m-container:     #e5eeff;   /* surface-container         */
+  --m-high:          #dce9ff;   /* surface-container-high    */
+  /* --- Texto / bordes --- */
+  --m-on:            #0b1c30;   /* on-surface   */
+  --m-on-variant:    #45464d;   /* on-surface-variant */
+  --m-outline:       #76777d;
+  --m-outline-var:   #c6c6cd;
+  /* --- Acentos --- */
+  --m-navy:          #131b2e;   /* primary-container  */
+  --m-amber:         #fea619;   /* secondary-container (CTA) */
+  --m-amber-on:      #684000;   /* on-secondary-container */
+  --m-amber-text:    #855300;   /* secondary */
+  --m-green-bg:      #d1fae5;
+  --m-green-text:    #065f46;
+  --m-error:         #ba1a1a;
+  --m-error-bg:      #ffdad6;
+  --m-error-on:      #93000a;
+  --m-radius:        12px;
+  --m-radius-sm:     8px;
+  --m-shadow:        0 1px 3px rgba(11,28,48,.06), 0 1px 2px rgba(11,28,48,.04);
+  --m-shadow-md:     0 6px 18px rgba(11,28,48,.08);
+
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--m-on);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ---------- Encabezado ---------- */
+.odp-v2 .odp-head {
+  display: flex; flex-direction: column; gap: 24px;
+  justify-content: space-between; align-items: flex-start;
+}
+@media (min-width: 768px) { .odp-v2 .odp-head { flex-direction: row; align-items: flex-end; } }
+.odp-v2 .odp-eyebrow {
+  display: flex; align-items: center; gap: 8px; color: var(--m-outline);
+  font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .2em;
+}
+.odp-v2 .odp-title {
+  font-size: 32px; line-height: 40px; font-weight: 600; letter-spacing: -.01em;
+  color: var(--m-on); margin: 6px 0 4px;
+}
+.odp-v2 .odp-sub {
+  font-size: 14px; line-height: 20px; color: var(--m-on-variant); max-width: 36rem; margin: 0;
+}
+.odp-v2 .odp-cta {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  background: var(--m-amber); color: var(--m-amber-on);
+  border: none; padding: 12px 24px; border-radius: var(--m-radius);
+  font-size: 15px; font-weight: 600; transition: box-shadow .18s ease, transform .1s ease;
+}
+.odp-v2 .odp-cta:hover  { box-shadow: var(--m-shadow-md); }
+.odp-v2 .odp-cta:active { transform: scale(.98); }
+
+/* ---------- Bento de KPIs ---------- */
+.odp-v2 .odp-bento { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 640px) { .odp-v2 .odp-bento { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px){ .odp-v2 .odp-bento { grid-template-columns: repeat(4, 1fr); } }
+.odp-v2 .odp-kpi {
+  background: var(--m-white); padding: 24px; border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow); transition: background .18s ease;
+}
+.odp-v2 .odp-kpi:hover { background: var(--m-high); }
+.odp-v2 .odp-kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.odp-v2 .odp-kpi-ico {
+  width: 48px; height: 48px; border-radius: 9999px;
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+}
+.odp-v2 .odp-kpi-ico.navy  { background: rgba(19,27,46,.10);  color: var(--m-navy); }
+.odp-v2 .odp-kpi-ico.gray  { background: rgba(198,198,205,.35); color: var(--m-outline); }
+.odp-v2 .odp-kpi-ico.amber { background: rgba(254,166,25,.20); color: var(--m-amber-text); }
+.odp-v2 .odp-kpi-ico.green { background: var(--m-green-bg);   color: var(--m-green-text); }
+.odp-v2 .odp-kpi-tag {
+  font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--m-outline);
+}
+.odp-v2 .odp-kpi-tag.crit { color: var(--m-amber-text); display: inline-flex; align-items: center; gap: 4px; }
+.odp-v2 .odp-kpi-tag.crit i { animation: odp-pulse 1.4s ease-in-out infinite; }
+@keyframes odp-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.odp-v2 .odp-kpi-num {
+  font-size: 48px; line-height: 56px; font-weight: 700; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; color: var(--m-on);
+}
+.odp-v2 .odp-kpi-lbl { font-size: 12px; font-weight: 500; color: var(--m-on-variant); }
+
+/* ---------- Barra de filtros ---------- */
+.odp-v2 .odp-filters {
+  background: var(--m-low); padding: 16px; border-radius: var(--m-radius);
+  display: flex; flex-direction: column; gap: 16px; box-shadow: var(--m-shadow);
+}
+@media (min-width: 1024px) { .odp-v2 .odp-filters { flex-direction: row; align-items: center; } }
+.odp-v2 .odp-search { position: relative; width: 100%; }
+@media (min-width: 1024px) { .odp-v2 .odp-search { flex: 1; } }
+.odp-v2 .odp-search i {
+  position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--m-outline); font-size: 14px;
+}
+.odp-v2 .odp-field {
+  background: var(--m-white); border: 1px solid var(--m-outline-var); border-radius: var(--m-radius-sm);
+  padding: 10px 14px; font-size: 14px; color: var(--m-on); font-family: inherit; outline: none;
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+.odp-v2 .odp-field:focus { border-color: var(--m-navy); box-shadow: 0 0 0 3px rgba(19,27,46,.12); }
+.odp-v2 .odp-search .odp-field { width: 100%; padding-left: 42px; }
+.odp-v2 .odp-filter-group { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+@media (min-width: 1024px) { .odp-v2 .odp-filter-group { width: auto; } }
+.odp-v2 .odp-filter-group .odp-field { flex: 1; }
+@media (min-width: 1024px) { .odp-v2 .odp-filter-group .odp-field { flex: none; min-width: 170px; } }
+
+/* ---------- Tabla ---------- */
+.odp-v2 .odp-tablecard {
+  background: var(--m-white); border: 1px solid var(--m-high); border-radius: var(--m-radius);
+  overflow: hidden; box-shadow: var(--m-shadow);
+}
+.odp-v2 .odp-scroll { overflow-x: auto; }
+.odp-v2 table { width: 100%; border-collapse: collapse; text-align: left; }
+.odp-v2 thead tr { background: var(--m-low); border-bottom: 1px solid var(--m-high); }
+.odp-v2 th {
+  padding: 14px 24px; font-size: 12px; font-weight: 500; color: var(--m-outline);
+  text-transform: uppercase; letter-spacing: .06em; white-space: nowrap;
+}
+.odp-v2 th.tr, .odp-v2 td.tr { text-align: right; }
+.odp-v2 th.tc, .odp-v2 td.tc { text-align: center; }
+.odp-v2 tbody tr {
+  border-bottom: 1px solid var(--m-high); cursor: pointer;
+  transition: background .18s ease, transform .18s ease;
+}
+.odp-v2 tbody tr:last-child { border-bottom: none; }
+.odp-v2 tbody tr:hover { background: rgba(239,244,255,.6); transform: translateX(3px); }
+.odp-v2 td { padding: 20px 24px; font-size: 14px; color: var(--m-on); vertical-align: middle; }
+.odp-v2 .odp-nro { font-size: 13px; font-weight: 700; color: var(--m-navy); font-variant-numeric: tabular-nums; }
+.odp-v2 .odp-proj-name { font-size: 16px; color: var(--m-on); display: block; }
+.odp-v2 .odp-proj-sub  { font-size: 12px; color: var(--m-on-variant); }
+.odp-v2 .odp-count-chip {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px;
+  padding: 0 10px; border-radius: 9999px; background: var(--m-container); color: var(--m-on);
+  font-size: 12px; font-weight: 600;
+}
+
+/* Pills de estado */
+.odp-v2 .pill {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 9999px;
+  font-size: 12px; font-weight: 500; letter-spacing: .02em; white-space: nowrap;
+}
+.odp-v2 .pill.approved { background: var(--m-green-bg);        color: var(--m-green-text); }
+.odp-v2 .pill.draft    { background: var(--m-high);            color: var(--m-on-variant); }
+.odp-v2 .pill.pending  { background: rgba(254,166,25,.20);     color: var(--m-amber-text); }
+.odp-v2 .pill.rejected { background: var(--m-error-bg);        color: var(--m-error-on); }
+
+/* Chips de criticidad */
+.odp-v2 .crit { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 9999px;
+  font-size: 12px; font-weight: 500; white-space: nowrap; }
+.odp-v2 .crit i { font-size: 14px; }
+.odp-v2 .crit.urgente { background: rgba(186,26,26,.10);  color: var(--m-error); }
+.odp-v2 .crit.alta    { background: rgba(254,166,25,.12); color: var(--m-amber-text); }
+.odp-v2 .crit.normal  { background: var(--m-high);        color: var(--m-on-variant); }
+
+/* Acciones que aparecen al hover de la fila */
+.odp-v2 .odp-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  opacity: 0; transition: opacity .18s ease; }
+.odp-v2 tbody tr:hover .odp-actions { opacity: 1; }
+.odp-v2 .odp-icobtn {
+  border: none; background: none; cursor: pointer; padding: 6px; border-radius: var(--m-radius-sm);
+  color: var(--m-outline); font-size: 16px; line-height: 1; transition: background .15s ease, color .15s ease;
+}
+.odp-v2 .odp-icobtn:hover        { background: var(--m-high); color: var(--m-navy); }
+.odp-v2 .odp-icobtn.danger:hover { background: var(--m-error-bg); color: var(--m-error); }
+
+/* Empty state */
+.odp-v2 .odp-empty { text-align: center; padding: 56px 20px; color: var(--m-on-variant); }
+.odp-v2 .odp-empty i { font-size: 34px; color: var(--m-outline-var); display: block; margin-bottom: 12px; }
+
+/* Footer / paginación */
+.odp-v2 .odp-pager {
+  padding: 16px 24px; background: var(--m-low);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.odp-v2 .odp-pager-info { font-size: 12px; color: var(--m-outline); }
+.odp-v2 .odp-pager-btns { display: flex; align-items: center; gap: 6px; }
+.odp-v2 .odp-pager-btn {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--m-radius-sm); border: 1px solid var(--m-outline-var); background: transparent;
+  color: var(--m-outline); font-size: 13px; cursor: pointer; transition: background .15s ease;
+}
+.odp-v2 .odp-pager-btn:hover:not(:disabled) { background: var(--m-white); }
+.odp-v2 .odp-pager-btn.active { background: var(--m-navy); color: #fff; border-color: var(--m-navy); }
+.odp-v2 .odp-pager-btn:disabled { opacity: .4; cursor: default; }

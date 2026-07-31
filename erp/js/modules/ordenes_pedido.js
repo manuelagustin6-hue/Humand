@@ -20,99 +20,151 @@ function _blankODPItem() {
   return { rubro_id: '', tipo: '', item_desc: '', unit: '', quantity: 0, delivery_date: '' };
 }
 
-/* ────────────────────────────────────────── LIST VIEW */
+/* ────────────────────────────────────────── LIST VIEW (estilo Material — piloto) */
 function renderOrdenesPedido() {
   const requests = DB.getAll('purchaseRequests');
   const projects = DB.getAll('projects');
 
+  const nTotal    = requests.length;
+  const nDraft    = requests.filter(r => r.status === 'draft').length;
+  const nPending  = requests.filter(r => r.status === 'pending').length;
+  const nApproved = requests.filter(r => r.status === 'approved').length;
+
+  const kpi = (ico, icoClass, num, lbl, tag) => `
+    <div class="odp-kpi">
+      <div class="odp-kpi-top">
+        <div class="odp-kpi-ico ${icoClass}"><i class="fas ${ico}"></i></div>
+        ${tag || ''}
+      </div>
+      <div class="odp-kpi-num" data-odp-target="${num}">0</div>
+      <div class="odp-kpi-lbl">${lbl}</div>
+    </div>`;
+
   document.getElementById('content').innerHTML = `
-<div class="page-header">
-  <div>
-    <div class="page-title">Órdenes de Pedido</div>
-    <div class="page-subtitle">Solicitudes de materiales y servicios para obra</div>
-  </div>
-  <div class="page-actions">
-    <button class="btn btn-primary" onclick="renderODPForm()"><i class="fas fa-plus"></i> Nueva ODP</button>
-  </div>
-</div>
-
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
-  ${[
-    ['blue','fa-list-check', requests.length, 'Total ODPs'],
-    ['gray','fa-pencil', requests.filter(r=>r.status==='draft').length, 'Borrador'],
-    ['yellow','fa-clock', requests.filter(r=>r.status==='pending').length, 'Pendientes'],
-    ['green','fa-check-circle', requests.filter(r=>r.status==='approved').length, 'Aprobadas'],
-  ].map(([ic,fa,v,lbl]) =>
-    `<div class="stat-card"><div class="stat-icon ${ic}"><i class="fas ${fa}"></i></div><div>
-      <div class="stat-value">${v}</div><div class="stat-label">${lbl}</div></div></div>`
-  ).join('')}
-</div>
-
-<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
-  <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;gap:10px;flex-wrap:wrap">
-    <div class="search-input-wrap" style="flex:1;min-width:200px">
-      <i class="fas fa-search"></i>
-      <input type="text" placeholder="Buscar ODP..." oninput="filterODP(this.value)" style="font-size:13px">
+<div class="odp-v2">
+  <!-- Encabezado -->
+  <div class="odp-head">
+    <div>
+      <div class="odp-eyebrow"><i class="fas fa-receipt" style="font-size:16px"></i> Procurement</div>
+      <h1 class="odp-title">Órdenes de Pedido</h1>
+      <p class="odp-sub">Solicitudes de materiales y servicios para las obras activas. Seguí aprobaciones y fechas de entrega en un solo lugar.</p>
     </div>
-    <select class="form-control" style="width:150px;font-size:12px" onchange="filterODP(undefined,this.value)">
-      <option value="">Todos los estados</option>
-      ${Object.entries(ODP_STATUS).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
-    </select>
-    <select class="form-control" style="width:200px;font-size:12px" onchange="filterODP(undefined,undefined,this.value)">
-      <option value="">Todos los proyectos</option>
-      ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
-    </select>
+    <button class="odp-cta" onclick="renderODPForm()"><i class="fas fa-plus-circle"></i> Nueva ODP</button>
   </div>
-  <div id="odp-table-wrap">${buildODPTable(requests, projects)}</div>
+
+  <!-- KPIs -->
+  <div class="odp-bento">
+    ${kpi('fa-list-check','navy', nTotal, 'Total ODPs registradas', '<span class="odp-kpi-tag">Volumen</span>')}
+    ${kpi('fa-pen-to-square','gray', nDraft, 'Órdenes en borrador', '<span class="odp-kpi-tag">Borradores</span>')}
+    ${kpi('fa-clock','amber', nPending, 'Pendientes de aprobación',
+        nPending > 0 ? '<span class="odp-kpi-tag crit"><i class="fas fa-circle-exclamation"></i> Crítico</span>' : '<span class="odp-kpi-tag">En cola</span>')}
+    ${kpi('fa-circle-check','green', nApproved, 'Órdenes aprobadas', '<span class="odp-kpi-tag">Al día</span>')}
+  </div>
+
+  <!-- Filtros -->
+  <div class="odp-filters">
+    <div class="odp-search">
+      <i class="fas fa-magnifying-glass"></i>
+      <input class="odp-field" type="text" placeholder="Buscar por NRO, responsable o comentario..." oninput="filterODP(this.value)">
+    </div>
+    <div class="odp-filter-group">
+      <select class="odp-field" onchange="filterODP(undefined,this.value)">
+        <option value="">Todos los estados</option>
+        ${Object.entries(ODP_STATUS).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
+      </select>
+      <select class="odp-field" onchange="filterODP(undefined,undefined,this.value)">
+        <option value="">Todos los proyectos</option>
+        ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="odp-tablecard">
+    <div id="odp-table-wrap">${buildODPTable(requests, projects)}</div>
+  </div>
 </div>`;
 
   document.getElementById('breadcrumb').innerHTML = '<i class="fas fa-list-check"></i><span>Órdenes de Pedido</span>';
   window._odpFilters = { q: '', status: '', project: '' };
+  _odpAnimateCounters();
+}
+
+// Cuenta ascendente para los números de los KPIs (efecto del mockup).
+function _odpAnimateCounters() {
+  document.querySelectorAll('.odp-v2 .odp-kpi-num').forEach(function(el) {
+    var target = +el.getAttribute('data-odp-target') || 0;
+    if (target <= 0) { el.textContent = '0'; return; }
+    var steps = Math.min(target, 24), i = 0;
+    var tick = function() {
+      i++;
+      el.textContent = String(Math.min(target, Math.ceil(target * i / steps)));
+      if (i < steps) requestAnimationFrame(tick);
+      else el.textContent = String(target);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+function _odpProjSub(proj) {
+  if (!proj) return '';
+  return proj.location || proj.address || proj.ubicacion || proj.client_name || '';
 }
 
 function buildODPTable(requests, projects) {
-  if (!requests.length) return '<div class="empty-state"><i class="fas fa-list-check"></i><p>No hay órdenes de pedido. Creá la primera.</p></div>';
+  if (!requests.length) return '<div class="odp-empty"><i class="fas fa-list-check"></i><p>No hay órdenes de pedido. Creá la primera.</p></div>';
   const sorted = requests.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  return `<table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead><tr style="background:#f8f9fb;border-bottom:2px solid #e2e8f0">
-      <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Nro.</th>
-      <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Proyecto</th>
-      <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Fecha</th>
-      <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Criticidad</th>
-      <th style="padding:10px 12px;text-align:center;font-size:11px;color:#64748b;font-weight:600">Ítems</th>
-      <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Aprobador</th>
-      <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600">Estado</th>
-      <th style="padding:10px 12px;font-size:11px;color:#64748b;font-weight:600">Acciones</th>
-    </tr></thead>
-    <tbody>
-      ${sorted.map((r, idx) => {
-        const proj = projects.find(p => p.id === r.project_id);
-        const st = ODP_STATUS[r.status] || ODP_STATUS.draft;
-        const critColor = ODP_CRIT_COLOR[r.criticidad] || '#64748b';
-        const critLabel = ODP_CRITICIDAD[r.criticidad] || 'Normal';
-        const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8f9fb';
-        return `<tr style="background:${rowBg};border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="renderODPForm('${r.id}')">
-          <td style="padding:10px 12px"><strong style="color:#2563eb">${r.number}</strong></td>
-          <td style="padding:10px 12px;color:#64748b;font-size:12px">${proj ? proj.name : '—'}</td>
-          <td style="padding:10px 12px;color:#64748b;font-size:12px;white-space:nowrap">${fmtDate(r.date)}</td>
-          <td style="padding:10px 12px"><span style="font-size:11px;font-weight:600;color:${critColor}">${critLabel}</span></td>
-          <td style="padding:10px 12px;text-align:center">
-            <span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px">${(r.items||[]).filter(it=>it.item_desc||it.rubro_id).length}</span>
-          </td>
-          <td style="padding:10px 12px;color:#64748b;font-size:12px">${r.aprobador || '—'}</td>
-          <td style="padding:10px 12px">
-            <span style="background:${st.bg};color:${st.color};border:1px solid ${st.border};font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:.4px">${st.label}</span>
-          </td>
-          <td style="padding:10px 12px;white-space:nowrap" onclick="event.stopPropagation()">
-            <div class="table-actions">
-              <button class="btn btn-sm btn-primary" onclick="renderODPForm('${r.id}')"><i class="fas fa-eye"></i> Ver</button>
-              <button class="btn-ghost btn btn-sm danger" onclick="deleteODP('${r.id}')"><i class="fas fa-trash"></i></button>
-            </div>
-          </td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-  </table>`;
+  const critClass = { urgente: 'urgente', alta: 'alta', normal: 'normal' };
+  const critIcon  = { urgente: 'fa-circle-exclamation', alta: 'fa-bolt', normal: 'fa-clock' };
+  const statusClass = { approved: 'approved', draft: 'draft', pending: 'pending', rejected: 'rejected' };
+
+  const rows = sorted.map(r => {
+    const proj = projects.find(p => p.id === r.project_id);
+    const st = ODP_STATUS[r.status] || ODP_STATUS.draft;
+    const stCls = statusClass[r.status] || 'draft';
+    const crit = r.criticidad || 'normal';
+    const critLabel = (ODP_CRITICIDAD[crit] || 'Normal').replace(/[▲‼]\s*/g, '');
+    const nItems = (r.items || []).filter(it => it.item_desc || it.rubro_id).length;
+    const sub = _odpProjSub(proj);
+    const actions = r.status === 'pending'
+      ? '<button class="odp-icobtn" title="Aprobaciones" onclick="event.stopPropagation();navigate(\'aprobaciones\')"><i class="fas fa-clipboard-check"></i></button>' +
+        '<button class="odp-icobtn" title="Ver" onclick="event.stopPropagation();renderODPForm(\'' + r.id + '\')"><i class="fas fa-eye"></i></button>'
+      : '<button class="odp-icobtn" title="Ver / editar" onclick="event.stopPropagation();renderODPForm(\'' + r.id + '\')"><i class="fas fa-eye"></i></button>' +
+        (r.status === 'approved' ? '<button class="odp-icobtn" title="PDF" onclick="event.stopPropagation();printODP(\'' + r.id + '\')"><i class="fas fa-file-pdf"></i></button>' : '') +
+        '<button class="odp-icobtn danger" title="Eliminar" onclick="event.stopPropagation();deleteODP(\'' + r.id + '\')"><i class="fas fa-trash"></i></button>';
+
+    return `<tr onclick="renderODPForm('${r.id}')">
+      <td><span class="odp-nro">${escapeHtml(r.number || '—')}</span></td>
+      <td>
+        <span class="odp-proj-name">${escapeHtml(proj ? proj.name : '—')}</span>
+        ${sub ? `<span class="odp-proj-sub">${escapeHtml(sub)}</span>` : ''}
+      </td>
+      <td style="white-space:nowrap">${fmtDate(r.date)}</td>
+      <td><span class="crit ${critClass[crit] || 'normal'}"><i class="fas ${critIcon[crit] || 'fa-clock'}"></i> ${critLabel.toUpperCase()}</span></td>
+      <td class="tc"><span class="odp-count-chip">${nItems}</span></td>
+      <td><span class="pill ${stCls}">${st.label}</span></td>
+      <td class="tr"><div class="odp-actions">${actions}</div></td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="odp-scroll">
+      <table>
+        <thead><tr>
+          <th>Nro.</th><th>Proyecto</th><th>Fecha Emisión</th><th>Criticidad</th>
+          <th class="tc">Ítems</th><th>Estado</th><th class="tr">Acciones</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="odp-pager">
+      <span class="odp-pager-info">Mostrando ${sorted.length} ${sorted.length === 1 ? 'orden' : 'órdenes'}</span>
+      <div class="odp-pager-btns">
+        <button class="odp-pager-btn" disabled><i class="fas fa-chevron-left"></i></button>
+        <button class="odp-pager-btn active">1</button>
+        <button class="odp-pager-btn" disabled><i class="fas fa-chevron-right"></i></button>
+      </div>
+    </div>`;
 }
 
 window._odpFilters = { q: '', status: '', project: '' };
