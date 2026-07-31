@@ -6,6 +6,7 @@ function renderProjects() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-city" style="font-size:14px"></i> Portafolio</div>
     <div class="page-title">Proyectos</div>
     <div class="page-subtitle">Gestión del portafolio de obras e inmuebles</div>
   </div>
@@ -36,7 +37,7 @@ function renderProjects() {
   <button class="btn btn-secondary" onclick="toggleProjectView()"><i class="fas fa-th-large"></i> Vista</button>
 </div>
 
-<div id="projects-grid" class="grid-auto">
+<div id="projects-grid" class="pcard-grid">
   ${renderProjectCards(projects)}
 </div>
   `;
@@ -47,58 +48,70 @@ function renderProjects() {
 function renderProjectCards(projects) {
   if (!projects.length) return `<div class="empty-state"><i class="fas fa-building"></i><p>No hay proyectos. Creá el primero.</p></div>`;
 
+  const typeIco = { residential:'fa-building', commercial:'fa-store', industrial:'fa-industry', infrastructure:'fa-road' };
+  const stMap = {
+    active:    { lbl:'Activo',        dot:'var(--success)' },
+    planning:  { lbl:'Planificación', dot:'var(--primary)' },
+    paused:    { lbl:'Pausado',       dot:'var(--warning)' },
+    completed: { lbl:'Completado',    dot:'var(--text-light)' },
+  };
+
   return projects.map(p => {
     const tasks = DB.getAll('ganttTasks').filter(t => t.project_id === p.id);
     const progress = tasks.length ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / tasks.length) : 0;
     const invoiced = DB.getAll('invoices').filter(i => i.project_id === p.id).reduce((s, i) => s + (i.total || 0), 0);
     const daysLeft = p.end_date ? daysBetween(todayStr(), p.end_date) : null;
-    const daysLeftLabel = daysLeft == null ? 'Sin fecha de fin' : daysLeft > 0 ? `${daysLeft} días restantes` : daysLeft === 0 ? 'Vence hoy' : `${Math.abs(daysLeft)} días de atraso`;
+    const daysLeftLabel = daysLeft == null ? '' : daysLeft > 0 ? `${daysLeft} días restantes` : daysLeft === 0 ? 'Vence hoy' : `${Math.abs(daysLeft)} días de atraso`;
+
+    const ptype = p.type || 'residential';
+    const st = stMap[p.status] || stMap.planning;
+    const ringColor = progress >= 100 ? 'var(--success)' : progress > 60 ? 'var(--primary)' : progress > 30 ? 'var(--warning)' : 'var(--danger)';
+    const dashOffset = (100.5 * (1 - progress / 100)).toFixed(1);   // r=16 → circunferencia ≈ 100.5
 
     return `
-<div class="project-card" onclick="openProjectDetail('${p.id}')">
-  <div class="project-card-header">
-    <div>
-      <div class="project-card-title">${p.name}</div>
-      <div class="project-card-meta"><i class="fas fa-user"></i> ${p.client}</div>
-      <div class="project-card-meta"><i class="fas fa-map-marker-alt"></i> ${p.address}</div>
-    </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-      ${statusBadge(p.status)}
-      ${projectTypeBadge(p.type)}
-    </div>
+<div class="pcard" onclick="openProjectDetail('${p.id}')">
+  <div class="pcard-head ${ptype}">
+    <i class="fas ${typeIco[ptype] || 'fa-building'} pcard-typeico"></i>
+    <span class="pcard-status"><span class="pcard-dot" style="background:${st.dot}"></span>${st.lbl}</span>
   </div>
+  <div class="pcard-body">
+    <div class="pcard-titlerow">
+      <div style="min-width:0">
+        <div class="pcard-title" title="${escapeHtml(p.name||'')}">${escapeHtml(p.name||'')}</div>
+        ${p.client ? `<div class="pcard-loc"><i class="fas fa-user"></i> ${escapeHtml(p.client)}</div>` : ''}
+        ${p.address ? `<div class="pcard-loc"><i class="fas fa-location-dot"></i> ${escapeHtml(p.address)}</div>` : ''}
+      </div>
+      <div class="pcard-ring" title="Avance físico ${progress}%">
+        <svg width="52" height="52" viewBox="0 0 40 40" style="transform:rotate(-90deg)">
+          <circle cx="20" cy="20" r="16" fill="none" stroke="var(--border)" stroke-width="4"></circle>
+          <circle cx="20" cy="20" r="16" fill="none" stroke="${ringColor}" stroke-width="4" stroke-linecap="round" stroke-dasharray="100.5" stroke-dashoffset="${dashOffset}"></circle>
+        </svg>
+        <span class="pcard-ring-num">${progress}%</span>
+      </div>
+    </div>
 
-  <div style="margin:12px 0">
-    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-      <span style="font-size:12px;color:var(--text-muted)">Avance físico</span>
-      <span style="font-size:12px;font-weight:600">${progress}%</span>
+    <div class="pcard-dates">
+      <div>
+        <div class="pcard-date-lbl">Inicio</div>
+        <div class="pcard-date-val"><i class="fas fa-calendar-day" style="color:var(--text-light)"></i> ${p.start_date ? fmtDate(p.start_date) : '—'}</div>
+      </div>
+      <div>
+        <div class="pcard-date-lbl">Fin estimado</div>
+        <div class="pcard-date-val ${daysLeft != null && daysLeft < 0 ? 'text-danger' : ''}"><i class="fas fa-calendar-check" style="color:var(--text-light)"></i> ${p.end_date ? fmtDate(p.end_date) : '—'}</div>
+      </div>
     </div>
-    <div class="progress-bar"><div class="progress-fill ${progress >= 100 ? 'green' : progress > 60 ? '' : progress > 30 ? 'yellow' : 'red'}" style="width:${progress}%"></div></div>
-  </div>
+    ${daysLeftLabel ? `<div style="font-size:11px;margin-top:-6px;color:${daysLeft < 0 ? 'var(--danger)' : 'var(--text-muted)'}">${daysLeftLabel}</div>` : ''}
 
-  <div class="project-card-stats">
-    <div class="project-stat-item">
-      <div class="project-stat-val">${fmtMoney(p.budget)}</div>
-      <div class="project-stat-lbl">Presupuesto</div>
+    <div class="pcard-stats">
+      <div><div class="pcard-stat-lbl">Presupuesto</div><div class="pcard-stat-val">${fmtMoney(p.budget)}</div></div>
+      <div><div class="pcard-stat-lbl">Facturado</div><div class="pcard-stat-val">${fmtMoney(invoiced)}</div></div>
     </div>
-    <div class="project-stat-item">
-      <div class="project-stat-val">${fmtMoney(invoiced)}</div>
-      <div class="project-stat-lbl">Facturado</div>
-    </div>
-    <div class="project-stat-item">
-      <div class="project-stat-val">${fmtDate(p.start_date)}</div>
-      <div class="project-stat-lbl">Inicio</div>
-    </div>
-    <div class="project-stat-item">
-      <div class="project-stat-val ${daysLeft < 0 ? 'text-danger' : ''}" style="font-size:11px">${daysLeftLabel}</div>
-      <div class="project-stat-lbl">Fin: ${fmtDate(p.end_date)}</div>
-    </div>
-  </div>
 
-  <div style="display:flex;gap:6px;margin-top:12px" onclick="event.stopPropagation()">
-    <button class="btn btn-sm btn-secondary flex-1" onclick="openProjectDetail('${p.id}')"><i class="fas fa-eye"></i> Ver</button>
-    <button class="btn btn-sm btn-secondary flex-1" onclick="openProjectForm('${p.id}')"><i class="fas fa-edit"></i> Editar</button>
-    <button class="btn btn-ghost btn-sm danger" onclick="deleteProject('${p.id}')"><i class="fas fa-trash"></i></button>
+    <div class="pcard-actions" onclick="event.stopPropagation()">
+      <button class="btn btn-sm btn-secondary" style="flex:1" onclick="openProjectDetail('${p.id}')"><i class="fas fa-eye"></i> Ver</button>
+      <button class="btn btn-sm btn-secondary" style="flex:1" onclick="openProjectForm('${p.id}')"><i class="fas fa-edit"></i> Editar</button>
+      <button class="btn btn-ghost btn-sm danger" onclick="deleteProject('${p.id}')"><i class="fas fa-trash"></i></button>
+    </div>
   </div>
 </div>`;
   }).join('');
@@ -279,7 +292,7 @@ function deleteProject(id) {
 function toggleProjectView() {
   const grid = document.getElementById('projects-grid');
   if (!grid) return;
-  if (grid.classList.contains('grid-auto')) {
+  if (grid.classList.contains('pcard-grid')) {
     grid.className = '';
     grid.style.cssText = '';
     grid.innerHTML = `<div class="card"><div class="card-body" style="padding:0"><div class="table-wrap"><table>
@@ -300,7 +313,7 @@ function toggleProjectView() {
       </tr>`).join('')}</tbody>
     </table></div></div></div>`;
   } else {
-    grid.className = 'grid-auto';
+    grid.className = 'pcard-grid';
     grid.innerHTML = renderProjectCards(DB.getAll('projects'));
   }
 }

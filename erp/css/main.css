@@ -506,6 +506,50 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   .section-label { margin: 16px 0 10px; }
 }
 
+/* ============================================================
+   V2 — Tarjetas de Proyecto (estilo mockup, solo data real)
+   ============================================================ */
+.pcard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+.pcard {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; box-shadow: var(--shadow); transition: var(--transition); cursor: pointer;
+  display: flex; flex-direction: column;
+}
+.pcard:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.pcard-head {
+  position: relative; height: 92px; display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.pcard-head.residential    { background: linear-gradient(135deg, #2563eb, #3b82f6); }
+.pcard-head.commercial     { background: linear-gradient(135deg, #7c3aed, #a855f7); }
+.pcard-head.industrial     { background: linear-gradient(135deg, #0e7490, #06b6d4); }
+.pcard-head.infrastructure { background: linear-gradient(135deg, #b45309, #f59e0b); }
+.pcard-typeico { font-size: 40px; opacity: .92; }
+.pcard-status {
+  position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.92); color: #0b1c30; padding: 4px 11px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
+.pcard-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.pcard-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.pcard-titlerow { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.pcard-title { font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard-loc { font-size: 12px; color: var(--text-muted); margin-top: 3px; display: flex; align-items: center; gap: 5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcard-loc i { color: var(--text-light); font-size: 11px; flex-shrink: 0; }
+.pcard-ring { position: relative; width: 52px; height: 52px; flex-shrink: 0; }
+.pcard-ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: var(--text); }
+.pcard-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  border-top: 1px solid var(--border-light); border-bottom: 1px solid var(--border-light); padding: 12px 0; }
+.pcard-date-lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-light); margin-bottom: 4px; }
+.pcard-date-val { font-size: 13px; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.pcard-stats { display: flex; gap: 20px; }
+.pcard-stat-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-light); margin-bottom: 2px; }
+.pcard-stat-val { font-size: 14px; font-weight: 700; color: var(--text); }
+.pcard-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
+
 /* ===== TABLES ===== */
 .table-wrap {
   overflow-x: auto;
