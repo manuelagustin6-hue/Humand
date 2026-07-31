@@ -440,6 +440,63 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   .page-title { font-size: 20px; }
 }
 
+/* ============================================================
+   V2 — Primitivos reutilizables del rediseño Material (mockup).
+   Se usan en pantallas rearmadas (Dashboard, etc.) sin scoping.
+   ============================================================ */
+.page-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--text-light); font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .18em; margin-bottom: 6px;
+}
+.section-label {
+  display: flex; align-items: center; gap: 10px; margin: 22px 0 12px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-muted);
+}
+.section-label i { color: var(--primary); font-size: 13px; }
+
+/* KPI bento reutilizable */
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px; margin-bottom: 8px;
+}
+.kpi-card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; box-shadow: var(--shadow); transition: var(--transition);
+}
+.kpi-card.clickable { cursor: pointer; }
+.kpi-card:hover { box-shadow: var(--shadow-md); background: var(--bg-subtle); }
+.kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+.kpi-ico {
+  width: 44px; height: 44px; border-radius: 9999px;
+  display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+}
+.kpi-ico.blue   { background: var(--primary-light); color: var(--primary); }
+.kpi-ico.green  { background: var(--success-light); color: var(--success); }
+.kpi-ico.yellow { background: var(--warning-light); color: #b45309; }
+.kpi-ico.red    { background: var(--danger-light);  color: var(--danger); }
+.kpi-ico.cyan   { background: var(--info-light);    color: #0e7490; }
+.kpi-ico.purple { background: var(--purple-light);  color: var(--purple); }
+.kpi-tag { font-size: 11px; font-weight: 600; letter-spacing: .02em; text-align: right; color: var(--text-light); }
+.kpi-tag.up   { color: var(--success); }
+.kpi-tag.down { color: var(--danger); }
+.kpi-num { font-size: 28px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1;
+  font-variant-numeric: tabular-nums; color: var(--text); }
+.kpi-num.pos { color: var(--success); }
+.kpi-num.neg { color: var(--danger); }
+.kpi-lbl { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+@media (max-width: 640px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
+  .kpi-card { padding: 13px; }
+  .kpi-top  { margin-bottom: 10px; }
+  .kpi-ico  { width: 36px; height: 36px; font-size: 15px; }
+  .kpi-num  { font-size: 19px; }
+  .kpi-lbl  { font-size: 11px; }
+  .kpi-tag  { font-size: 10px; }
+  .section-label { margin: 16px 0 10px; }
+}
+
 /* ===== TABLES ===== */
 .table-wrap {
   overflow-x: auto;
