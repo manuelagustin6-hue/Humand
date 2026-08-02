@@ -360,12 +360,14 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px 20px;
-  display: flex; gap: 14px; align-items: flex-start;
+  display: flex; flex-direction: column; gap: 14px; align-items: flex-start;
   box-shadow: var(--shadow);
   transition: var(--transition);
   position: relative;
   overflow: hidden;
 }
+/* el bloque de texto (valor + label + delta) va debajo del ícono */
+.stat-card > div:last-child { width: 100%; min-width: 0; }
 .stat-card::after {
   content: '';
   position: absolute; top: 0; left: 0; right: 0;

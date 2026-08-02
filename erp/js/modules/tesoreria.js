@@ -100,6 +100,7 @@ function renderTesoreria() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-landmark" style="font-size:14px"></i> Finanzas</div>
     <div class="page-title">Tesorería</div>
     <div class="page-subtitle">Gestión de cuentas bancarias, flujo de caja e ingresos/egresos</div>
   </div>

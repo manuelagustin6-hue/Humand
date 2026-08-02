@@ -243,7 +243,8 @@ function renderCuentasProv() {
 
   document.getElementById('content').innerHTML =
     '<div class="page-header"><div>' +
-      '<div class="page-title"><i class="fas fa-building-columns" style="margin-right:8px;color:var(--primary)"></i>Cuentas Corrientes Proveedores</div>' +
+      '<div class="page-eyebrow"><i class="fas fa-building-columns" style="font-size:14px"></i> Proveedores</div>' +
+      '<div class="page-title">Cuentas Corrientes Proveedores</div>' +
       '<div class="page-subtitle">Saldos, facturas y pagos por proveedor</div>' +
     '</div></div>' +
     rsSelectorHtml('cprov', _multiCur ? '<span style="font-size:11px;color:var(--warning)"><i class="fas fa-triangle-exclamation"></i> Saldos en varias monedas — filtrá por razón social para totales exactos</span>' : '') +
@@ -708,7 +709,8 @@ function renderCuentasCli() {
 
   document.getElementById('content').innerHTML =
     '<div class="page-header"><div>' +
-      '<div class="page-title"><i class="fas fa-users-between-lines" style="margin-right:8px;color:var(--primary)"></i>Cuentas Corrientes Clientes</div>' +
+      '<div class="page-eyebrow"><i class="fas fa-users-between-lines" style="font-size:14px"></i> Clientes</div>' +
+      '<div class="page-title">Cuentas Corrientes Clientes</div>' +
       '<div class="page-subtitle">Ventas de unidades, condiciones de pago y cobranzas</div>' +
     '</div>' +
     '<button class="btn btn-primary" onclick="ccliNuevaCuenta()"><i class="fas fa-plus"></i> Nueva Cuenta Corriente</button>' +

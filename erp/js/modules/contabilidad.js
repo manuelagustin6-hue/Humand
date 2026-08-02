@@ -123,6 +123,7 @@ function renderContabilidad() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-scale-balanced" style="font-size:14px"></i> Contable</div>
     <div class="page-title">Contabilidad</div>
     <div class="page-subtitle">Libro diario, plan de cuentas, balance y estado de resultados</div>
   </div>
