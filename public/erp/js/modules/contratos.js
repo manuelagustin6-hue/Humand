@@ -37,6 +37,7 @@ function renderContratos() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-file-contract" style="font-size:14px"></i> Obra</div>
     <div class="page-title">Contratos de Obra</div>
     <div class="page-subtitle">Contratos con contratistas, partidas de obra, certificaciones y previsión financiera</div>
   </div>

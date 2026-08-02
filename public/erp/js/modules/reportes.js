@@ -13,6 +13,7 @@ function renderReportes() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-chart-line" style="font-size:14px"></i> Análisis</div>
     <div class="page-title">Reportes</div>
     <div class="page-subtitle">Informes gerenciales, contables y de control de obra</div>
   </div>

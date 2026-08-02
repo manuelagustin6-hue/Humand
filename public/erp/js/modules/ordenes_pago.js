@@ -17,6 +17,7 @@ function renderOrdenesPago() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-file-invoice-dollar" style="font-size:14px"></i> Proveedores</div>
     <div class="page-title">Órdenes de Pago</div>
     <div class="page-subtitle">Emisión y control de pagos a proveedores con retenciones</div>
   </div>

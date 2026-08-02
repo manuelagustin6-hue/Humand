@@ -6,6 +6,7 @@ function renderPresupuesto() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-calculator" style="font-size:14px"></i> Obra</div>
     <div class="page-title">Cómputo y Presupuesto</div>
     <div class="page-subtitle">Planilla de cómputo métrico, análisis de precios y presupuesto de obra</div>
   </div>

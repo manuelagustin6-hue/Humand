@@ -40,6 +40,7 @@ function renderNotas() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-file-invoice" style="font-size:14px"></i> Comprobantes</div>
     <div class="page-title">Notas de Crédito / Débito</div>
     <div class="page-subtitle">Gestión de ajustes y correcciones de comprobantes</div>
   </div>
