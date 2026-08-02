@@ -254,5 +254,39 @@ const { withApp, check, near, summary } = require('./harness');
     check('AB: libro B = 40% del total', near(r.ab[1].total, 48.4) && near(r.ab[1].iva, 8.4) && near(r.ab[1].imp[0], 40));
   }
 
+  // ---- 15) Import Excel de ítems (ODP): matching + parseo ----
+  console.log('\n▶ Import Excel de ítems (ODP)');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js', 'modules/ordenes_pedido.js'], () => {
+      DB.insert('rubros', { id: 'r1', code: 'EST', name: 'Estructura', active: true });
+      DB.insert('rubros', { id: 'r2', code: 'MAM', name: 'Mampostería', active: true });
+      window._odpImport = { headers: ['Rubro','Tipo','Item','Unidad','Cant','Fecha'], rows: [],
+        map: { rubro: 0, tipo: 1, item_desc: 2, unit: 3, quantity: 4, delivery_date: 5 } };
+      var it = _odpImportRowToItem(['Estructura', 'Material', 'Hierro del 8', 'un', '450', '12/06/2026']);
+      return {
+        dSlash: _odpParseImpDate('12/06/2026'),
+        dISO: _odpParseImpDate('2026-06-12'),
+        dEmpty: _odpParseImpDate(''),
+        rubroByName: _odpMatchRubro('Estructura'),
+        rubroByCode: _odpMatchRubro('EST'),
+        rubroMiss: _odpMatchRubro('Inexistente'),
+        tipoExact: _odpMatchTipo('Material'),
+        tipoCI: _odpMatchTipo('servicio'),
+        it: it,
+      };
+    });
+    check('fecha dd/mm/yyyy → yyyy-mm-dd', r.dSlash === '2026-06-12');
+    check('fecha yyyy-mm-dd se respeta', r.dISO === '2026-06-12');
+    check('fecha vacía → ""', r.dEmpty === '');
+    check('rubro por nombre → r1', r.rubroByName === 'r1');
+    check('rubro por código → r1', r.rubroByCode === 'r1');
+    check('rubro inexistente → ""', r.rubroMiss === '');
+    check('tipo exacto', r.tipoExact === 'Material');
+    check('tipo case-insensitive', r.tipoCI === 'Servicio');
+    check('fila → ítem (rubro/tipo/desc/unid/cant/fecha)',
+      r.it.rubro_id === 'r1' && r.it.tipo === 'Material' && r.it.item_desc === 'Hierro del 8' &&
+      r.it.unit === 'un' && r.it.quantity === 450 && r.it.delivery_date === '2026-06-12');
+  }
+
   summary();
 })();
