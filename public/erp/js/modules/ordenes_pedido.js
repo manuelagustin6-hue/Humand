@@ -220,6 +220,42 @@ function renderODPForm(id) {
        <button class="btn btn-primary" style="font-size:13px" onclick="licNueva('${id}')"><i class="fas fa-gavel"></i> Licitar</button>`
     : `${pdfBtn}<button class="btn btn-secondary" style="font-size:13px" onclick="saveODP('${id}',false)"><i class="fas fa-save"></i> Guardar</button>`;
 
+  // Panel lateral (data real): estado del flujo + presupuesto del proyecto.
+  const _prj = DB.getById('projects', (odp ? odp.project_id : activeProjectId) || '') || null;
+  const _budget = _prj ? (_prj.budget || 0) : 0;
+  const _usedCost = _prj ? DB.getAll('actualCosts').filter(a => a.project_id === _prj.id).reduce((s, a) => s + (a.amount || 0), 0) : 0;
+  const _usedPct = _budget > 0 ? Math.min(100, Math.round(_usedCost / _budget * 100)) : 0;
+  const _avail = _budget - _usedCost;
+  const _s2 = (status === 'pending') ? 'active' : (status === 'approved' || status === 'rejected') ? 'done' : 'wait';
+  const _s3 = status === 'approved' ? 'done' : status === 'rejected' ? 'reject' : 'wait';
+  const _asideHtml = `
+<aside class="odpf-aside">
+  <div class="odpf-panel">
+    <div class="odpf-panel-title">Estado del flujo</div>
+    <div class="odpf-step done"><div class="odpf-step-num"><i class="fas fa-check"></i></div><div>
+      <div class="odpf-step-lbl">Creación</div><div class="odpf-step-sub">${odp && odp.responsable ? 'Por ' + escapeHtml(odp.responsable) : 'Borrador iniciado'}</div></div></div>
+    <div class="odpf-conn"></div>
+    <div class="odpf-step ${_s2}"><div class="odpf-step-num">${_s2 === 'done' ? '<i class="fas fa-check"></i>' : '2'}</div><div>
+      <div class="odpf-step-lbl">Enviado a aprobación</div><div class="odpf-step-sub">${_s2 === 'wait' ? 'Pendiente' : 'Enviado'}</div></div></div>
+    <div class="odpf-conn"></div>
+    <div class="odpf-step ${_s3}"><div class="odpf-step-num">${_s3 === 'done' ? '<i class="fas fa-check"></i>' : _s3 === 'reject' ? '<i class="fas fa-xmark"></i>' : '3'}</div><div>
+      <div class="odpf-step-lbl">${status === 'rejected' ? 'Rechazada' : 'Aprobada'}</div>
+      <div class="odpf-step-sub">${status === 'approved' ? 'Aprobada' : status === 'rejected' ? 'Rechazada' : 'Pendiente'}</div></div></div>
+  </div>
+  ${_prj ? `
+  <div class="odpf-budget">
+    <div class="lbl">Presupuesto del proyecto</div>
+    <div class="amt">${fmtMoney(_budget)}</div>
+    <div class="bar"><div style="width:${_usedPct}%"></div></div>
+    <div class="row"><span>Gastado: ${_usedPct}%</span><span>Disp.: ${fmtMoney(_avail)}</span></div>
+    <div style="font-size:11px;opacity:.72;margin-top:12px"><i class="fas fa-diagram-project"></i> ${escapeHtml(_prj.name)}</div>
+  </div>` : `
+  <div class="odpf-panel" style="text-align:center;color:var(--text-muted);font-size:12px;padding:22px 18px">
+    <i class="fas fa-diagram-project" style="font-size:22px;opacity:.4;display:block;margin-bottom:8px"></i>
+    Seleccioná un proyecto para ver su presupuesto.
+  </div>`}
+</aside>`;
+
   document.getElementById('content').innerHTML = `
 <!-- Top bar -->
 <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 16px;flex-wrap:wrap;gap:10px">
@@ -232,6 +268,8 @@ function renderODPForm(id) {
   <div style="display:flex;gap:8px">${actionBtns}</div>
 </div>
 
+<div class="odpf-grid">
+  <div>
 <!-- Header info card -->
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;box-shadow:0 1px 4px rgba(0,0,0,.04);margin-bottom:14px">
   <div class="form-grid form-grid-2" style="gap:18px 24px">
@@ -295,6 +333,9 @@ function renderODPForm(id) {
   <div style="padding:8px 14px;background:#f8fafc;border-top:1px solid #f1f5f9;font-size:10px;color:#94a3b8">
     <i class="fas fa-info-circle"></i> Hacé clic en cualquier celda para editar. Los cambios se guardan al presionar <strong>Guardar</strong>.
   </div>
+</div>
+  </div>
+  ${_asideHtml}
 </div>
   `;
 
