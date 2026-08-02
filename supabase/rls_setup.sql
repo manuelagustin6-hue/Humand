@@ -298,3 +298,36 @@ create policy comprobantes_delete on storage.objects
 -- alter table public.erp_data disable row level security;
 -- alter table storage.objects  disable row level security;   -- (si la activaste)
 -- -- Las policies quedan creadas pero inertes mientras RLS esté OFF.
+
+
+-- ============================================================================
+--  EXTRA — Acceso multi-razón-social en un solo RPC (erp_set_access)
+--  Otorga (o revoca) a un usuario acceso a TODAS las razones sociales del grupo
+--  de una vez. Lo llama la app al crear/editar/borrar usuarios, para no depender
+--  de cuál empresa esté activa. El acceso fino por obra lo maneja la app
+--  (user.project_ids). Correr una vez.
+-- ============================================================================
+create or replace function public.erp_set_access(p_email text, p_role text, p_active boolean)
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_uid uuid; v_count int := 0;
+begin
+  -- solo un admin (de alguna empresa) puede gestionar accesos
+  if not exists (select 1 from public.erp_membership m where m.user_id = auth.uid() and m.role = 'admin') then
+    raise exception 'No autorizado';
+  end if;
+  select id into v_uid from auth.users where lower(email) = lower(p_email) limit 1;
+  if v_uid is null then return -1; end if;         -- todavía sin cuenta de Auth
+  if p_active is false then
+    delete from public.erp_membership where user_id = v_uid;   -- baja total
+    return 0;
+  end if;
+  insert into public.erp_membership (user_id, company_id, role, can_write)
+  select v_uid, c.company_id,
+         coalesce(nullif(p_role,''),'viewer'),
+         coalesce(nullif(p_role,''),'viewer') <> 'viewer'
+  from (select distinct company_id from public.erp_data) c
+  on conflict (user_id, company_id) do update
+     set role = excluded.role, can_write = excluded.can_write;
+  get diagnostics v_count = row_count;
+  return v_count;
+end; $$;
