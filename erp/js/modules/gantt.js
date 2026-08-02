@@ -6,6 +6,7 @@ function renderGantt() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-diagram-project" style="font-size:14px"></i> Obra</div>
     <div class="page-title">Cronograma Gantt</div>
     <div class="page-subtitle">Planificación y seguimiento de tareas por proyecto</div>
   </div>

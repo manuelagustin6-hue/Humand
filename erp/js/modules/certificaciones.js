@@ -16,6 +16,7 @@ function renderCertificaciones() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-file-signature" style="font-size:14px"></i> Obra</div>
     <div class="page-title">Certificaciones de Obra</div>
     <div class="page-subtitle">Todas las certificaciones del grupo. Se crean desde cada contrato.</div>
   </div>

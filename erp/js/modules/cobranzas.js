@@ -24,6 +24,7 @@ function renderCobranzas() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-hand-holding-dollar" style="font-size:14px"></i> Clientes</div>
     <div class="page-title">Cobranzas</div>
     <div class="page-subtitle">Gestión de cobros, aging de deudores y seguimiento de pagos</div>
   </div>

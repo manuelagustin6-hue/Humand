@@ -41,6 +41,7 @@ function renderLibroIVA() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-book" style="font-size:14px"></i> Impuestos</div>
     <div class="page-title">Libro IVA Compras y Ventas</div>
     <div class="page-subtitle">Registros para declaración jurada AFIP — Período fiscal</div>
   </div>

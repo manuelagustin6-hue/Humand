@@ -52,6 +52,7 @@ function renderRetenciones() {
   document.getElementById('content').innerHTML = `
 <div class="page-header">
   <div>
+    <div class="page-eyebrow"><i class="fas fa-percentage" style="font-size:14px"></i> Impuestos</div>
     <div class="page-title">Retenciones</div>
     <div class="page-subtitle">Reglas de retención impositiva, historial y exportación ARCA</div>
   </div>
