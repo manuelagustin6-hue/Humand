@@ -1,5 +1,5 @@
 -- ============================================================================
---  ConstructERP — Row Level Security (RLS) + control de acceso server-side
+--  Rise — Row Level Security (RLS) + control de acceso server-side
 -- ============================================================================
 --  Objetivo: que un usuario logueado SOLO pueda leer/escribir datos de las
 --  empresas a las que pertenece, aplicado por el servidor (Postgres), no por
