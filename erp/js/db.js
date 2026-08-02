@@ -356,19 +356,41 @@ const DB = {
   _invalidateCache: function() { this._cache = null; this._cacheKey = null; },
 
   _defaultUsers() {
-    // Comp-specific defaults keyed by company id
-    var byCompany = {
-      'comp-002': [
-        { id: 'usr-uy-001', name: 'Administrador UY',  email: 'admin@isur.com.uy',   role: 'admin',           active: true,  password: null, last_login: null, created_at: now() },
-        { id: 'usr-uy-002', name: 'Gerente de Obra UY', email: 'gerente@isur.com.uy', role: 'project_manager', active: true,  password: null, last_login: null, created_at: now() },
-      ],
-    };
-    return byCompany[this._companyId] || [
-      { id: 'usr-001', name: 'Administrador',   email: 'admin@constructerp.com',     role: 'admin',           active: true,  password: null, last_login: null, created_at: now() },
-      { id: 'usr-002', name: 'Gerente de Obra', email: 'gerente@constructerp.com',   role: 'project_manager', active: true,  password: null, last_login: null, created_at: now() },
-      { id: 'usr-003', name: 'Contador',        email: 'contador@constructerp.com',  role: 'accountant',      active: true,  password: null, last_login: null, created_at: now() },
-      { id: 'usr-004', name: 'Inspector',       email: 'inspector@constructerp.com', role: 'inspector',       active: true,  password: null, last_login: null, created_at: now() },
-    ];
+    // Sin usuarios demo sembrados: en una instalación real, los usuarios se crean
+    // desde Configuración → Usuarios (o se migran del modelo per-empresa). Devolver
+    // vacío evita que reaparezcan cuentas de ejemplo al re-migrar o re-seedear.
+    return [];
+  },
+
+  // Limpieza única: borra cuentas demo (dominios de ejemplo) del store global y de
+  // los blobs por empresa (la fuente de re-migración), y sincroniza. Corre una sola
+  // vez por navegador (flag). Idempotente y seguro: solo toca los dominios demo.
+  _purgeDemoUsers() {
+    try {
+      if (localStorage.getItem('erp_demo_purged_v2')) return;
+      var DEMO = /@(constructerp\.com|isur\.com\.uy)$/i;
+      var changedGlobal = false;
+      var g = this.getGlobal();
+      if (g && g.users && g.users.length) {
+        var before = g.users.length;
+        g.users = g.users.filter(function (u) { return !(u && u.email && DEMO.test(u.email)); });
+        if (g.users.length !== before) { this.saveGlobal(g); changedGlobal = true; }
+      }
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && /^erp_company_.+_v1$/.test(key)) {
+          try {
+            var blob = JSON.parse(localStorage.getItem(key) || '{}');
+            if (blob.users && blob.users.length) {
+              var b2 = blob.users.filter(function (u) { return !(u && u.email && DEMO.test(u.email)); });
+              if (b2.length !== blob.users.length) { blob.users = b2; localStorage.setItem(key, JSON.stringify(blob)); }
+            }
+          } catch (e) {}
+        }
+      }
+      localStorage.setItem('erp_demo_purged_v2', '1');
+      if (changedGlobal) { this._invalidateCache && this._invalidateCache(); }
+    } catch (e) {}
   },
 
   save(data) {
@@ -674,6 +696,7 @@ const DB = {
   // (empresas). El control fino es por proyecto (user.project_ids). Se guardan en
   // el store global (compartido y sincronizado como _global), no por empresa.
   _globalUsers: function() {
+    this._purgeDemoUsers();   // limpieza única de cuentas demo
     var g = this.getGlobal();
     if (!g.users) { g.users = this._migrateUsersToGlobal(); this.saveGlobal(g); }
     return g.users;
