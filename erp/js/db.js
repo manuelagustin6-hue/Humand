@@ -165,6 +165,20 @@ var _SUPA = {
     } catch(e) {}
   },
 
+  // Membresía (RLS) multi-razón-social: otorga (active=true) o revoca (active=false)
+  // el acceso de un usuario a TODAS las razones sociales del grupo de una sola vez.
+  // Llama al RPC erp_set_access (solo admins). No-op si el RPC no está aplicado.
+  // El acceso fino por obra lo maneja la app con user.project_ids.
+  setAccess: function(email, role, active) {
+    if (!this.session) return;
+    try {
+      fetch(this.URL + '/rest/v1/rpc/erp_set_access', {
+        method: 'POST', headers: this.hdrs(),
+        body: JSON.stringify({ p_email: email, p_role: role || 'viewer', p_active: active !== false })
+      }).catch(function() {});
+    } catch(e) {}
+  },
+
   // Pull ALL records for a company → returns { collection: [records] }
   pull: async function(companyId) {
     var ctrl = new AbortController();
