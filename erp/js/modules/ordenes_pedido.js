@@ -490,7 +490,7 @@ function printODP(id) {
 
   var html =
     '<div class="doc-header">' +
-      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Orden de Pedido</div></div>' +
+      '<div><h1>' + escapeHtml(company.name || brandName()) + '</h1><div class="subtitle">Orden de Pedido</div></div>' +
       '<div>' +
         '<div class="doc-num">' + escapeHtml(odp.number) + '</div>' +
         '<div class="doc-date">Fecha: ' + fmtDate(odp.date) + '</div>' +

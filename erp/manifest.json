@@ -1,7 +1,7 @@
 {
-  "name": "ERP Construcción",
-  "short_name": "ERP Obra",
-  "description": "Sistema de gestión integral para obras de construcción",
+  "name": "Rise",
+  "short_name": "Rise",
+  "description": "Rise — gestión integral de desarrollo inmobiliario y construcción",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

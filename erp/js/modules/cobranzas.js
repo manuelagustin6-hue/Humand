@@ -556,7 +556,7 @@ function printRecibo(id) {
 
   var html =
     '<div class="doc-header">' +
-      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Recibo de Cobro</div></div>' +
+      '<div><h1>' + escapeHtml(company.name || brandName()) + '</h1><div class="subtitle">Recibo de Cobro</div></div>' +
       '<div>' +
         '<div class="doc-num">' + recNum + '</div>' +
         '<div class="doc-date">Fecha: ' + fmtDate(col.date) + '</div>' +

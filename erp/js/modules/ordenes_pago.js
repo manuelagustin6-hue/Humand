@@ -707,7 +707,7 @@ function printPaymentOrder(id) {
 
   var html =
     '<div class="doc-header">' +
-      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Orden de Pago</div></div>' +
+      '<div><h1>' + escapeHtml(company.name || brandName()) + '</h1><div class="subtitle">Orden de Pago</div></div>' +
       '<div>' +
         '<div class="doc-num">' + escapeHtml(o.number) + '</div>' +
         '<div class="doc-date">Fecha: ' + fmtDate(o.date) + '</div>' +
@@ -789,7 +789,7 @@ function printRetencion(paymentOrderId) {
   var html =
     '<div class="doc-header">' +
       '<div>' +
-        '<h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1>' +
+        '<h1>' + escapeHtml(company.name || brandName()) + '</h1>' +
         '<div class="subtitle">Comprobante de Retención</div>' +
       '</div>' +
       '<div>' +

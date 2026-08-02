@@ -6,17 +6,17 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>ERP Construcción</title>
+  <title>Rise</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ERP Obra">
+  <meta name="apple-mobile-web-app-title" content="Rise">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="application-name" content="ERP Obra">
+  <meta name="application-name" content="Rise">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="css/main.css?v=35">
   <link rel="stylesheet" href="css/odp_theme.css?v=2">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="js/brand.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <!-- Supabase JS SDK (real-time sync) -->
@@ -35,7 +36,7 @@
   <div style="width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(37,99,235,.45)">
     <i class="fas fa-hard-hat" style="font-size:26px;color:#fff"></i>
   </div>
-  <div style="color:#e2e8f0;font-size:15px;font-weight:600;letter-spacing:-.2px">ConstructERP</div>
+  <div data-brand="name" style="color:#e2e8f0;font-size:15px;font-weight:600;letter-spacing:-.2px">Rise</div>
   <div style="display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:13px">
     <i class="fas fa-spinner fa-spin" style="font-size:14px"></i>
     Conectando con el servidor…
@@ -77,8 +78,8 @@
       <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:0 8px 20px rgba(37,99,235,.35)">
         <i class="fas fa-hard-hat" style="font-size:28px;color:#fff"></i>
       </div>
-      <div style="font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-.3px">ConstructERP</div>
-      <div style="font-size:13px;color:#64748b;margin-top:3px">Gestión Integral de Obras</div>
+      <div data-brand="name" style="font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-.3px">Rise</div>
+      <div data-brand="tagline" style="font-size:13px;color:#64748b;margin-top:3px">Desarrollo y Construcción</div>
     </div>
 
     <!-- Email -->
@@ -135,8 +136,8 @@
     <div class="sidebar-brand">
       <div class="brand-icon"><i class="fas fa-hard-hat"></i></div>
       <div class="brand-text">
-        <span class="brand-name">ConstructERP</span>
-        <span class="brand-sub">Gestión Integral</span>
+        <span class="brand-name" data-brand="name">Rise</span>
+        <span class="brand-sub" data-brand="tagline">Desarrollo y Construcción</span>
       </div>
       <button id="sidebar-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
     </div>
@@ -606,18 +607,18 @@
 <script src="js/modules/projects.js?v=9"></script>
 <script src="js/modules/attachments.js?v=4"></script>
 <script src="js/modules/compras.js?v=44"></script>
-<script src="js/modules/ordenes_pedido.js?v=3"></script>
+<script src="js/modules/ordenes_pedido.js?v=4"></script>
 <script src="js/modules/presupuesto.js?v=7"></script>
 <script src="js/modules/seguimiento.js?v=13"></script>
 <script src="js/modules/gantt.js?v=8"></script>
 <script src="js/modules/afip.js?v=1"></script>
 <script src="js/modules/facturacion.js?v=31"></script>
-<script src="js/modules/cobranzas.js?v=15"></script>
+<script src="js/modules/cobranzas.js?v=16"></script>
 <script src="js/modules/tesoreria.js?v=20"></script>
 <script src="js/modules/contabilidad.js?v=25"></script>
 <script src="js/modules/rubros.js?v=10"></script>
-<script src="js/modules/certificaciones.js?v=16"></script>
-<script src="js/modules/ordenes_pago.js?v=28"></script>
+<script src="js/modules/certificaciones.js?v=17"></script>
+<script src="js/modules/ordenes_pago.js?v=29"></script>
 <script src="js/modules/retenciones.js?v=12"></script>
 <script src="js/modules/indices.js?v=7"></script>
 <script src="js/modules/empresas.js?v=5"></script>
@@ -630,13 +631,13 @@
 <script src="js/modules/parte_diario.js?v=1"></script>
 <script src="js/modules/reportes.js?v=7"></script>
 <script src="js/modules/usuarios.js?v=33"></script>
-<script src="js/modules/ajustes.js?v=11"></script>
+<script src="js/modules/ajustes.js?v=12"></script>
 <script src="js/modules/nuevos.js?v=8"></script>
 <script src="js/modules/cuentas.js?v=7"></script>
 <script src="js/modules/bancos.js?v=5"></script>
 <script src="js/modules/ventas.js?v=4"></script>
 <script src="js/modules/stock.js?v=2"></script>
-<script src="js/modules/notas.js?v=3"></script>
+<script src="js/modules/notas.js?v=4"></script>
 <script src="js/modules/libro_iva.js?v=8"></script>
 <script src="js/modules/tax_planning.js?v=3"></script>
 <script src="js/modules/vencimientos.js?v=1"></script>
@@ -678,7 +679,7 @@
 <div id="install-banner" role="dialog" aria-label="Instalar aplicación">
   <div class="ib-icon"><i class="fas fa-cloud-arrow-down"></i></div>
   <div class="ib-body">
-    <div class="ib-title">Instalá ConstructERP</div>
+    <div class="ib-title" data-brand="install">Instalá Rise</div>
     <div class="ib-sub" id="install-sub">Acceso directo desde tu pantalla de inicio</div>
   </div>
   <div class="ib-actions">
