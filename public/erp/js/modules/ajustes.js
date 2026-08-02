@@ -298,7 +298,7 @@ function buildSystemTab() {
     '<div class="card-header"><span class="card-title"><i class="fas fa-info-circle text-primary"></i> Información del Sistema</span></div>' +
     '<div class="card-body">' +
     '<div class="form-grid form-grid-2" style="gap:14px;font-size:13px">' +
-    '<div><span style="color:var(--text-muted)">Versión: </span><strong>ConstructERP v1.0</strong></div>' +
+    '<div><span style="color:var(--text-muted)">Versión: </span><strong>' + brandName() + ' v1.0</strong></div>' +
     '<div><span style="color:var(--text-muted)">Almacenamiento: </span><strong>localStorage</strong></div>' +
     '<div><span style="color:var(--text-muted)">Clave de datos: </span>' +
     '<code style="font-size:11px;background:var(--bg-secondary);padding:2px 8px;border-radius:4px">' + DB.KEY + '</code></div>' +

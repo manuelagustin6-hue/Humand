@@ -483,7 +483,7 @@ function viewNota(id) {
 <div class="invoice-preview">
   <div class="invoice-logo-row">
     <div>
-      <div style="font-size:20px;font-weight:800;color:var(--primary)">ConstructERP</div>
+      <div style="font-size:20px;font-weight:800;color:var(--primary)">${brandName()}</div>
       <div style="font-size:12px;color:var(--text-muted)">${nt.desc}</div>
     </div>
     <div class="invoice-number-box">

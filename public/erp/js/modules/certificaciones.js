@@ -163,7 +163,7 @@ function viewCert(id) {
   openModal(`Certificación ${cert.number}`, `
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:12px">
   <div>
-    <div style="font-size:20px;font-weight:800;color:var(--primary)">ConstructERP</div>
+    <div style="font-size:20px;font-weight:800;color:var(--primary)">${brandName()}</div>
     <div style="font-size:12px;color:var(--text-muted)">CERTIFICADO DE AVANCE DE OBRA</div>
   </div>
   <div style="text-align:right">
@@ -453,7 +453,7 @@ function printCertificacion(id) {
 
   var html =
     '<div class="doc-header">' +
-      '<div><h1>' + escapeHtml(company.name || 'ConstructERP') + '</h1><div class="subtitle">Certificado de Avance de Obra</div></div>' +
+      '<div><h1>' + escapeHtml(company.name || brandName()) + '</h1><div class="subtitle">Certificado de Avance de Obra</div></div>' +
       '<div>' +
         '<div class="doc-num">' + escapeHtml(cert.number) + '</div>' +
         '<div class="doc-date">Fecha: ' + fmtDate(cert.date) + '</div>' +
