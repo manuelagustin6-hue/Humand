@@ -310,7 +310,10 @@ function renderODPForm(id) {
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
   <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
     <span style="font-weight:600;font-size:13px;color:#1e293b"><i class="fas fa-table" style="color:#2563eb;margin-right:6px"></i> Ítems solicitados</span>
-    <button class="btn btn-sm btn-secondary" onclick="addODPItem()"><i class="fas fa-plus"></i> Agregar fila</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm btn-secondary" onclick="openODPImportModal()"><i class="fas fa-file-excel"></i> Importar Excel</button>
+      <button class="btn btn-sm btn-secondary" onclick="addODPItem()"><i class="fas fa-plus"></i> Agregar fila</button>
+    </div>
   </div>
   <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;min-width:760px">
@@ -517,4 +520,193 @@ function printODP(id) {
     '</div>';
 
   _printDoc('ODP ' + odp.number, html);
+}
+
+/* ────────────────────────────────────────── IMPORT EXCEL DE ÍTEMS */
+// Estado del import: encabezados, filas crudas y mapeo columna→campo.
+window._odpImport = null;
+
+var ODP_IMP_FIELDS = [
+  { key: 'rubro',         label: 'Rubro',         hints: ['rubro'] },
+  { key: 'tipo',          label: 'Tipo',          hints: ['tipo'] },
+  { key: 'item_desc',     label: 'Ítem / Descripción', hints: ['item', 'ítem', 'descrip', 'detalle', 'articulo', 'artículo'] },
+  { key: 'unit',          label: 'Unidad',        hints: ['unidad', 'u.m', 'um', 'unid', 'medida'] },
+  { key: 'quantity',      label: 'Cantidad',      hints: ['cant', 'cantidad', 'qty'] },
+  { key: 'delivery_date', label: 'Fecha entrega', hints: ['fecha', 'entrega', 'vencimiento'] },
+];
+
+function openODPImportModal() {
+  if (typeof XLSX === 'undefined') { toast('La librería de Excel no está cargada', 'error'); return; }
+  window._odpImport = null;
+  var body = ''
+    + '<div style="margin-bottom:8px">'
+    + '  <label class="form-label">Archivo Excel / CSV</label>'
+    + '  <input type="file" class="form-control" accept=".xlsx,.xls,.csv" onchange="_odpImportParseFile(this)">'
+    + '  <div style="font-size:11px;color:var(--text-muted);margin-top:6px"><i class="fas fa-info-circle"></i> La <strong>primera fila</strong> tiene que ser el encabezado (Rubro, Tipo, Ítem, Unidad, Cantidad, Fecha…). Detectamos las columnas solas y podés ajustarlas.</div>'
+    + '</div>'
+    + '<div id="odp-imp-result" style="margin-top:8px"></div>';
+  openModal('<i class="fas fa-file-excel" style="margin-right:8px;color:#059669"></i>Importar ítems desde Excel', body, 'lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
+}
+
+function _odpImportParseFile(input) {
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: false, defval: '' });
+      if (!rows.length) { toast('El archivo está vacío', 'error'); return; }
+      var headers = (rows[0] || []).map(function(h) { return (h == null ? '' : String(h)).trim(); });
+      var data = rows.slice(1).filter(function(r) { return (r || []).some(function(c) { return c != null && String(c).trim() !== ''; }); });
+      // Auto-detección de columnas por nombre de encabezado
+      var map = {};
+      ODP_IMP_FIELDS.forEach(function(f) {
+        var idx = -1;
+        for (var i = 0; i < headers.length && idx < 0; i++) {
+          var h = headers[i].toLowerCase();
+          if (f.hints.some(function(k) { return h.indexOf(k) !== -1; })) idx = i;
+        }
+        map[f.key] = idx;
+      });
+      window._odpImport = { headers: headers, rows: data, map: map };
+      _odpImportRenderResult();
+    } catch (err) {
+      toast('No se pudo leer el archivo: ' + (err.message || err), 'error');
+    }
+  };
+  reader.onerror = function() { toast('Error al leer el archivo', 'error'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function _odpImportRenderResult() {
+  var imp = window._odpImport; if (!imp) return;
+  var wrap = document.getElementById('odp-imp-result'); if (!wrap) return;
+  var colOpts = function(sel) {
+    var o = '<option value="-1">— (ninguna) —</option>';
+    imp.headers.forEach(function(h, i) {
+      o += '<option value="' + i + '"' + (sel === i ? ' selected' : '') + '>' + escapeHtml(h || ('Columna ' + (i + 1))) + '</option>';
+    });
+    return o;
+  };
+  var maps = '<div class="form-grid form-grid-3" style="margin:4px 0 14px">' +
+    ODP_IMP_FIELDS.map(function(f) {
+      return '<div class="form-group"><label class="form-label">' + f.label + '</label>' +
+        '<select class="form-control" onchange="_odpImportSetMap(\'' + f.key + '\',this.value)">' + colOpts(imp.map[f.key]) + '</select></div>';
+    }).join('') + '</div>';
+  wrap.innerHTML =
+    '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Detectamos <strong>' + imp.rows.length + '</strong> fila(s). Revisá el mapeo de columnas:</div>' +
+    maps +
+    '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Vista previa</div>' +
+    '<div id="odp-imp-preview" style="overflow-x:auto">' + _odpImportPreviewTable() + '</div>' +
+    '<div style="margin-top:16px;text-align:right">' +
+      '<button class="btn btn-primary" onclick="_odpImportApply()"><i class="fas fa-check"></i> Importar ' + imp.rows.length + ' ítem(s)</button>' +
+    '</div>';
+}
+
+function _odpImportSetMap(key, val) {
+  if (!window._odpImport) return;
+  window._odpImport.map[key] = parseInt(val, 10);
+  var pv = document.getElementById('odp-imp-preview');
+  if (pv) pv.innerHTML = _odpImportPreviewTable();
+}
+
+// Convierte una fila cruda al ítem de ODP según el mapeo actual.
+function _odpImportRowToItem(row) {
+  var imp = window._odpImport, m = imp.map;
+  var g = function(k) { var i = m[k]; return (i != null && i >= 0 && i < row.length) ? row[i] : ''; };
+  return {
+    rubro_id: _odpMatchRubro(g('rubro')),
+    tipo: _odpMatchTipo(g('tipo')),
+    item_desc: String(g('item_desc') || '').trim(),
+    unit: String(g('unit') || '').trim(),
+    quantity: (typeof numParse === 'function' ? numParse(g('quantity')) : parseFloat(g('quantity'))) || 0,
+    delivery_date: _odpParseImpDate(g('delivery_date')),
+    _rubroText: String(g('rubro') || '').trim(),   // solo para la vista previa
+  };
+}
+
+function _odpImportPreviewTable() {
+  var imp = window._odpImport; if (!imp) return '';
+  var rubros = DB.getAll('rubros');
+  var rubroName = function(id) { var r = rubros.find(function(x){ return x.id === id; }); return r ? (r.code + ' — ' + r.name) : ''; };
+  var head = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f8f9fb">' +
+    ['Rubro', 'Tipo', 'Ítem', 'Unidad', 'Cantidad', 'Fecha'].map(function(h){ return '<th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#94a3b8;border-bottom:1px solid #e2e8f0">' + h + '</th>'; }).join('') +
+    '</tr></thead><tbody>';
+  var rowsHtml = imp.rows.slice(0, 8).map(function(r) {
+    var it = _odpImportRowToItem(r);
+    var rubroCell = it.rubro_id
+      ? escapeHtml(rubroName(it.rubro_id))
+      : (it._rubroText ? '<span style="color:#d97706" title="No coincide con ningún rubro cargado — se importa sin rubro">' + escapeHtml(it._rubroText) + ' ⚠</span>' : '<span style="color:#cbd5e1">—</span>');
+    var C = 'padding:6px 8px;border-bottom:1px solid #f1f5f9';
+    return '<tr>' +
+      '<td style="' + C + '">' + rubroCell + '</td>' +
+      '<td style="' + C + '">' + (it.tipo ? escapeHtml(it.tipo) : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + C + '">' + (escapeHtml(it.item_desc) || '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + C + '">' + (escapeHtml(it.unit) || '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + C + ';text-align:right">' + (it.quantity || '<span style="color:#cbd5e1">0</span>') + '</td>' +
+      '<td style="' + C + '">' + (it.delivery_date ? fmtDate(it.delivery_date) : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+    '</tr>';
+  }).join('');
+  var more = imp.rows.length > 8 ? '<tr><td colspan="6" style="padding:6px 8px;color:#94a3b8;font-size:11px">… y ' + (imp.rows.length - 8) + ' fila(s) más</td></tr>' : '';
+  return head + rowsHtml + more + '</tbody></table>';
+}
+
+// Match de rubro por código o nombre (exacto o parcial). Sin match → '' (se importa igual).
+function _odpMatchRubro(text) {
+  var t = String(text == null ? '' : text).trim().toLowerCase();
+  if (!t) return '';
+  var rubros = DB.getAll('rubros');
+  var m = rubros.find(function(r) {
+    return (r.code || '').toLowerCase() === t || (r.name || '').toLowerCase() === t ||
+           ((r.code || '') + ' — ' + (r.name || '')).toLowerCase() === t;
+  });
+  if (!m && t.length > 2) m = rubros.find(function(r) { return (r.name || '').toLowerCase().indexOf(t) !== -1; });
+  return m ? m.id : '';
+}
+
+function _odpMatchTipo(text) {
+  var t = String(text == null ? '' : text).trim().toLowerCase();
+  if (!t) return '';
+  var f = ODP_TIPOS.find(function(x) { return x.toLowerCase() === t; });
+  if (!f) f = ODP_TIPOS.find(function(x) { return x.toLowerCase().indexOf(t) !== -1 || t.indexOf(x.toLowerCase()) !== -1; });
+  return f || '';
+}
+
+// Fecha flexible → yyyy-mm-dd. Soporta yyyy-mm-dd, dd/mm/yyyy, dd-mm-yyyy y serial de Excel.
+function _odpParseImpDate(v) {
+  if (v == null || v === '') return '';
+  var s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (m) {
+    var d = m[1].padStart(2, '0'), mo = m[2].padStart(2, '0'), y = m[3];
+    if (y.length === 2) y = '20' + y;
+    return y + '-' + mo + '-' + d;
+  }
+  if (/^\d+(\.\d+)?$/.test(s)) {   // serial de Excel (días desde 1899-12-30)
+    var n = parseFloat(s);
+    if (n > 20000 && n < 80000) {
+      var dt = new Date(Math.round((n - 25569) * 86400 * 1000));
+      if (!isNaN(dt)) return dt.toISOString().slice(0, 10);
+    }
+  }
+  return '';
+}
+
+function _odpImportApply() {
+  var imp = window._odpImport; if (!imp) return;
+  var imported = imp.rows.map(_odpImportRowToItem)
+    .filter(function(it) { return it.item_desc || it.rubro_id || it.quantity; })
+    .map(function(it) { return { rubro_id: it.rubro_id, tipo: it.tipo, item_desc: it.item_desc, unit: it.unit, quantity: it.quantity, delivery_date: it.delivery_date }; });
+  if (!imported.length) { toast('No se encontraron ítems para importar. Revisá el mapeo de columnas.', 'warning'); return; }
+  var current = (window._odpItems || []).filter(Boolean).filter(function(it) { return it.item_desc || it.rubro_id || it.quantity; });
+  window._odpItems = current.concat(imported);
+  var tbody = document.getElementById('odp-items-body');
+  if (tbody) tbody.innerHTML = window._odpItems.map(function(it, i) { return odpItemRow(it, i); }).join('');
+  window._odpImport = null;
+  closeModal();
+  toast(imported.length + ' ítem(s) importado(s). Revisalos y presioná Guardar.', 'success');
 }
