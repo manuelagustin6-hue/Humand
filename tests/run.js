@@ -348,5 +348,32 @@ const { withApp, check, near, summary } = require('./harness');
     check('B: 2 proveedores', r.bSuppliers === 2);
   }
 
+  // ---- 17) Importador REST de documentos (lotes + errores) ----
+  console.log('\n▶ Migración — importador REST de documentos');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js'], async () => {
+      _SUPA.online = true;
+      _SUPA.URL = 'http://x';
+      var calls = [];
+      window.fetch = function(url, opts) {
+        var body = JSON.parse(opts.body);
+        calls.push(body.length);
+        // Falla el 2º lote para probar el manejo de errores
+        if (calls.length === 2) return Promise.resolve({ ok: false, status: 401, text: function() { return Promise.resolve('denied'); } });
+        return Promise.resolve({ ok: true, status: 201, text: function() { return Promise.resolve(''); } });
+      };
+      var rows = [];
+      for (var i = 0; i < 1200; i++) rows.push({ company_id: 'lb-a', collection: 'supplierInvoices', record_id: 'd' + i, data: { id: 'd' + i } });
+      var prog = [];
+      var res = await DB.migrateImportDocuments({ rows: rows }, function(done, total) { prog.push(done); });
+      return { batches: calls, inserted: res.inserted, total: res.total, errors: res.errors.length, lastProg: prog[prog.length - 1] };
+    });
+    check('lotea de a 500 (500,500,200)', r.batches.length === 3 && r.batches[0] === 500 && r.batches[2] === 200);
+    check('inserta los lotes OK (500+200=700)', r.inserted === 700);
+    check('total reportado = 1200', r.total === 1200);
+    check('registra 1 lote con error', r.errors === 1);
+    check('progreso llega al total', r.lastProg === 1200);
+  }
+
   summary();
 })();

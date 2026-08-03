@@ -179,7 +179,16 @@ function buildBackupTab() {
     '</p>' +
     '<input type="file" id="ajustes-migrate-file" accept=".json" style="display:none" onchange="doMigrateLebane(this)">' +
     '<button class="btn btn-secondary" onclick="document.getElementById(\'ajustes-migrate-file\').click()">' +
-    '<i class="fas fa-truck-loading"></i> Cargar Archivo de Migración</button>' +
+    '<i class="fas fa-truck-loading"></i> Cargar Maestros (empresas)</button>' +
+    '<div style="height:10px"></div>' +
+    '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">' +
+    'Carga en lote de <strong>documentos</strong> (facturas, notas de crédito/débito, retenciones) ' +
+    'directo a la nube, sin límite de tamaño. Idempotente: reimportar sobrescribe.' +
+    '</p>' +
+    '<input type="file" id="ajustes-docs-file" accept=".json" style="display:none" onchange="doMigrateDocs(this)">' +
+    '<button class="btn btn-secondary" onclick="document.getElementById(\'ajustes-docs-file\').click()">' +
+    '<i class="fas fa-file-import"></i> Cargar Documentos (facturas / NC-ND)</button>' +
+    '<div id="ajustes-docs-progress" style="margin-top:10px;font-size:13px;color:var(--text-secondary)"></div>' +
     '</div></div>' +
     '</div>' +
 
@@ -480,6 +489,48 @@ function doMigrateLebane(input) {
           setTimeout(function() { location.reload(); }, 2800);
         } catch(err) {
           toast('Error en la migración: ' + err.message, 'error');
+        }
+      }
+    );
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function doMigrateDocs(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var payload;
+    try { payload = JSON.parse(e.target.result); }
+    catch(err) { toast('Archivo JSON inválido: ' + err.message, 'error'); return; }
+    if (!payload || !Array.isArray(payload.rows)) {
+      toast('El archivo no tiene el formato esperado ({ rows: [...] })', 'error'); return;
+    }
+    var byCol = {};
+    payload.rows.forEach(function(r) { byCol[r.collection] = (byCol[r.collection] || 0) + 1; });
+    var resumen = Object.keys(byCol).map(function(c) { return byCol[c] + ' ' + c; }).join(', ');
+    confirmDialog(
+      'Cargar <strong>' + payload.rows.length + '</strong> documentos desde "' + file.name + '"?<br><br>' +
+      '(' + resumen + ')<br><br>Se escriben directo a la nube en lotes. Puede tardar un momento.',
+      async function() {
+        var prog = document.getElementById('ajustes-docs-progress');
+        var setProg = function(txt) { if (prog) prog.innerHTML = txt; };
+        setProg('<i class="fas fa-spinner fa-spin"></i> Cargando… no cierres la pestaña');
+        toast('Cargando documentos…', 'info');
+        try {
+          var res = await DB.migrateImportDocuments(payload, function(done, total) {
+            setProg('<i class="fas fa-spinner fa-spin"></i> ' + done + ' / ' + total + ' documentos…');
+          });
+          if (res.errors && res.errors.length) console.warn('[Migración docs] errores:', res.errors);
+          var msg = 'Listo: ' + res.inserted + ' / ' + res.total + ' documentos cargados' +
+                    (res.errors && res.errors.length ? ' — ' + res.errors.length + ' lotes con error (ver consola)' : '');
+          setProg((res.errors && res.errors.length ? '<span style="color:var(--danger)">' : '<span style="color:var(--success)">') + msg + '</span>');
+          toast(msg, res.errors && res.errors.length ? 'warning' : 'success');
+        } catch(err) {
+          setProg('<span style="color:var(--danger)">Error: ' + err.message + '</span>');
+          toast('Error en la carga: ' + err.message, 'error');
         }
       }
     );
