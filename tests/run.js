@@ -353,6 +353,7 @@ const { withApp, check, near, summary } = require('./harness');
   {
     const { result: r } = await withApp(['utils.js', 'db.js'], async () => {
       _SUPA.online = true;
+      _SUPA.session = { access_token: 'x' };
       _SUPA.URL = 'http://x';
       var calls = [];
       window.fetch = function(url, opts) {
