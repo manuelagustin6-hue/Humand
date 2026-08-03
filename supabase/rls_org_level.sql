@@ -56,10 +56,18 @@ $$;
 --  (una sola fila alcanza; el company_id acá es simbólico — el acceso es global).
 --  Cambiá el email si hace falta.
 -- ============================================================================
+-- Elevá a admin (con escritura) las filas EXISTENTES del usuario que usás, y
+-- agregá una fila '_org' por si no tuviera ninguna. El acceso es global igual.
+update public.erp_membership m
+   set role = 'admin', can_write = true
+  from auth.users u
+ where u.id = m.user_id
+   and lower(u.email) = lower('manu_97_12@hotmail.com');
+
 insert into public.erp_membership (user_id, company_id, role, can_write)
 select id, '_org', 'admin', true
 from auth.users
-where lower(email) = lower('manuelagustin6@gmail.com')
+where lower(email) = lower('manu_97_12@hotmail.com')
 on conflict (user_id, company_id)
   do update set role = 'admin', can_write = true;
 
