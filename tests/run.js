@@ -288,5 +288,65 @@ const { withApp, check, near, summary } = require('./harness');
       r.it.unit === 'un' && r.it.quantity === 450 && r.it.delivery_date === '2026-06-12');
   }
 
+  // ---- 16) Migración multi-empresa (Fase A maestros) ----
+  console.log('\n▶ Migración — carga multi-empresa (maestros)');
+  {
+    const { result: r } = await withApp(['utils.js', 'db.js'], async () => {
+      var payload = {
+        companies: [
+          { id: 'lb-a', name: 'Empresa A', currency: 'ARS', _lebane: true },
+          { id: 'lb-b', name: 'Empresa B', currency: 'USD', _lebane: true },
+        ],
+        data: {
+          'lb-a': {
+            projects: [{ id: 'p1', name: 'Obra 1' }, { id: 'p2', name: 'Obra 2' }],
+            suppliers: [{ id: 's1', name: 'Prov 1' }],
+            rubros: [{ id: 'r1', code: '100', name: 'Rubro 1', active: true }],
+            evil: [{ id: 'x' }], // colección no permitida → debe ignorarse
+          },
+          'lb-b': {
+            projects: [{ id: 'p9', name: 'Obra 9' }],
+            suppliers: [{ id: 's8', name: 'Prov 8' }, { id: 's7', name: 'Prov 7' }],
+            rubros: [],
+          },
+        },
+      };
+      var prev = DB._companyId;
+      var res = await DB.migrateLoadMulti(payload, { localOnly: true });
+      // Leer de vuelta el estado local por empresa
+      var a = JSON.parse(localStorage.getItem('erp_company_lb-a_v1') || '{}');
+      var b = JSON.parse(localStorage.getItem('erp_company_lb-b_v1') || '{}');
+      var companies = DB.getAllCompanies();
+      return {
+        restored: DB._companyId === prev,
+        summaryCompanies: res.companies,
+        summaryRecords: res.totalRecords,
+        errors: res.errors.length,
+        inGlobalA: companies.some(function (c) { return c.id === 'lb-a' && c.name === 'Empresa A'; }),
+        inGlobalB: companies.some(function (c) { return c.id === 'lb-b' && c.currency === 'USD'; }),
+        aProjects: (a.projects || []).length,
+        aSuppliers: (a.suppliers || []).length,
+        aRubros: (a.rubros || []).length,
+        aHasAccounts: Array.isArray(a.accounts) && a.accounts.length > 0,
+        aNoEvil: a.evil === undefined,
+        bProjects: (b.projects || []).length,
+        bSuppliers: (b.suppliers || []).length,
+      };
+    });
+    check('_companyId se restaura tras la carga', r.restored === true);
+    check('resumen: 2 empresas', r.summaryCompanies === 2);
+    check('resumen: 7 registros de maestros', r.summaryRecords === 7);
+    check('sin errores', r.errors === 0);
+    check('empresa A registrada en global', r.inGlobalA === true);
+    check('empresa B registrada en global (USD)', r.inGlobalB === true);
+    check('A: 2 proyectos', r.aProjects === 2);
+    check('A: 1 proveedor', r.aSuppliers === 1);
+    check('A: 1 rubro', r.aRubros === 1);
+    check('A: conserva plan de cuentas de seedEmpty', r.aHasAccounts === true);
+    check('A: colección no permitida ignorada', r.aNoEvil === true);
+    check('B: 1 proyecto', r.bProjects === 1);
+    check('B: 2 proveedores', r.bSuppliers === 2);
+  }
+
   summary();
 })();

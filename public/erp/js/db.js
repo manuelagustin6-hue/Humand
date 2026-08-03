@@ -1312,6 +1312,84 @@ const DB = {
     localStorage.removeItem(key);
   },
 
+  // ---- MIGRACIÓN MULTI-EMPRESA (carga en lote de maestros) ----
+  // Carga un payload {companies:[...], data:{cid:{projects,suppliers,rubros,...}}}:
+  // registra cada empresa en el store global y arma su blob por-empresa partiendo de
+  // seedEmpty() (que trae el plan de cuentas base y estructura vacía), reemplazando las
+  // colecciones entrantes. Luego empuja todo a Supabase por empresa. Devuelve un resumen.
+  //
+  // IMPORTANTE: correr con RLS DESACTIVADA en Supabase — las company_id nuevas todavía no
+  // tienen membership, así que los INSERT bajo RLS se rechazarían. Al terminar, reactivar
+  // RLS y re-otorgar acceso con erp_set_access sobre las empresas nuevas.
+  //
+  // opts.localOnly => no empuja a Supabase (sólo prepara el estado local, para tests).
+  // opts.merge     => fusiona por id sobre el blob existente en vez de reemplazar.
+  migrateLoadMulti: async function(payload, opts) {
+    opts = opts || {};
+    if (!payload || !Array.isArray(payload.companies) || typeof payload.data !== 'object' || payload.data === null)
+      throw new Error('Payload inválido: se espera {companies:[...], data:{cid:{...}}}');
+    var self = this;
+    var prevCompany = this._companyId;
+    // Whitelist de colecciones aceptadas en un payload de maestros (defensivo)
+    var ALLOWED = { projects: true, suppliers: true, rubros: true, accounts: true,
+                    contracts: true, boqItems: true, bankAccounts: true, budgetLines: true };
+    var summary = { companies: 0, byCompany: [], totalRecords: 0, errors: [] };
+    try {
+      // 1) Registrar/actualizar empresas en el store global
+      payload.companies.forEach(function(c) {
+        if (!c || !c.id) return;
+        self.saveCompanyRecord(Object.assign({ active: true, created_at: now() }, c));
+        summary.companies++;
+      });
+
+      // 2) Por empresa: construir el blob local y (salvo localOnly) empujar a Supabase
+      var cids = Object.keys(payload.data);
+      for (var i = 0; i < cids.length; i++) {
+        var cid = cids[i];
+        var incoming = payload.data[cid] || {};
+        try {
+          self._companyId = cid;
+          var key = 'erp_company_' + cid + '_v1';
+          var existingRaw = localStorage.getItem(key);
+          var base = (existingRaw && opts.merge) ? JSON.parse(existingRaw) : self.seedEmpty();
+          var recCount = 0;
+          Object.keys(incoming).forEach(function(col) {
+            if (!ALLOWED[col] || !Array.isArray(incoming[col])) return;
+            recCount += incoming[col].length;
+            if (opts.merge && Array.isArray(base[col])) {
+              var byId = {};
+              base[col].forEach(function(x) { if (x && x.id != null) byId[x.id] = x; });
+              incoming[col].forEach(function(x) { if (x && x.id != null) byId[x.id] = x; });
+              base[col] = Object.keys(byId).map(function(k) { return byId[k]; });
+            } else {
+              base[col] = incoming[col].slice();
+            }
+          });
+          localStorage.setItem(key, JSON.stringify(base));
+          self._cache = null; self._cacheKey = null;
+
+          if (!opts.localOnly && _SUPA.online) {
+            var pushCols = Object.keys(base).filter(function(k) { return Array.isArray(base[k]) && base[k].length; });
+            for (var p = 0; p < pushCols.length; p++) {
+              try { await _SUPA.pushCollection(cid, pushCols[p], base[pushCols[p]]); }
+              catch(e) { summary.errors.push(cid + '/' + pushCols[p] + ': ' + (e && e.message || e)); }
+            }
+          }
+          var coName = (payload.companies.find(function(c) { return c.id === cid; }) || {}).name || cid;
+          summary.byCompany.push({ id: cid, name: coName, records: recCount });
+          summary.totalRecords += recCount;
+        } catch(e) {
+          summary.errors.push(cid + ': ' + (e && e.message || e));
+        }
+      }
+    } finally {
+      this._companyId = prevCompany;
+      this._cache = null; this._cacheKey = null;
+    }
+    if (typeof _updateSyncBadge === 'function') _updateSyncBadge();
+    return summary;
+  },
+
   getAllCurrencies() {
     return this.getGlobal().currencies || [];
   },
