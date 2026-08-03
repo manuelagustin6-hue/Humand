@@ -1416,6 +1416,47 @@ const DB = {
     return summary;
   },
 
+  // ---- IMPORTADOR DE DOCUMENTOS (REST directo, en lote) ----
+  // Carga registros directo a Supabase (erp_data) por REST, en lotes, SIN volcar a
+  // localStorage — evita el cupo del navegador y el límite del SQL Editor. Ideal para
+  // migraciones grandes (facturas, NC/ND, retenciones). Idempotente: usa merge-duplicates
+  // sobre (company_id, collection, record_id), así reimportar sobrescribe sin duplicar.
+  //   payload = { rows: [{ company_id, collection, record_id, data }] }
+  //   onProgress(done, total, res) opcional.
+  // Requiere estar logueado (la escritura se autentica con tu sesión) y RLS que te permita
+  // escribir (modelo org-level: cualquier usuario habilitado). Devuelve {inserted,total,errors}.
+  migrateImportDocuments: async function(payload, onProgress) {
+    if (!_SUPA.online) throw new Error('Sin conexión a Supabase (la app está offline)');
+    if (!payload || !Array.isArray(payload.rows)) throw new Error('Payload inválido: se espera { rows: [...] }');
+    var res = { inserted: 0, total: payload.rows.length, errors: [] };
+    var nowIso = new Date().toISOString();
+    var rows = payload.rows.map(function(r) {
+      return { company_id: r.company_id, collection: r.collection, record_id: r.record_id,
+               data: r.data, deleted: false, updated_at: nowIso };
+    });
+    var BATCH = 500;
+    for (var i = 0; i < rows.length; i += BATCH) {
+      var batch = rows.slice(i, i + BATCH);
+      try {
+        var resp = await fetch(_SUPA.URL + '/rest/v1/erp_data', {
+          method: 'POST',
+          headers: _SUPA.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+          body: JSON.stringify(batch)
+        });
+        if (resp.ok) {
+          res.inserted += batch.length;
+        } else {
+          var t = ''; try { t = await resp.text(); } catch(e) {}
+          res.errors.push('lote ' + i + ': HTTP ' + resp.status + ' ' + t.slice(0, 160));
+        }
+      } catch(e) {
+        res.errors.push('lote ' + i + ': ' + (e && e.message || e));
+      }
+      if (typeof onProgress === 'function') onProgress(Math.min(i + BATCH, rows.length), rows.length, res);
+    }
+    return res;
+  },
+
   getAllCurrencies() {
     return this.getGlobal().currencies || [];
   },
