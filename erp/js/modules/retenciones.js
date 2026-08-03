@@ -35,6 +35,7 @@ function renderRetenciones() {
         date: o.date,
         order_id: o.id,
         order_number: o.number,
+        _company_id: o._company_id || '',
         company_name: o._company_name || '',
         currency: rsCur(o),
         supplier: sup ? sup.name : '-',
@@ -42,6 +43,38 @@ function renderRetenciones() {
         gross_amount: o.gross_amount,
         net_payment: o.net_amount,
       });
+    });
+  });
+
+  // Certificados de retención importados (migración Lebane). No cuelgan de una orden
+  // de pago: son el histórico de retenciones ya practicadas, cada uno con su razón
+  // social (agente). Se cargan consolidados (sin filtro de proyecto, no lo tienen) y
+  // se filtran por la razón social elegida, para que fluyan al Historial y al ARCA.
+  var _retCerts = (typeof DB.getAllConsolidated === 'function')
+    ? DB.getAllConsolidated('retentionCertificates')
+    : DB.getAll('retentionCertificates');
+  var _retRs = rsGet('retenciones');
+  _retCerts.forEach(function(c) {
+    if (_retRs && c._company_id !== _retRs) return;
+    var base = (c.base != null && c.base !== '') ? c.base : c.importe_retenido;
+    applied.push({
+      _imported: true,
+      id: c.id,
+      name: c.tipo || 'Ganancias',
+      regimen: c.regimen || '',
+      rate: (c.base ? Math.round((c.importe_retenido / c.base) * 10000) / 100 : ''),
+      date: c.fecha,
+      order_id: '',
+      order_number: c.numero || '',
+      comp_pago: c.comp_pago || '',
+      _company_id: c._company_id || '',
+      company_name: c._company_name || c.razon_social || '',
+      currency: c.currency || 'ARS',
+      supplier: c.proveedor || '-',
+      supplier_cuit: c.cuit || '',
+      gross_amount: base,
+      amount: c.importe_retenido,
+      net_payment: null,
     });
   });
 
@@ -202,15 +235,19 @@ function buildRetHistoryTable(rows) {
     '</tr></thead><tbody>' +
     sorted.map(r => '<tr>' +
       '<td>' + fmtDate(r.date) + '</td>' +
-      '<td><strong>' + escapeHtml(r.order_number) + '</strong></td>' +
+      '<td><strong>' + escapeHtml(r.order_number) + '</strong>' +
+        (r._imported ? ' <span class="badge badge-gray" style="font-weight:500" title="Certificado migrado (Lebane)">cert.</span>' : '') + '</td>' +
       (showCompany ? '<td style="font-size:11px;color:#64748b">' + escapeHtml(r.company_name || '') + '</td>' : '') +
       '<td>' + escapeHtml(r.supplier) + '</td>' +
       '<td style="font-size:11px;color:#64748b">' + escapeHtml(r.supplier_cuit) + '</td>' +
-      '<td><span class="badge badge-blue">' + escapeHtml(r.name) + '</span></td>' +
-      '<td>' + r.rate + '%</td>' +
+      '<td><span class="badge badge-blue">' + escapeHtml(r.name) + '</span>' +
+        (r._imported && r.regimen ? '<div style="font-size:10px;color:#94a3b8;margin-top:2px">' + escapeHtml(r.regimen) + '</div>' : '') + '</td>' +
+      '<td>' + (r.rate === '' || r.rate == null ? '—' : r.rate + '%') + '</td>' +
       '<td style="text-align:right;font-variant-numeric:tabular-nums">' + fmtMoney(r.gross_amount, r.currency) + '</td>' +
       '<td style="text-align:right;font-variant-numeric:tabular-nums;color:#d97706"><strong>' + fmtMoney(r.amount, r.currency) + '</strong></td>' +
-      '<td><button class="btn-ghost btn btn-sm" title="Comprobante PDF" onclick="printRetencion(\'' + r.order_id + '\')"><i class="fas fa-file-pdf"></i></button></td>' +
+      '<td>' + (r._imported
+        ? '<span title="Certificado migrado — sin orden de pago asociada" style="color:#cbd5e1"><i class="fas fa-file-import"></i></span>'
+        : '<button class="btn-ghost btn btn-sm" title="Comprobante PDF" onclick="printRetencion(\'' + r.order_id + '\')"><i class="fas fa-file-pdf"></i></button>') + '</td>' +
     '</tr>').join('') +
     '<tr class="total-row"><td colspan="' + colspanTotal + '">Total Retenido</td><td style="text-align:right">' + totalCells + '</td><td></td></tr>' +
     '</tbody></table>';
@@ -232,6 +269,10 @@ function filterRetHistory(key, val) {
 
 function _arcaFilteredRows() {
   let rows = (window._arcaApplied || []);
+  // SICORE se presenta por CUIT: acotar al agente elegido para no mezclar razones
+  // sociales en un mismo archivo. Sólo filtra si las filas traen _company_id.
+  const agId = document.getElementById('arca-company')?.value || '';
+  if (agId && rows.some(r => r._company_id)) rows = rows.filter(r => r._company_id === agId);
   const q = (document.getElementById('arca-q')?.value || '').toLowerCase();
   const type = document.getElementById('arca-type')?.value || '';
   const from = document.getElementById('arca-from')?.value || '';

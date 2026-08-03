@@ -756,5 +756,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (loader) loader.style.display = 'none';
     _updateSyncBadge();
     _initApp();
+    // Hidratar TODAS las razones sociales desde la nube para que este dispositivo
+    // vea todo (facturas, retenciones, etc.) sin depender del cache local. Corre en
+    // segundo plano (no bloquea el arranque) y re-renderiza el módulo al terminar.
+    if (_SUPA.session && typeof DB.ensureAllCompaniesLoaded === 'function') {
+      DB.ensureAllCompaniesLoaded().then(function() {
+        _updateSyncBadge();
+        try {
+          var mod = window.APP_STATE && window.APP_STATE.currentModule;
+          if (mod && typeof navigate === 'function') navigate(mod);
+        } catch(e) {}
+      }).catch(function() {});
+    }
   });
 });

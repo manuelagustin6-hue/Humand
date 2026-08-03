@@ -189,6 +189,15 @@ function buildBackupTab() {
     '<button class="btn btn-secondary" onclick="document.getElementById(\'ajustes-docs-file\').click()">' +
     '<i class="fas fa-file-import"></i> Cargar Documentos (facturas / NC-ND)</button>' +
     '<div id="ajustes-docs-progress" style="margin-top:10px;font-size:13px;color:var(--text-secondary)"></div>' +
+    '<hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">' +
+    '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">' +
+    'Si cargaste documentos a la nube y <strong>no aparecen</strong>, re-sincronizá: baja de Supabase ' +
+    'todas las razones sociales y refresca el cache local (necesario porque el cache no se ' +
+    'refresca solo tras una carga masiva). Muestra cuántos documentos trae cada empresa.' +
+    '</p>' +
+    '<button class="btn btn-secondary" onclick="doForcePullAll()">' +
+    '<i class="fas fa-cloud-download-alt"></i> Re-sincronizar todo desde la nube</button>' +
+    '<div id="ajustes-resync-progress" style="margin-top:10px;font-size:13px;color:var(--text-secondary)"></div>' +
     '</div></div>' +
     '</div>' +
 
@@ -528,6 +537,14 @@ function doMigrateDocs(input) {
                     (res.errors && res.errors.length ? ' — ' + res.errors.length + ' lotes con error (ver consola)' : '');
           setProg((res.errors && res.errors.length ? '<span style="color:var(--danger)">' : '<span style="color:var(--success)">') + msg + '</span>');
           toast(msg, res.errors && res.errors.length ? 'warning' : 'success');
+          // Refrescar el cache local de todas las empresas para que los documentos
+          // recién cargados a la nube se vean sin pasos manuales.
+          if (res.inserted > 0 && typeof DB.forcePullAll === 'function') {
+            setProg('<i class="fas fa-spinner fa-spin"></i> Sincronizando cache local…');
+            try { await DB.forcePullAll(); } catch(e) {}
+            setProg('<span style="color:var(--success)">' + msg + ' — sincronizado. Recargando…</span>');
+            setTimeout(function() { location.reload(); }, 1800);
+          }
         } catch(err) {
           setProg('<span style="color:var(--danger)">Error: ' + err.message + '</span>');
           toast('Error en la carga: ' + err.message, 'error');
@@ -537,6 +554,39 @@ function doMigrateDocs(input) {
   };
   reader.readAsText(file);
   input.value = '';
+}
+
+function doForcePullAll() {
+  var prog = document.getElementById('ajustes-resync-progress');
+  var set = function(txt) { if (prog) prog.innerHTML = txt; };
+  set('<i class="fas fa-spinner fa-spin"></i> Bajando datos de la nube… no cierres la pestaña');
+  DB.forcePullAll(function(done, total) {
+    set('<i class="fas fa-spinner fa-spin"></i> ' + done + ' / ' + total + ' razones sociales…');
+  }).then(function(res) {
+    if (!res || !res.ok) {
+      set('<span style="color:var(--danger)">No se pudo sincronizar (' + ((res && res.reason) || 'error') + '). Verificá tu sesión.</span>');
+      return;
+    }
+    // Resumen: sólo empresas con documentos migrados
+    var DOCS = ['supplierInvoices', 'notasCreditoDebito', 'retentionCertificates'];
+    var rowsHtml = res.companies.filter(function(c) {
+      return !c.ok || DOCS.some(function(k) { return (c.counts && c.counts[k]); });
+    }).map(function(c) {
+      if (!c.ok) return '<tr><td>' + escapeHtml(c.name) + '</td><td colspan="3" style="color:var(--danger)">' + escapeHtml(c.error || 'error') + '</td></tr>';
+      var g = c.counts || {};
+      return '<tr><td>' + escapeHtml(c.name) + '</td>' +
+        '<td style="text-align:right">' + (g.supplierInvoices || 0) + '</td>' +
+        '<td style="text-align:right">' + (g.notasCreditoDebito || 0) + '</td>' +
+        '<td style="text-align:right">' + (g.retentionCertificates || 0) + '</td></tr>';
+    }).join('');
+    var total = res.companies.reduce(function(a, c) { return a + (c.counts ? (c.counts.retentionCertificates || 0) + (c.counts.supplierInvoices || 0) + (c.counts.notasCreditoDebito || 0) : 0); }, 0);
+    set('<div style="color:var(--success);margin-bottom:8px"><i class="fas fa-check-circle"></i> Sincronizado: ' + total + ' documentos. Recargando…</div>' +
+      (rowsHtml ? '<div class="table-wrap"><table style="font-size:12px"><thead><tr><th>Razón Social</th><th>Facturas</th><th>NC/ND</th><th>Retenciones</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
+                : '<div style="color:var(--warning)">Ninguna empresa devolvió documentos. Si cargaste con RLS activa, re-otorgá tu acceso (erp_set_access) y reintentá.</div>'));
+    if (total > 0) setTimeout(function() { location.reload(); }, 2600);
+  }).catch(function(e) {
+    set('<span style="color:var(--danger)">Error: ' + (e && e.message || e) + '</span>');
+  });
 }
 
 function doAutoBackup() {
