@@ -553,13 +553,22 @@ const DB = {
           if (globalFromRemote && (globalFromRemote.companies || globalFromRemote.currencies)) {
             var cleanGlobal = Object.assign({}, globalFromRemote);
             delete cleanGlobal.id;
+            var localG = {};
+            try { localG = JSON.parse(localStorage.getItem(self.GLOBAL_KEY) || '{}'); } catch(e) {}
             // Preservar los usuarios GLOBALES: si el remoto aún no los trae (proyectos
             // migrados desde el modelo per-empresa), no los perdemos al pullear.
-            if (!cleanGlobal.users || !cleanGlobal.users.length) {
-              try {
-                var localG = JSON.parse(localStorage.getItem(self.GLOBAL_KEY) || '{}');
-                if (localG.users && localG.users.length) cleanGlobal.users = localG.users;
-              } catch(e) {}
+            if ((!cleanGlobal.users || !cleanGlobal.users.length) && localG.users && localG.users.length) {
+              cleanGlobal.users = localG.users;
+            }
+            // Preservar EMPRESAS locales que el remoto todavía no conoce (p.ej. razones
+            // sociales recién cargadas por migración cuyo push de '_global' aún no propagó):
+            // unión por id, el remoto gana en los campos de las que ya existen.
+            if (Array.isArray(localG.companies) && localG.companies.length) {
+              var remoteCos = Array.isArray(cleanGlobal.companies) ? cleanGlobal.companies : [];
+              var remoteCoIds = {};
+              remoteCos.forEach(function(c) { if (c && c.id) remoteCoIds[c.id] = true; });
+              var localOnlyCos = localG.companies.filter(function(c) { return c && c.id && !remoteCoIds[c.id]; });
+              if (localOnlyCos.length) cleanGlobal.companies = remoteCos.concat(localOnlyCos);
             }
             try { localStorage.setItem(self.GLOBAL_KEY, JSON.stringify(cleanGlobal)); } catch(e) {}
           }
@@ -1335,12 +1344,20 @@ const DB = {
                     contracts: true, boqItems: true, bankAccounts: true, budgetLines: true };
     var summary = { companies: 0, byCompany: [], totalRecords: 0, errors: [] };
     try {
-      // 1) Registrar/actualizar empresas en el store global
+      // 1) Registrar/actualizar empresas en el store global — en UNA sola escritura
+      //    (evita disparar 21 upserts en carrera del mismo registro '_global').
+      var global = this.getGlobal();
+      if (!global.companies) global.companies = [];
       payload.companies.forEach(function(c) {
         if (!c || !c.id) return;
-        self.saveCompanyRecord(Object.assign({ active: true, created_at: now() }, c));
+        var rec = Object.assign({ active: true, created_at: now() }, c);
+        var idx = global.companies.findIndex(function(x) { return x.id === c.id; });
+        if (idx === -1) global.companies.push(rec);
+        else global.companies[idx] = Object.assign({}, global.companies[idx], rec, { updated_at: now() });
         summary.companies++;
       });
+      // Persistir local; el push durable de '_global' se hace al final (awaited).
+      localStorage.setItem(this.GLOBAL_KEY, JSON.stringify(global));
 
       // 2) Por empresa: construir el blob local y (salvo localOnly) empujar a Supabase
       var cids = Object.keys(payload.data);
@@ -1381,6 +1398,15 @@ const DB = {
         } catch(e) {
           summary.errors.push(cid + ': ' + (e && e.message || e));
         }
+      }
+      // 3) Push DURABLE del registro global (con las empresas nuevas) bajo la empresa
+      //    que quedará activa al recargar, para que el pull no traiga una copia vieja
+      //    y borre las razones sociales recién creadas. Se hace UNA vez y con await.
+      if (!opts.localOnly && _SUPA.online) {
+        try {
+          var gnow = self.getGlobal();
+          await _SUPA.pushCollection(prevCompany, '_global', [Object.assign({}, gnow, { id: 'global' })]);
+        } catch(e) { summary.errors.push('_global: ' + (e && e.message || e)); }
       }
     } finally {
       this._companyId = prevCompany;
