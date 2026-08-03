@@ -1426,7 +1426,12 @@ const DB = {
   // Requiere estar logueado (la escritura se autentica con tu sesión) y RLS que te permita
   // escribir (modelo org-level: cualquier usuario habilitado). Devuelve {inserted,total,errors}.
   migrateImportDocuments: async function(payload, onProgress) {
-    if (!_SUPA.online) throw new Error('Sin conexión a Supabase (la app está offline)');
+    // No dependemos del flag _SUPA.online (puede quedar viejo si el pull inicial hizo
+    // timeout). Exigimos sesión (la escritura se autentica con tu JWT para pasar RLS);
+    // si hay un problema real de red, aparece como error por lote más abajo.
+    if (!(_SUPA.session && _SUPA.session.access_token)) {
+      throw new Error('Iniciá sesión con tu email para cargar (se necesita tu usuario para escribir en la nube)');
+    }
     if (!payload || !Array.isArray(payload.rows)) throw new Error('Payload inválido: se espera { rows: [...] }');
     var res = { inserted: 0, total: payload.rows.length, errors: [] };
     var nowIso = new Date().toISOString();
