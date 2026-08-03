@@ -969,6 +969,22 @@ function completeLogin(uid, remember) {
   var targetModule = (savedModule && window.MODULES && window.MODULES[savedModule] && canView(savedModule))
     ? savedModule : 'dashboard';
   navigate(targetModule);
+
+  // Tras el login, hidratar TODAS las razones sociales desde la nube — no sólo la
+  // empresa activa — para que un dispositivo nuevo (ej. un celular recién logueado)
+  // vea todos los documentos. Trae también la lista de empresas si falta. Corre en
+  // segundo plano y re-renderiza el módulo al terminar.
+  if (_SUPA.session && typeof DB.ensureAllCompaniesLoaded === 'function') {
+    DB.ensureAllCompaniesLoaded().then(function() {
+      if (typeof _updateSyncBadge === 'function') _updateSyncBadge();
+      if (typeof populateCompanySelector === 'function') { try { populateCompanySelector(); } catch(e) {} }
+      try {
+        var mod = (window.APP_STATE && window.APP_STATE.currentModule) || targetModule;
+        if (mod && typeof navigate === 'function') navigate(mod);
+      } catch(e) {}
+    }).catch(function() {});
+  }
+
   setTimeout(syncExchangeRates, 1500);
   setTimeout(function() { if (typeof updateNotifBadge === 'function') updateNotifBadge(); }, 500);
   toast('Bienvenido, ' + escapeHtml(user.name || user.email) + '!', 'success');
