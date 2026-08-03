@@ -1044,6 +1044,36 @@ const DB = {
   // no re-pullea empresas que ya tienen blob local, así que sin esto los datos importados
   // quedan invisibles. Devuelve un resumen por empresa (útil también como diagnóstico:
   // si una empresa reporta 0 filas puede ser RLS sin acceso otorgado).
+  // Trae la lista de razones sociales (store global) desde Supabase. En un dispositivo
+  // nuevo (ej. un celular recién logueado) el global puede no estar, y sin él la
+  // hidratación no sabe qué empresas bajar → no se ve nada. Busca todos los registros
+  // '_global' (uno por empresa), toma el que tenga más companies y lo funde en el global
+  // local (unión por id; preserva companies/users locales que el remoto aún no tenga).
+  _hydrateGlobalFromCloud: async function() {
+    try {
+      var res = await fetch(_SUPA.URL + '/rest/v1/erp_data?collection=eq._global&select=data', { headers: _SUPA.hdrs() });
+      if (!res.ok) return false;
+      var rows = await res.json();
+      if (!rows || !rows.length) return false;
+      var best = null;
+      rows.forEach(function(r) { var d = r.data || {}; var n = Array.isArray(d.companies) ? d.companies.length : 0; if (!best || n > best.n) best = { n: n, d: d }; });
+      if (!best || !best.d) return false;
+      var remoteG = Object.assign({}, best.d); delete remoteG.id;
+      var localG = {};
+      try { localG = JSON.parse(localStorage.getItem(this.GLOBAL_KEY) || '{}'); } catch(e) {}
+      var merged = Object.assign({}, localG, remoteG);
+      if (Array.isArray(localG.companies) && localG.companies.length) {
+        var rc = Array.isArray(remoteG.companies) ? remoteG.companies : [];
+        var ids = {}; rc.forEach(function(c) { if (c && c.id) ids[c.id] = true; });
+        var localOnly = localG.companies.filter(function(c) { return c && c.id && !ids[c.id]; });
+        merged.companies = rc.concat(localOnly);
+      }
+      if ((!merged.users || !merged.users.length) && localG.users && localG.users.length) merged.users = localG.users;
+      localStorage.setItem(this.GLOBAL_KEY, JSON.stringify(merged));
+      return Array.isArray(merged.companies) && merged.companies.length > 0;
+    } catch(e) { return false; }
+  },
+
   // Baja UNA razón social de Supabase y la funde en su blob local (remoto gana por id;
   // conserva registros local-only aún sin sincronizar). Devuelve conteo por colección.
   _pullCompanyInto: async function(cid) {
@@ -1076,6 +1106,11 @@ const DB = {
     if (!_SUPA.session) return { ok: false, reason: 'no-session', companies: [] };
     var companies = [];
     try { companies = this.getAllCompanies() || []; } catch(e) {}
+    // Dispositivo nuevo sin la lista de empresas: traerla de la nube antes de hidratar.
+    if (companies.length < 2) {
+      await this._hydrateGlobalFromCloud();
+      try { companies = this.getAllCompanies() || []; } catch(e) {}
+    }
     var self = this, summary = [], done = 0, CONC = 6, idx = 0;
     async function worker() {
       while (idx < companies.length) {
