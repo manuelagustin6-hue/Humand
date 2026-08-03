@@ -180,9 +180,11 @@ var _SUPA = {
   },
 
   // Pull ALL records for a company → returns { collection: [records] }
-  pull: async function(companyId) {
+  pull: async function(companyId, timeoutMs) {
     var ctrl = new AbortController();
-    var timer = setTimeout(function() { ctrl.abort(); }, 5000);
+    // 30s por defecto: las razones sociales grandes (miles de facturas) tardaban más
+    // de 5s y abortaban, dejando el cache local incompleto tras la migración.
+    var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs || 30000);
     var res = await fetch(
       this.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
       '&deleted=eq.false&select=collection,record_id,data&order=created_at.asc&limit=50000',
