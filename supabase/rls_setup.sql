@@ -8,6 +8,11 @@
 --  Modelo: una tabla de MEMBRESÍAS (usuario Supabase Auth ↔ empresa ↔ rol).
 --  Las policies de erp_data consultan esa tabla vía funciones security-definer.
 --
+--  ⚠️  ACTUALIZACIÓN — El modelo vigente es NIVEL ORGANIZACIÓN: un usuario
+--      habilitado ve TODAS las razones sociales. Ver `rls_org_level.sql`, que
+--      redefine erp_is_member / erp_can_write / erp_is_admin para ignorar el
+--      company_id. Este archivo queda como base histórica (setup inicial).
+--
 --  ⚠️  IMPORTANTE — CORRER POR PASOS, EN ORDEN, REVISANDO ENTRE CADA UNO.
 --      No pegues todo de una. El PASO 4 activa RLS: si las membresías no
 --      están bien cargadas (PASO 2/3), los usuarios quedan SIN acceso.
