@@ -164,6 +164,23 @@ function buildBackupTab() {
     '<button class="btn btn-secondary" onclick="document.getElementById(\'ajustes-import-file\').click()">' +
     '<i class="fas fa-upload"></i> Seleccionar Archivo JSON</button>' +
     '</div></div>' +
+
+    '<div class="card">' +
+    '<div class="card-header"><span class="card-title"><i class="fas fa-truck-loading text-info"></i> Migración de Datos (Lebane)</span></div>' +
+    '<div class="card-body">' +
+    '<p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">' +
+    'Carga en lote de <strong>varias empresas</strong> (razones sociales) con sus proyectos, ' +
+    'proveedores y rubros desde un archivo de migración generado para Rise. ' +
+    'Crea las empresas nuevas y las sincroniza a Supabase — <strong>no reemplaza</strong> las existentes.' +
+    '</p>' +
+    '<p style="font-size:12px;color:var(--warning);margin-bottom:16px">' +
+    '<i class="fas fa-exclamation-triangle"></i> Ejecutá esta carga con RLS <strong>desactivada</strong> en Supabase. ' +
+    'Al terminar, reactivá RLS y re-otorgá tu acceso con <code>erp_set_access</code>.' +
+    '</p>' +
+    '<input type="file" id="ajustes-migrate-file" accept=".json" style="display:none" onchange="doMigrateLebane(this)">' +
+    '<button class="btn btn-secondary" onclick="document.getElementById(\'ajustes-migrate-file\').click()">' +
+    '<i class="fas fa-truck-loading"></i> Cargar Archivo de Migración</button>' +
+    '</div></div>' +
     '</div>' +
 
     '<div class="card mt-3">' +
@@ -420,6 +437,49 @@ function doImportBackup(input) {
           setTimeout(function() { location.reload(); }, 1500);
         } else {
           toast('Error al importar: ' + result.error, 'error');
+        }
+      }
+    );
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function doMigrateLebane(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var payload;
+    try { payload = JSON.parse(e.target.result); }
+    catch(err) { toast('Archivo JSON inválido: ' + err.message, 'error'); return; }
+    if (!payload || !Array.isArray(payload.companies) || typeof payload.data !== 'object') {
+      toast('El archivo no tiene el formato de migración esperado', 'error'); return;
+    }
+    var nCo = payload.companies.length;
+    var nRec = 0;
+    Object.keys(payload.data || {}).forEach(function(cid) {
+      var d = payload.data[cid] || {};
+      Object.keys(d).forEach(function(c) { if (Array.isArray(d[c])) nRec += d[c].length; });
+    });
+    confirmDialog(
+      'Cargar migración desde "' + file.name + '"?<br><br>' +
+      '<strong>' + nCo + '</strong> empresas y <strong>' + nRec + '</strong> registros ' +
+      '(proyectos, proveedores y rubros).<br><br>' +
+      'Se crearán las empresas nuevas y se empujarán a Supabase. ' +
+      'Verificá que RLS esté <strong>desactivada</strong> durante la carga.',
+      async function() {
+        toast('Cargando migración… no cierres la pestaña', 'info');
+        try {
+          var res = await DB.migrateLoadMulti(payload);
+          if (res.errors && res.errors.length) console.warn('[Migración] errores:', res.errors);
+          var msg = 'Migración cargada: ' + res.companies + ' empresas, ' +
+                    res.totalRecords + ' registros.' +
+                    (res.errors && res.errors.length ? ' (' + res.errors.length + ' errores — ver consola)' : '');
+          toast(msg, res.errors && res.errors.length ? 'warning' : 'success');
+          setTimeout(function() { location.reload(); }, 2800);
+        } catch(err) {
+          toast('Error en la migración: ' + err.message, 'error');
         }
       }
     );
