@@ -694,22 +694,20 @@ const DB = {
 
   // Trae de Supabase los datos de todas las empresas que aún no estén en localStorage,
   // para que la vista consolidada sea completa. Devuelve una promesa.
-  ensureAllCompaniesLoaded: async function() {
-    if (!_SUPA.online) return false;
-    var companies = [];
-    try { companies = this.getAllCompanies() || []; } catch(e) {}
-    var active = this._companyId;
-    for (var i = 0; i < companies.length; i++) {
-      var cid = companies[i].id;
-      if (cid === active) continue;
-      if (localStorage.getItem('erp_company_' + cid + '_v1')) continue;   // ya está local
-      try {
-        var remote = await _SUPA.pull(cid);
-        if (remote && remote._global) delete remote._global;
-        localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote || {}));
-      } catch(e) {}
-    }
-    return true;
+  // Hidrata TODAS las razones sociales desde Supabase para que la vista consolidada sea
+  // completa en cualquier dispositivo. Antes salteaba las empresas ya cacheadas y dependía
+  // del flag online — por eso datos cargados a la nube (o un celu recién logueado) no se
+  // veían. Ahora refresca todo vía forcePullAll, con throttle para no re-pullear en cada
+  // render (una vez cada 3 min por sesión) y de-dup de llamadas concurrentes.
+  ensureAllCompaniesLoaded: function() {
+    var self = this;
+    if (self._allHydratedAt && (Date.now() - self._allHydratedAt) < 180000) return Promise.resolve(true);
+    if (self._hydratingPromise) return self._hydratingPromise;
+    self._hydratingPromise = self.forcePullAll().then(function(res) {
+      self._hydratingPromise = null;
+      return !!(res && res.ok);
+    }).catch(function() { self._hydratingPromise = null; return false; });
+    return self._hydratingPromise;
   },
 
   getById(collection, id) {
@@ -1046,39 +1044,57 @@ const DB = {
   // no re-pullea empresas que ya tienen blob local, así que sin esto los datos importados
   // quedan invisibles. Devuelve un resumen por empresa (útil también como diagnóstico:
   // si una empresa reporta 0 filas puede ser RLS sin acceso otorgado).
+  // Baja UNA razón social de Supabase y la funde en su blob local (remoto gana por id;
+  // conserva registros local-only aún sin sincronizar). Devuelve conteo por colección.
+  _pullCompanyInto: async function(cid) {
+    var remote = await _SUPA.pull(cid);
+    if (remote && remote._global) delete remote._global;
+    var localRaw = localStorage.getItem('erp_company_' + cid + '_v1');
+    var localData = localRaw ? JSON.parse(localRaw) : {};
+    Object.keys(localData).forEach(function(col) {
+      if (!Array.isArray(localData[col])) return;
+      var remoteArr = remote[col] || [];
+      var remoteIds = {};
+      remoteArr.forEach(function(r) { if (r && r.id) remoteIds[r.id] = true; });
+      var localOnly = localData[col].filter(function(r) { return r && r.id && !remoteIds[r.id]; });
+      if (localOnly.length) remote[col] = remoteArr.concat(localOnly);
+    });
+    localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote));
+    if (cid === this._companyId) { this._cache = remote; this._cacheKey = this.KEY; }
+    var counts = {};
+    Object.keys(remote).forEach(function(col) { if (Array.isArray(remote[col])) counts[col] = remote[col].length; });
+    return counts;
+  },
+
+  // Re-sincroniza TODAS las razones sociales desde Supabase (en paralelo, con límite de
+  // concurrencia), sobrescribiendo el cache local de cada una. Es la hidratación que hace
+  // que CUALQUIER dispositivo (ej. un celular recién logueado) vea todos los datos sin
+  // depender de que estén cacheados. No exige el flag _SUPA.online (puede quedar viejo):
+  // alcanza con tener sesión. Devuelve resumen por empresa (0 filas => posible RLS).
   forcePullAll: async function(onProgress) {
-    if (!_SUPA.online) { try { await this.load(); } catch(e) {} }
-    if (!_SUPA.online) return { ok: false, reason: 'offline', companies: [] };
     if (!_SUPA.session) { try { await _SUPA.getSession(); } catch(e) {} }
+    if (!_SUPA.session) return { ok: false, reason: 'no-session', companies: [] };
     var companies = [];
     try { companies = this.getAllCompanies() || []; } catch(e) {}
-    var active = this._companyId, self = this, summary = [];
-    for (var i = 0; i < companies.length; i++) {
-      var cid = companies[i].id, nm = companies[i].name || cid;
-      try {
-        var remote = await _SUPA.pull(cid);
-        if (remote && remote._global) delete remote._global;
-        // Merge: remoto gana por id; conservar registros local-only (aún sin sincronizar).
-        var localRaw = localStorage.getItem('erp_company_' + cid + '_v1');
-        var localData = localRaw ? JSON.parse(localRaw) : {};
-        Object.keys(localData).forEach(function(col) {
-          if (!Array.isArray(localData[col])) return;
-          var remoteArr = remote[col] || [];
-          var remoteIds = {};
-          remoteArr.forEach(function(r) { if (r && r.id) remoteIds[r.id] = true; });
-          var localOnly = localData[col].filter(function(r) { return r && r.id && !remoteIds[r.id]; });
-          if (localOnly.length) remote[col] = remoteArr.concat(localOnly);
-        });
-        localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote));
-        if (cid === active) { this._cache = remote; this._cacheKey = this.KEY; }
-        var counts = {};
-        Object.keys(remote).forEach(function(col) { if (Array.isArray(remote[col])) counts[col] = remote[col].length; });
-        summary.push({ id: cid, name: nm, ok: true, counts: counts });
-      } catch(e) {
-        summary.push({ id: cid, name: nm, ok: false, error: (e && e.message) || String(e) });
+    var self = this, summary = [], done = 0, CONC = 6, idx = 0;
+    async function worker() {
+      while (idx < companies.length) {
+        var i = idx++; var c = companies[i]; var cid = c.id, nm = c.name || cid;
+        try {
+          var counts = await self._pullCompanyInto(cid);
+          summary.push({ id: cid, name: nm, ok: true, counts: counts });
+        } catch(e) {
+          summary.push({ id: cid, name: nm, ok: false, error: (e && e.message) || String(e) });
+        }
+        done++;
+        if (typeof onProgress === 'function') onProgress(done, companies.length, summary);
       }
-      if (typeof onProgress === 'function') onProgress(i + 1, companies.length, summary);
     }
+    var pool = [];
+    for (var w = 0; w < Math.min(CONC, companies.length); w++) pool.push(worker());
+    await Promise.all(pool);
+    if (_SUPA.session) _SUPA.online = true; // pudimos hablar con la nube
+    this._allHydratedAt = Date.now();
     return { ok: true, companies: summary };
   },
 
