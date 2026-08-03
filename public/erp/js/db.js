@@ -1038,6 +1038,48 @@ const DB = {
     }
   },
 
+  // Re-sincroniza TODAS las razones sociales desde Supabase, sobrescribiendo el cache
+  // local de cada una (remoto gana; se conservan registros local-only sin sincronizar).
+  // Necesario tras cargas masivas a la nube (migración de documentos): ensureAllCompaniesLoaded
+  // no re-pullea empresas que ya tienen blob local, así que sin esto los datos importados
+  // quedan invisibles. Devuelve un resumen por empresa (útil también como diagnóstico:
+  // si una empresa reporta 0 filas puede ser RLS sin acceso otorgado).
+  forcePullAll: async function(onProgress) {
+    if (!_SUPA.online) { try { await this.load(); } catch(e) {} }
+    if (!_SUPA.online) return { ok: false, reason: 'offline', companies: [] };
+    if (!_SUPA.session) { try { await _SUPA.getSession(); } catch(e) {} }
+    var companies = [];
+    try { companies = this.getAllCompanies() || []; } catch(e) {}
+    var active = this._companyId, self = this, summary = [];
+    for (var i = 0; i < companies.length; i++) {
+      var cid = companies[i].id, nm = companies[i].name || cid;
+      try {
+        var remote = await _SUPA.pull(cid);
+        if (remote && remote._global) delete remote._global;
+        // Merge: remoto gana por id; conservar registros local-only (aún sin sincronizar).
+        var localRaw = localStorage.getItem('erp_company_' + cid + '_v1');
+        var localData = localRaw ? JSON.parse(localRaw) : {};
+        Object.keys(localData).forEach(function(col) {
+          if (!Array.isArray(localData[col])) return;
+          var remoteArr = remote[col] || [];
+          var remoteIds = {};
+          remoteArr.forEach(function(r) { if (r && r.id) remoteIds[r.id] = true; });
+          var localOnly = localData[col].filter(function(r) { return r && r.id && !remoteIds[r.id]; });
+          if (localOnly.length) remote[col] = remoteArr.concat(localOnly);
+        });
+        localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote));
+        if (cid === active) { this._cache = remote; this._cacheKey = this.KEY; }
+        var counts = {};
+        Object.keys(remote).forEach(function(col) { if (Array.isArray(remote[col])) counts[col] = remote[col].length; });
+        summary.push({ id: cid, name: nm, ok: true, counts: counts });
+      } catch(e) {
+        summary.push({ id: cid, name: nm, ok: false, error: (e && e.message) || String(e) });
+      }
+      if (typeof onProgress === 'function') onProgress(i + 1, companies.length, summary);
+    }
+    return { ok: true, companies: summary };
+  },
+
   // ---- BACKUP / RESTORE ----
   export() {
     var data = this.get();
