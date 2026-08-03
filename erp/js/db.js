@@ -1074,6 +1074,38 @@ const DB = {
     } catch(e) { return false; }
   },
 
+  // Descubre TODOS los company_id que tienen datos en la nube (escaneo liviano de la
+  // columna company_id). Es la fuente de verdad de "qué razones sociales existen":
+  // no depende de que la lista de empresas (_global) se haya propagado a este device.
+  _discoverCompanyIds: async function() {
+    try {
+      var res = await fetch(_SUPA.URL + '/rest/v1/erp_data?select=company_id&limit=100000', { headers: _SUPA.hdrs() });
+      if (!res.ok) return [];
+      var rows = await res.json();
+      var set = {};
+      rows.forEach(function(r) { if (r && r.company_id) set[r.company_id] = true; });
+      return Object.keys(set);
+    } catch(e) { return []; }
+  },
+
+  // Registra en el store global las razones sociales descubiertas que falten, con un
+  // nombre best-effort derivado del id (si el _global no trajo el nombre real).
+  _registerDiscoveredCompanies: function(ids) {
+    if (!ids || !ids.length) return 0;
+    var g = this.getGlobal();
+    if (!Array.isArray(g.companies)) g.companies = [];
+    var have = {}; g.companies.forEach(function(c) { if (c && c.id) have[c.id] = true; });
+    function pretty(id) {
+      return String(id).replace(/^lb-/, '').replace(/-/g, ' ').replace(/\b\w/g, function(m) { return m.toUpperCase(); }).trim() || id;
+    }
+    var added = 0;
+    ids.forEach(function(id) {
+      if (id && !have[id]) { g.companies.push({ id: id, name: pretty(id), currency: 'ARS' }); have[id] = true; added++; }
+    });
+    if (added) this.saveGlobal(g);
+    return added;
+  },
+
   // Baja UNA razón social de Supabase y la funde en su blob local (remoto gana por id;
   // conserva registros local-only aún sin sincronizar). Devuelve conteo por colección.
   _pullCompanyInto: async function(cid) {
@@ -1104,13 +1136,19 @@ const DB = {
   forcePullAll: async function(onProgress) {
     if (!_SUPA.session) { try { await _SUPA.getSession(); } catch(e) {} }
     if (!_SUPA.session) return { ok: false, reason: 'no-session', companies: [] };
-    var companies = [];
-    try { companies = this.getAllCompanies() || []; } catch(e) {}
-    // Dispositivo nuevo sin la lista de empresas: traerla de la nube antes de hidratar.
-    if (companies.length < 2) {
-      await this._hydrateGlobalFromCloud();
-      try { companies = this.getAllCompanies() || []; } catch(e) {}
-    }
+    // 1) Traer nombres reales de las razones sociales (si el _global propagó).
+    await this._hydrateGlobalFromCloud();
+    // 2) Descubrir TODAS las empresas con datos en la nube (fuente de verdad) y
+    //    registrar en el global las que falten. Así un dispositivo que sólo tenía la
+    //    empresa demo igual encuentra y baja las 21 razones sociales reales.
+    var discovered = await this._discoverCompanyIds();
+    this._registerDiscoveredCompanies(discovered);
+    var known = [];
+    try { known = this.getAllCompanies() || []; } catch(e) {}
+    var byId = {};
+    known.forEach(function(c) { if (c && c.id) byId[c.id] = { id: c.id, name: c.name || c.id }; });
+    discovered.forEach(function(id) { if (id && !byId[id]) byId[id] = { id: id, name: id }; });
+    var companies = Object.keys(byId).map(function(id) { return byId[id]; });
     var self = this, summary = [], done = 0, CONC = 6, idx = 0;
     async function worker() {
       while (idx < companies.length) {
