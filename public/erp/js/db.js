@@ -338,6 +338,12 @@ const DB = {
   _companyId: 'comp-001',
   _cache: null,        // objeto parseado del blob de la empresa activa (memoización de get())
   _cacheKey: null,     // KEY a la que corresponde _cache
+  // Espejo en memoria (RAM) de los blobs por empresa { cid: data }. Fuente principal
+  // de la vista consolidada. Clave en móvil: el dataset completo (~10 MB) NO entra en
+  // localStorage (tope ~5 MB en el celular), pero sí en RAM. Como re-hidratamos desde
+  // la nube en cada login, localStorage pasa a ser un cache best-effort: si la escritura
+  // falla por cuota, seguimos en RAM y no se pierde nada.
+  _blobs: {},
   GLOBAL_KEY:    'erp_global_v1',
   PENDING_KEY:   'erp_pending_writes',   // upsert queue (namespaced with company_id per entry)
   PENDING_DEL_KEY: 'erp_pending_deletes', // delete queue
@@ -352,7 +358,14 @@ const DB = {
     if (this._cache && this._cacheKey === key) return this._cache;
     try {
       var raw = localStorage.getItem(key);
-      if (!raw) return this.init(); // init()→save() deja el cache seteado
+      if (!raw) {
+        // Sin blob en localStorage: en móvil el dataset grande no entra por cuota,
+        // pero sí está en el espejo RAM (hidratado desde la nube). Usarlo antes de seedear.
+        if (this._blobs[this._companyId]) {
+          this._cache = this._blobs[this._companyId]; this._cacheKey = key; return this._cache;
+        }
+        return this.init(); // init()→save() deja el cache seteado
+      }
       var data = JSON.parse(raw);
       // Los usuarios ahora son GLOBALES (store global, no por empresa). Ya no se
       // siembran ni se leen desde el blob de empresa. getAll('users') va al global.
@@ -410,21 +423,21 @@ const DB = {
   },
 
   save(data) {
+    // RAM primero: el cache y el espejo consolidado se actualizan SIEMPRE, aunque
+    // localStorage falle por cuota (dataset grande en móvil). Así la UI ve los datos
+    // y no se pierden; la nube ya tiene la copia durable.
+    this._cache = data; this._cacheKey = this.KEY;
+    this._blobs[this._companyId] = data;
     try {
       localStorage.setItem(this.KEY, JSON.stringify(data));
-      this._cache = data;          // mantener el cache en sync con lo persistido
-      this._cacheKey = this.KEY;
       try {
         var snap = { ts: new Date().toISOString(), counts: {} };
         Object.keys(data).forEach(function(k) { if (Array.isArray(data[k])) snap.counts[k] = data[k].length; });
         localStorage.setItem('erp_snapshot', JSON.stringify(snap));
       } catch(e) {}
     } catch(e) {
-      console.error('DB.save error:', e);
-      var msg = e.name === 'QuotaExceededError'
-        ? 'Almacenamiento lleno — exportá un respaldo y liberá espacio'
-        : 'Error al guardar datos: ' + e.message;
-      if (typeof toast === 'function') toast(msg, 'error');
+      // Cuota llena: seguimos operando desde RAM (se re-hidrata de la nube al iniciar).
+      if (e.name !== 'QuotaExceededError') console.error('DB.save error:', e);
     }
     // NOTE: Supabase sync is handled per-record in insert/update/remove.
     // Bulk push only happens explicitly via _pushAllToSupabase() (used in importData).
@@ -577,9 +590,10 @@ const DB = {
           delete remoteData._global; // don't store _global as a company collection
         }
 
-        // Persist the merged company-specific data
-        localStorage.setItem(self.KEY, JSON.stringify(remoteData));
-        self._cache = remoteData; self._cacheKey = self.KEY; // sync cache con lo pulleado
+        // Persist the merged company-specific data (RAM primero; localStorage best-effort)
+        self._cache = remoteData; self._cacheKey = self.KEY;
+        self._blobs[cid] = remoteData;
+        try { localStorage.setItem(self.KEY, JSON.stringify(remoteData)); } catch(e) { /* cuota: sólo RAM */ }
         _SUPA.online = true;
 
         var totalRecords = Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0);
@@ -668,8 +682,10 @@ const DB = {
     if (collection === 'users') return this._globalUsers();
     var names = {}, curr = {};
     try { (this.getAllCompanies() || []).forEach(function(c) { names[c.id] = c.legalName || c.name || c.id; curr[c.id] = c.currency || 'ARS'; }); } catch(e) {}
-    var out = [], active = this._companyId, self = this;
+    var out = [], active = this._companyId, self = this, seen = {};
     function push(cid, data) {
+      if (seen[cid]) return;
+      seen[cid] = true;
       if (data && Array.isArray(data[collection])) {
         var nm = names[cid] || cid, cu = curr[cid] || 'ARS';
         data[collection].forEach(function(rec) {
@@ -677,15 +693,21 @@ const DB = {
         });
       }
     }
+    // 1) Empresa activa: datos frescos (get() = cache → localStorage → RAM).
+    push(active, this.get());
+    // 2) Resto desde localStorage (persistido).
     try {
       for (var i = 0; i < localStorage.length; i++) {
         var key = localStorage.key(i);
         if (!key || !/^erp_company_.+_v1$/.test(key)) continue;
         var cid = key.replace('erp_company_', '').replace(/_v1$/, '');
-        if (cid === active) { push(cid, this.get()); }        // activa: datos frescos del cache
-        else { try { push(cid, JSON.parse(localStorage.getItem(key))); } catch(e) {} }
+        if (seen[cid]) continue;
+        try { push(cid, JSON.parse(localStorage.getItem(key))); } catch(e) {}
       }
     } catch(e) {}
+    // 3) Fallback RAM: empresas cuyo blob NO llegó a localStorage (cuota en móvil).
+    //    Sólo agrega las que no vinieron ya de localStorage, así no hay duplicados.
+    Object.keys(this._blobs).forEach(function(cid) { if (!seen[cid]) push(cid, self._blobs[cid]); });
     return out;
   },
 
@@ -1021,8 +1043,9 @@ const DB = {
         var localOnly = localData[col].filter(function(r) { return r.id && !remoteIds[r.id]; });
         if (localOnly.length) remoteData[col] = remoteArr.concat(localOnly);
       });
-      localStorage.setItem(this.KEY, JSON.stringify(remoteData));
       this._cache = remoteData; this._cacheKey = this.KEY; // sync cache tras el re-pull
+      this._blobs[this._companyId] = remoteData;
+      try { localStorage.setItem(this.KEY, JSON.stringify(remoteData)); } catch(e) { /* cuota: sólo RAM */ }
       var flushed = this.flushPending();
       if (typeof toast === 'function') toast('Sincronización completa' + (flushed > 0 ? ' — ' + flushed + ' cambio(s) enviado(s)' : ''), 'success');
       // Update badge after a tick so upsert callbacks (re-enqueue on fail) have run
@@ -1121,7 +1144,8 @@ const DB = {
       var localOnly = localData[col].filter(function(r) { return r && r.id && !remoteIds[r.id]; });
       if (localOnly.length) remote[col] = remoteArr.concat(localOnly);
     });
-    localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote));
+    this._blobs[cid] = remote;   // RAM: fuente principal para la vista consolidada
+    try { localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote)); } catch(e) { /* cuota: sólo RAM */ }
     if (cid === this._companyId) { this._cache = remote; this._cacheKey = this.KEY; }
     var counts = {};
     Object.keys(remote).forEach(function(col) { if (Array.isArray(remote[col])) counts[col] = remote[col].length; });
