@@ -186,20 +186,28 @@ var _SUPA = {
     // tandas de 1.000 y seguimos hasta recibir una página incompleta (última). Antes
     // se truncaban en 1.000 las razones sociales grandes (Atlántida, HA) porque el
     // corte esperaba páginas de mayor tamaño que el servidor jamás devuelve.
-    var out = {}, from = 0, PAGE = 1000, got = 0, guard = 0;
+    var self = this, out = {}, from = 0, PAGE = 1000, got = 0, guard = 0;
+    // Una página con reintentos: un hipo de red móvil no debe perder la empresa entera.
+    async function fetchPage(start) {
+      var lastErr;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        var ctrl = new AbortController();
+        var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs || 30000);
+        try {
+          var res = await fetch(
+            self.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
+            '&deleted=eq.false&select=collection,record_id,data&order=created_at.asc',
+            { headers: self.hdrs({ 'Range-Unit': 'items', 'Range': start + '-' + (start + PAGE - 1) }), signal: ctrl.signal }
+          );
+          clearTimeout(timer);
+          if (!res.ok && res.status !== 206) throw new Error('HTTP ' + res.status);
+          return await res.json();
+        } catch (e) { clearTimeout(timer); lastErr = e; }
+      }
+      throw lastErr || new Error('pull page failed');
+    }
     do {
-      var ctrl = new AbortController();
-      var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs || 30000);
-      var res;
-      try {
-        res = await fetch(
-          this.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
-          '&deleted=eq.false&select=collection,record_id,data&order=created_at.asc',
-          { headers: this.hdrs({ 'Range-Unit': 'items', 'Range': from + '-' + (from + PAGE - 1) }), signal: ctrl.signal }
-        );
-      } finally { clearTimeout(timer); }
-      if (!res.ok && res.status !== 206) throw new Error('HTTP ' + res.status);
-      var rows = await res.json();
+      var rows = await fetchPage(from);
       got = Array.isArray(rows) ? rows.length : 0;
       rows.forEach(function(r) {
         if (!out[r.collection]) out[r.collection] = [];
