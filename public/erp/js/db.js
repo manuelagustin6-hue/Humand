@@ -454,7 +454,10 @@ const DB = {
       } catch(e) {}
     } catch(e) {
       // Cuota llena: seguimos operando desde RAM (se re-hidrata de la nube al iniciar).
-      if (e.name !== 'QuotaExceededError') console.error('DB.save error:', e);
+      // Cuota llena: purgar el blob viejo para que get() caiga a la copia fresca en RAM
+      // (si no, un blob parcial/antiguo en localStorage "gana" sobre _blobs).
+      if (e.name === 'QuotaExceededError') { try { localStorage.removeItem(this.KEY); } catch(e2) {} }
+      else console.error('DB.save error:', e);
     }
     // NOTE: Supabase sync is handled per-record in insert/update/remove.
     // Bulk push only happens explicitly via _pushAllToSupabase() (used in importData).
@@ -610,7 +613,7 @@ const DB = {
         // Persist the merged company-specific data (RAM primero; localStorage best-effort)
         self._cache = remoteData; self._cacheKey = self.KEY;
         self._blobs[cid] = remoteData;
-        try { localStorage.setItem(self.KEY, JSON.stringify(remoteData)); } catch(e) { /* cuota: sólo RAM */ }
+        try { localStorage.setItem(self.KEY, JSON.stringify(remoteData)); } catch(e) { try { localStorage.removeItem(self.KEY); } catch(e2) {} }
         _SUPA.online = true;
 
         var totalRecords = Object.values(remoteData).reduce(function(s,a){ return s+(Array.isArray(a)?a.length:0); },0);
@@ -1062,7 +1065,7 @@ const DB = {
       });
       this._cache = remoteData; this._cacheKey = this.KEY; // sync cache tras el re-pull
       this._blobs[this._companyId] = remoteData;
-      try { localStorage.setItem(this.KEY, JSON.stringify(remoteData)); } catch(e) { /* cuota: sólo RAM */ }
+      try { localStorage.setItem(this.KEY, JSON.stringify(remoteData)); } catch(e) { try { localStorage.removeItem(this.KEY); } catch(e2) {} }
       var flushed = this.flushPending();
       if (typeof toast === 'function') toast('Sincronización completa' + (flushed > 0 ? ' — ' + flushed + ' cambio(s) enviado(s)' : ''), 'success');
       // Update badge after a tick so upsert callbacks (re-enqueue on fail) have run
@@ -1162,7 +1165,7 @@ const DB = {
       if (localOnly.length) remote[col] = remoteArr.concat(localOnly);
     });
     this._blobs[cid] = remote;   // RAM: fuente principal para la vista consolidada
-    try { localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote)); } catch(e) { /* cuota: sólo RAM */ }
+    try { localStorage.setItem('erp_company_' + cid + '_v1', JSON.stringify(remote)); } catch(e) { try { localStorage.removeItem('erp_company_' + cid + '_v1'); } catch(e2) {} }
     if (cid === this._companyId) { this._cache = remote; this._cacheKey = this.KEY; }
     var counts = {};
     Object.keys(remote).forEach(function(col) { if (Array.isArray(remote[col])) counts[col] = remote[col].length; });
