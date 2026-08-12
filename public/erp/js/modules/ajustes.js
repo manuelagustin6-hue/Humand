@@ -312,7 +312,7 @@ function runAjustesIntegrity() {
 // ---- SYSTEM TAB ----
 // Identificador del build desplegado. Bumpear en cada deploy para poder confirmar
 // desde el celular (sin consola) si el dispositivo ya tomó el código nuevo.
-window.ERP_BUILD = 'erp-v71';
+window.ERP_BUILD = 'erp-v72';
 
 // Diagnóstico visible en pantalla (mobile-friendly, sin consola). Muestra versión de
 // código cargada, sesión, empresas conocidas y conteo real en la nube vs en la app.
