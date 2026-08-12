@@ -559,12 +559,14 @@ const DB = {
           // MERGE: Supabase wins on conflicts; keep local-only records (failed upserts)
           // and re-push them so they eventually sync.
           var toPush = {};
+          var pend = self._pendingIdSet(cid);
           Object.keys(localData).forEach(function(col) {
             if (!Array.isArray(localData[col])) return;
             var remoteArr = remoteData[col] || [];
             var remoteIds = {};
             remoteArr.forEach(function(r) { if (r.id) remoteIds[r.id] = true; });
-            var localOnly = localData[col].filter(function(r) { return r.id && !remoteIds[r.id]; });
+            // Sólo conservar/re-subir local-only PENDIENTE (no restos viejos que inflan).
+            var localOnly = localData[col].filter(function(r) { return r.id && !remoteIds[r.id] && pend[r.id]; });
             if (localOnly.length) {
               remoteData[col] = remoteArr.concat(localOnly);
               toPush[col] = localOnly;
@@ -958,6 +960,19 @@ const DB = {
     _updateSyncBadge();
   },
 
+  // Ids de registros con escritura pendiente de sincronizar para una empresa. Se usa
+  // al fundir un pull: se conservan SÓLO los registros local-only que estén pendientes
+  // (ediciones offline reales), descartando restos viejos que ya no existen en la nube
+  // (que si no inflarían el conteo, p.ej. Atlántida mostrando 4.618 en vez de 3.727).
+  _pendingIdSet: function(cid) {
+    var s = {};
+    try {
+      var pending = JSON.parse(localStorage.getItem(this.PENDING_KEY) || '[]');
+      pending.forEach(function(p) { if (p.cid === cid && p.rec && p.rec.id) s[p.rec.id] = true; });
+    } catch(e) {}
+    return s;
+  },
+
   _removePending: function(collection, recordId) {
     var cid = this._companyId;
     try {
@@ -1052,15 +1067,17 @@ const DB = {
         if (typeof toast === 'function') toast('No se encontraron datos en el servidor', 'info');
         return false;
       }
-      // Merge: remote wins on conflicts; keep local-only records
+      // Merge: remote wins on conflicts; keep local-only records SÓLO si están pendientes
+      // de sincronizar (no restos viejos que inflan el conteo).
       var localRaw  = localStorage.getItem(this.KEY);
       var localData = localRaw ? JSON.parse(localRaw) : {};
+      var pend = this._pendingIdSet(this._companyId);
       Object.keys(localData).forEach(function(col) {
         if (!Array.isArray(localData[col])) return;
         var remoteArr = remoteData[col] || [];
         var remoteIds = {};
         remoteArr.forEach(function(r) { if (r.id) remoteIds[r.id] = true; });
-        var localOnly = localData[col].filter(function(r) { return r.id && !remoteIds[r.id]; });
+        var localOnly = localData[col].filter(function(r) { return r.id && !remoteIds[r.id] && pend[r.id]; });
         if (localOnly.length) remoteData[col] = remoteArr.concat(localOnly);
       });
       this._cache = remoteData; this._cacheKey = this.KEY; // sync cache tras el re-pull
@@ -1156,12 +1173,14 @@ const DB = {
     if (remote && remote._global) delete remote._global;
     var localRaw = localStorage.getItem('erp_company_' + cid + '_v1');
     var localData = localRaw ? JSON.parse(localRaw) : {};
+    var pend = this._pendingIdSet(cid);
     Object.keys(localData).forEach(function(col) {
       if (!Array.isArray(localData[col])) return;
       var remoteArr = remote[col] || [];
       var remoteIds = {};
       remoteArr.forEach(function(r) { if (r && r.id) remoteIds[r.id] = true; });
-      var localOnly = localData[col].filter(function(r) { return r && r.id && !remoteIds[r.id]; });
+      // Sólo conservar local-only que esté pendiente de sincronizar (no restos viejos).
+      var localOnly = localData[col].filter(function(r) { return r && r.id && !remoteIds[r.id] && pend[r.id]; });
       if (localOnly.length) remote[col] = remoteArr.concat(localOnly);
     });
     this._blobs[cid] = remote;   // RAM: fuente principal para la vista consolidada
