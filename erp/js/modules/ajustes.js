@@ -310,6 +310,38 @@ function runAjustesIntegrity() {
 }
 
 // ---- SYSTEM TAB ----
+// Identificador del build desplegado. Bumpear en cada deploy para poder confirmar
+// desde el celular (sin consola) si el dispositivo ya tomó el código nuevo.
+window.ERP_BUILD = 'erp-v71';
+
+// Diagnóstico visible en pantalla (mobile-friendly, sin consola). Muestra versión de
+// código cargada, sesión, empresas conocidas y conteo real en la nube vs en la app.
+function runDiag() {
+  var el = document.getElementById('erp-diag-out');
+  if (!el) return;
+  el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ejecutando…';
+  var L = [];
+  function add(k, v, warn) { L.push('<div><strong>' + k + ':</strong> <span style="color:' + (warn ? 'var(--danger)' : 'var(--text)') + '">' + v + '</span></div>'); }
+  add('Build cargado', window.ERP_BUILD || '?', (window.ERP_BUILD || '') < 'erp-v71');
+  add('Código RAM (v70+)', (DB && typeof DB._blobs === 'object') ? 'sí' : 'NO — código viejo', !(DB && typeof DB._blobs === 'object'));
+  add('Descubrir empresas (v69+)', (DB && typeof DB._discoverCompanyIds === 'function') ? 'sí' : 'NO — código viejo', !(DB && typeof DB._discoverCompanyIds === 'function'));
+  var hasSes = !!(_SUPA && _SUPA.session && _SUPA.session.access_token);
+  add('Sesión Supabase', hasSes ? 'sí' : 'NO', !hasSes);
+  add('Email', (_SUPA && _SUPA.session && _SUPA.session.user && _SUPA.session.user.email) || '—');
+  var cos = []; try { cos = DB.getAllCompanies() || []; } catch (e) {}
+  add('Empresas conocidas', cos.length + (cos.length ? ' — ' + cos.slice(0, 4).map(function (c) { return c.name; }).join(', ') + (cos.length > 4 ? '…' : '') : ''), cos.length < 2);
+  var inv = 0, ret = 0; try { inv = DB.getAllConsolidated('supplierInvoices').length; ret = DB.getAllConsolidated('retentionCertificates').length; } catch (e) {}
+  add('Facturas cargadas (app)', inv, inv === 0);
+  add('Retenciones cargadas (app)', ret, ret === 0);
+  el.innerHTML = L.join('') + '<div style="margin-top:6px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> consultando la nube…</div>';
+  if (!hasSes || !_SUPA.URL) { el.innerHTML = L.join('') + '<div style="color:var(--danger)">Sin sesión: no se puede consultar la nube.</div>'; return; }
+  fetch(_SUPA.URL + '/rest/v1/erp_data?collection=eq.supplierInvoices&select=company_id',
+    { headers: Object.assign(_SUPA.hdrs(), { 'Prefer': 'count=exact', 'Range': '0-0' }) })
+    .then(function (r) { add('Facturas en la nube (tu sesión)', (r.headers.get('content-range') || '?') + ' · HTTP ' + r.status, r.status >= 300); return r; })
+    .catch(function (e) { add('Facturas en la nube', 'ERROR: ' + e.message, true); })
+    .then(function () { el.innerHTML = L.join(''); });
+}
+
 function buildSystemTab() {
   var connGuess = (typeof _SUPA !== 'undefined' && _SUPA.online)
     ? '<span style="color:var(--success);font-weight:600"><i class="fas fa-circle" style="font-size:8px"></i> Conectado</span>'
@@ -333,12 +365,16 @@ function buildSystemTab() {
     '<div class="card-header"><span class="card-title"><i class="fas fa-info-circle text-primary"></i> Información del Sistema</span></div>' +
     '<div class="card-body">' +
     '<div class="form-grid form-grid-2" style="gap:14px;font-size:13px">' +
-    '<div><span style="color:var(--text-muted)">Versión: </span><strong>' + brandName() + ' v1.0</strong></div>' +
-    '<div><span style="color:var(--text-muted)">Almacenamiento: </span><strong>localStorage</strong></div>' +
+    '<div><span style="color:var(--text-muted)">Versión: </span><strong>' + brandName() + ' v1.0</strong> <code style="font-size:10px;color:var(--text-muted)">' + (window.ERP_BUILD || '?') + '</code></div>' +
+    '<div><span style="color:var(--text-muted)">Almacenamiento: </span><strong>localStorage + RAM</strong></div>' +
     '<div><span style="color:var(--text-muted)">Clave de datos: </span>' +
     '<code style="font-size:11px;background:var(--bg-secondary);padding:2px 8px;border-radius:4px">' + DB.KEY + '</code></div>' +
     '<div><span style="color:var(--text-muted)">Fecha del sistema: </span><strong>' + fmtDate(new Date().toISOString().split('T')[0]) + '</strong></div>' +
-    '</div></div></div>' +
+    '</div>' +
+    '<hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">' +
+    '<button class="btn btn-secondary btn-sm" onclick="runDiag()"><i class="fas fa-stethoscope"></i> Ejecutar diagnóstico</button>' +
+    '<div id="erp-diag-out" style="margin-top:12px;font-size:12px;line-height:1.7"></div>' +
+    '</div></div>' +
 
     '<div class="card" style="border:1px solid var(--danger)">' +
     '<div class="card-header" style="background:#fef2f2">' +
