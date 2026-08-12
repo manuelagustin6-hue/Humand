@@ -181,10 +181,12 @@ var _SUPA = {
 
   // Pull ALL records for a company → returns { collection: [records] }
   pull: async function(companyId, timeoutMs) {
-    // Paginado por rangos: una sola request gigante (~3 MB para las razones sociales
-    // grandes) se cortaba por timeout en redes móviles, dejando esas empresas sin
-    // bajar. Bajamos en tandas de 2.000 filas: cada request es chica y rápida.
-    var out = {}, from = 0, PAGE = 2000, got = 0;
+    // Paginado por rangos. Supabase/PostgREST topa cada consulta en 1.000 filas
+    // (db-max-rows), así que aunque pidas más, nunca vienen más de 1.000. Pedimos
+    // tandas de 1.000 y seguimos hasta recibir una página incompleta (última). Antes
+    // se truncaban en 1.000 las razones sociales grandes (Atlántida, HA) porque el
+    // corte esperaba páginas de mayor tamaño que el servidor jamás devuelve.
+    var out = {}, from = 0, PAGE = 1000, got = 0, guard = 0;
     do {
       var ctrl = new AbortController();
       var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs || 30000);
@@ -207,8 +209,8 @@ var _SUPA = {
         if (d.id == null || d.id === '') d.id = r.record_id;
         out[r.collection].push(d);
       });
-      from += PAGE;
-    } while (got === PAGE);
+      from += got;
+    } while (got === PAGE && ++guard < 500);
     return out;
   },
 
