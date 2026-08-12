@@ -181,27 +181,34 @@ var _SUPA = {
 
   // Pull ALL records for a company → returns { collection: [records] }
   pull: async function(companyId, timeoutMs) {
-    var ctrl = new AbortController();
-    // 30s por defecto: las razones sociales grandes (miles de facturas) tardaban más
-    // de 5s y abortaban, dejando el cache local incompleto tras la migración.
-    var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs || 30000);
-    var res = await fetch(
-      this.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
-      '&deleted=eq.false&select=collection,record_id,data&order=created_at.asc&limit=50000',
-      { headers: this.hdrs(), signal: ctrl.signal }
-    );
-    clearTimeout(timer);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    var rows = await res.json();
-    var out = {};
-    rows.forEach(function(r) {
-      if (!out[r.collection]) out[r.collection] = [];
-      var d = r.data || {};
-      // Backfill id from record_id for records written without an embedded id
-      // (e.g. cotizaciones submitted from the supplier portal)
-      if (d.id == null || d.id === '') d.id = r.record_id;
-      out[r.collection].push(d);
-    });
+    // Paginado por rangos: una sola request gigante (~3 MB para las razones sociales
+    // grandes) se cortaba por timeout en redes móviles, dejando esas empresas sin
+    // bajar. Bajamos en tandas de 2.000 filas: cada request es chica y rápida.
+    var out = {}, from = 0, PAGE = 2000, got = 0;
+    do {
+      var ctrl = new AbortController();
+      var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs || 30000);
+      var res;
+      try {
+        res = await fetch(
+          this.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(companyId) +
+          '&deleted=eq.false&select=collection,record_id,data&order=created_at.asc',
+          { headers: this.hdrs({ 'Range-Unit': 'items', 'Range': from + '-' + (from + PAGE - 1) }), signal: ctrl.signal }
+        );
+      } finally { clearTimeout(timer); }
+      if (!res.ok && res.status !== 206) throw new Error('HTTP ' + res.status);
+      var rows = await res.json();
+      got = Array.isArray(rows) ? rows.length : 0;
+      rows.forEach(function(r) {
+        if (!out[r.collection]) out[r.collection] = [];
+        var d = r.data || {};
+        // Backfill id from record_id for records written without an embedded id
+        // (e.g. cotizaciones submitted from the supplier portal)
+        if (d.id == null || d.id === '') d.id = r.record_id;
+        out[r.collection].push(d);
+      });
+      from += PAGE;
+    } while (got === PAGE);
     return out;
   },
 
