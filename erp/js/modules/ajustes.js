@@ -312,34 +312,49 @@ function runAjustesIntegrity() {
 // ---- SYSTEM TAB ----
 // Identificador del build desplegado. Bumpear en cada deploy para poder confirmar
 // desde el celular (sin consola) si el dispositivo ya tomó el código nuevo.
-window.ERP_BUILD = 'erp-v73';
+window.ERP_BUILD = 'erp-v74';
 
 // Diagnóstico visible en pantalla (mobile-friendly, sin consola). Muestra versión de
 // código cargada, sesión, empresas conocidas y conteo real en la nube vs en la app.
 function runDiag() {
   var el = document.getElementById('erp-diag-out');
   if (!el) return;
-  el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ejecutando…';
-  var L = [];
-  function add(k, v, warn) { L.push('<div><strong>' + k + ':</strong> <span style="color:' + (warn ? 'var(--danger)' : 'var(--text)') + '">' + v + '</span></div>'); }
-  add('Build cargado', window.ERP_BUILD || '?', (window.ERP_BUILD || '') < 'erp-v71');
-  add('Código RAM (v70+)', (DB && typeof DB._blobs === 'object') ? 'sí' : 'NO — código viejo', !(DB && typeof DB._blobs === 'object'));
-  add('Descubrir empresas (v69+)', (DB && typeof DB._discoverCompanyIds === 'function') ? 'sí' : 'NO — código viejo', !(DB && typeof DB._discoverCompanyIds === 'function'));
   var hasSes = !!(_SUPA && _SUPA.session && _SUPA.session.access_token);
-  add('Sesión Supabase', hasSes ? 'sí' : 'NO', !hasSes);
-  add('Email', (_SUPA && _SUPA.session && _SUPA.session.user && _SUPA.session.user.email) || '—');
-  var cos = []; try { cos = DB.getAllCompanies() || []; } catch (e) {}
-  add('Empresas conocidas', cos.length + (cos.length ? ' — ' + cos.slice(0, 4).map(function (c) { return c.name; }).join(', ') + (cos.length > 4 ? '…' : '') : ''), cos.length < 2);
-  var inv = 0, ret = 0; try { inv = DB.getAllConsolidated('supplierInvoices').length; ret = DB.getAllConsolidated('retentionCertificates').length; } catch (e) {}
-  add('Facturas cargadas (app)', inv, inv === 0);
-  add('Retenciones cargadas (app)', ret, ret === 0);
-  el.innerHTML = L.join('') + '<div style="margin-top:6px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> consultando la nube…</div>';
-  if (!hasSes || !_SUPA.URL) { el.innerHTML = L.join('') + '<div style="color:var(--danger)">Sin sesión: no se puede consultar la nube.</div>'; return; }
-  fetch(_SUPA.URL + '/rest/v1/erp_data?collection=eq.supplierInvoices&select=company_id',
-    { headers: Object.assign(_SUPA.hdrs(), { 'Prefer': 'count=exact', 'Range': '0-0' }) })
-    .then(function (r) { add('Facturas en la nube (tu sesión)', (r.headers.get('content-range') || '?') + ' · HTTP ' + r.status, r.status >= 300); return r; })
-    .catch(function (e) { add('Facturas en la nube', 'ERROR: ' + e.message, true); })
-    .then(function () { el.innerHTML = L.join(''); });
+  function render(extra) {
+    var L = [];
+    function add(k, v, warn) { L.push('<div><strong>' + k + ':</strong> <span style="color:' + (warn ? 'var(--danger)' : 'var(--text)') + '">' + v + '</span></div>'); }
+    add('Build cargado', window.ERP_BUILD || '?', (window.ERP_BUILD || '') < 'erp-v73');
+    add('Código RAM (v70+)', (DB && typeof DB._blobs === 'object') ? 'sí' : 'NO — código viejo', !(DB && typeof DB._blobs === 'object'));
+    add('Sesión Supabase', hasSes ? 'sí' : 'NO', !hasSes);
+    add('Email', (_SUPA && _SUPA.session && _SUPA.session.user && _SUPA.session.user.email) || '—');
+    var cos = []; try { cos = DB.getAllCompanies() || []; } catch (e) {}
+    add('Empresas conocidas', cos.length, cos.length < 2);
+    var inv = 0, ret = 0; try { inv = DB.getAllConsolidated('supplierInvoices').length; ret = DB.getAllConsolidated('retentionCertificates').length; } catch (e) {}
+    add('Facturas cargadas (app)', inv, inv === 0);
+    add('Retenciones cargadas (app)', ret, ret === 0);
+    el.innerHTML = L.join('') + (extra || '');
+  }
+  render('<div style="margin-top:6px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Descargando TODO desde la nube (esperá a que termine)…</div>');
+  if (!hasSes) { render('<div style="color:var(--danger);margin-top:6px">Sin sesión: no se puede consultar la nube.</div>'); return; }
+  // Forzar carga completa y ESPERAR a que termine, para que los conteos sean finales.
+  DB._allHydratedAt = 0; // ignorar throttle
+  DB.forcePullAll(function (done, total) {
+    render('<div style="margin-top:6px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Empresas: ' + done + ' / ' + total + '…</div>');
+  }).then(function (res) {
+    var rows = (res && res.companies || []).filter(function (c) {
+      return !c.ok || (c.counts && ((c.counts.supplierInvoices || 0) + (c.counts.retentionCertificates || 0)) > 0);
+    }).sort(function (a, b) { return ((b.counts && b.counts.supplierInvoices) || 0) - ((a.counts && a.counts.supplierInvoices) || 0); });
+    var tbl = '<div style="margin-top:10px;overflow-x:auto"><table style="font-size:11px;width:100%"><thead><tr>' +
+      '<th style="text-align:left">Razón social</th><th style="text-align:right">Fact.</th><th style="text-align:right">Ret.</th></tr></thead><tbody>' +
+      rows.map(function (c) {
+        if (!c.ok) return '<tr><td>' + escapeHtml(c.name) + '</td><td colspan="2" style="color:var(--danger)">error</td></tr>';
+        var g = c.counts || {};
+        return '<tr><td>' + escapeHtml(c.name) + '</td><td style="text-align:right">' + (g.supplierInvoices || 0) + '</td><td style="text-align:right">' + (g.retentionCertificates || 0) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    render('<div style="margin-top:8px;color:var(--success)"><i class="fas fa-check-circle"></i> Descarga completa.</div>' + tbl);
+  }).catch(function (e) {
+    render('<div style="color:var(--danger);margin-top:6px">Error: ' + (e && e.message || e) + '</div>');
+  });
 }
 
 function buildSystemTab() {
