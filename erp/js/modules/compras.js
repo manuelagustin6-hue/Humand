@@ -72,7 +72,8 @@ function renderOrdenesCompra() {
 
 function _refreshCurrentComprasView() {
   var mod = window.APP_STATE && window.APP_STATE.currentModule;
-  if (mod === 'pedidos' && typeof renderOrdenesPedido === 'function') renderOrdenesPedido();
+  if (mod === 'central_prov' && typeof renderCentralProveedores === 'function') renderCentralProveedores();
+  else if (mod === 'pedidos' && typeof renderOrdenesPedido === 'function') renderOrdenesPedido();
   else if (mod === 'pedidos') renderPedidos();
   else if (mod === 'ordenes_compra') renderOrdenesCompra();
   else renderCompras();
