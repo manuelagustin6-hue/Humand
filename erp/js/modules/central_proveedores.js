@@ -102,11 +102,18 @@ function cpFindRequest(id) {
   return cpAllRequests().find(function(r) { return r.id === id; }) || null;
 }
 
-// Actualiza la solicitud en su empresa de origen.
+// Actualiza la solicitud en la empresa donde realmente vive (según el consolidado),
+// con fallback a scope_company_id. Verifica que el registro exista antes de escribir.
 function cpUpdateRequest(cr, patch) {
   var prev = DB._companyId;
-  try { DB.setCompany(cr.scope_company_id || prev); DB.update('supplierChangeRequests', cr.id, patch); }
+  var cid = cr._company_id || cr.scope_company_id || prev;
+  var ok = false;
+  try {
+    DB.setCompany(cid);
+    if (DB.getById('supplierChangeRequests', cr.id)) { DB.update('supplierChangeRequests', cr.id, patch); ok = true; }
+  } catch(e) {}
   finally { try { DB.setCompany(prev); } catch(e) {} }
+  return ok;
 }
 
 function cpApprove(id) {
@@ -121,8 +128,9 @@ function cpApprove(id) {
     }
     approvals.push({ by: u.email, at: _cpIso() });
     if (approvals.length < 2) {
-      cpUpdateRequest(cr, { approvals: approvals });
-      toast('1ª aprobación registrada. Falta una 2ª aprobación de otra persona para aplicar el cambio bancario.', 'info');
+      var saved = cpUpdateRequest(cr, { approvals: approvals });
+      toast(saved ? '1ª aprobación registrada (1/2). Falta una 2ª aprobación de OTRA persona para aplicar el cambio bancario.'
+                  : 'No se pudo registrar la aprobación (reintentá).', saved ? 'info' : 'error');
       renderCentralProveedores();
       return;
     }
@@ -166,6 +174,14 @@ function cpDoReject(id) {
 
 /* ---- VISTA ---- */
 function renderCentralProveedores() {
+  // Asegurar que TODAS las razones sociales estén bajadas antes de contar/listar
+  // (si no, el total de proveedores aparece incompleto y "crece" en cada recarga).
+  if (typeof DB.ensureAllCompaniesLoaded === 'function' && !window._cpLoadedAll) {
+    window._cpLoadedAll = true;
+    DB.ensureAllCompaniesLoaded().then(function() {
+      try { if (window.APP_STATE && window.APP_STATE.currentModule === 'central_prov') renderCentralProveedores(); } catch(e) {}
+    });
+  }
   var reqs = cpAllRequests();
   var pending = reqs.filter(function(r) { return r.status === 'pending'; });
   var suppliers = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('suppliers') : DB.getAll('suppliers');
