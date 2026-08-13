@@ -33,6 +33,7 @@ const MODULES = {
   licitaciones:    { title: 'Licitaciones',                   icon: 'fa-gavel',                  render: renderLicitaciones },
 
   // Proveedores
+  central_prov:    { title: 'Central de Proveedores',         icon: 'fa-shield-halved',          render: renderCentralProveedores },
   cuentas_prov:    { title: 'Cuentas Corrientes Proveedores', icon: 'fa-building-columns',       render: renderCuentasProv },
   documentos_prov: { title: 'Documentos Proveedor',           icon: 'fa-file-invoice',           render: renderDocumentosProv },
   ordenes_pago:    { title: 'Ordenes de Pago',               icon: 'fa-file-invoice',           render: renderOrdenesPago },
