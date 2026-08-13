@@ -1131,6 +1131,7 @@ function saveSupplier(id) {
   const name = document.getElementById('sf-name').value.trim();
   if (!name) { toast('La razón social es obligatoria', 'error'); return; }
   const country = document.getElementById('sf-country').value;
+  const newPayment = _supReadPayment(country);
   const data = {
     name,
     country: country,
@@ -1142,10 +1143,33 @@ function saveSupplier(id) {
     status: document.getElementById('sf-status').value,
     address: document.getElementById('sf-address').value.trim(),
     category: document.getElementById('sf-category').value.split(',').map(c => c.trim()).filter(Boolean),
-    payment: _supReadPayment(country),
   };
-  if (id) { DB.update('suppliers', id, data); toast('Proveedor actualizado', 'success'); }
-  else { DB.insert('suppliers', data); toast('Proveedor creado', 'success'); }
+  if (id) {
+    const prev = DB.getById('suppliers', id) || {};
+    const oldPayment = prev.payment || {};
+    // Control anti-BEC: si cambian datos BANCARIOS de un proveedor existente, NO se
+    // aplican directo — se crean como solicitud de revisión y se bloquean los pagos.
+    // El dato viejo sigue vigente para pagar hasta que se apruebe.
+    var bankChanges = {};
+    Object.keys(newPayment).forEach(function(k) {
+      if ((oldPayment[k] || '') !== (newPayment[k] || '')) bankChanges[k] = { old: oldPayment[k] || '', new: newPayment[k] || '' };
+    });
+    const hadBankData = Object.keys(oldPayment).some(function(k){ return oldPayment[k]; });
+    if (hadBankData && Object.keys(bankChanges).length && typeof cpCreateChangeRequest === 'function') {
+      DB.update('suppliers', id, Object.assign({}, data, { review_status: 'under_review', payment_blocked: true }));
+      cpCreateChangeRequest({ supplier_id: id, supplier_name: name, scope_company_id: DB._companyId, fields: bankChanges, source: 'internal' });
+      closeModal();
+      toast('Cambio bancario enviado a REVISIÓN. Pagos bloqueados hasta aprobar (Compras → Central de Proveedores).', 'warning');
+      _refreshCurrentComprasView();
+      return;
+    }
+    // Primera carga de datos bancarios o cambios no sensibles: se aplican directo.
+    DB.update('suppliers', id, Object.assign({}, data, { payment: newPayment }));
+    toast('Proveedor actualizado', 'success');
+  } else {
+    DB.insert('suppliers', Object.assign({}, data, { payment: newPayment }));
+    toast('Proveedor creado', 'success');
+  }
   closeModal();
   _refreshCurrentComprasView();
 }
