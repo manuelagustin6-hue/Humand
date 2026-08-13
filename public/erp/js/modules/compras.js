@@ -968,12 +968,14 @@ function buildSupplierRows(suppliers) {
   </tr></thead>
   <tbody>
   ${suppliers.map(s => `<tr>
-    <td><strong>${s.name}</strong></td>
-    <td>${s.cuit}</td>
-    <td>${s.contact}</td>
-    <td>${s.email}</td>
-    <td>${s.phone}</td>
-    <td>${(s.category || []).map(c => `<span class="badge badge-gray">${c}</span>`).join(' ')}</td>
+    <td><strong>${(SUPPLIER_COUNTRIES[s.country||'AR']||SUPPLIER_COUNTRIES.AR).flag} ${escapeHtml(s.name)}</strong>
+      ${s.payment_blocked ? '<span class="badge badge-red" title="Pagos bloqueados — datos bancarios sin verificar"><i class="fas fa-lock"></i> Pago bloqueado</span>' : ''}
+      ${s.review_status==='under_review' ? '<span class="badge badge-yellow" title="Cambios pendientes de aprobar"><i class="fas fa-clock"></i> En revisión</span>' : ''}</td>
+    <td>${escapeHtml(s.cuit||'')}</td>
+    <td>${escapeHtml(s.contact||'')}</td>
+    <td>${escapeHtml(s.email||'')}</td>
+    <td>${escapeHtml(s.phone||'')}</td>
+    <td>${(s.category || []).map(c => `<span class="badge badge-gray">${escapeHtml(c)}</span>`).join(' ')}</td>
     <td>${statusBadge(s.status)}</td>
     <td><div class="table-actions">
       <button class="btn-ghost btn btn-sm" onclick="openSupplierForm('${s.id}')"><i class="fas fa-edit"></i></button>
@@ -991,29 +993,78 @@ function filterSuppliers(q) {
   if (wrap) wrap.innerHTML = buildSupplierRows(sups);
 }
 
+// País del proveedor: define etiquetas fiscales y campos de pago.
+var SUPPLIER_COUNTRIES = {
+  AR: { flag: '🇦🇷', label: 'Argentina', taxId: 'CUIT', taxPh: '30-12345678-9',
+        ivaOpts: [['RI','Responsable Inscripto'],['MO','Monotributista'],['EX','Exento'],['NR','No Responsable'],['CF','Consumidor Final']] },
+  UY: { flag: '🇺🇾', label: 'Uruguay',   taxId: 'RUT',  taxPh: '210001234567',
+        ivaOpts: [['IVA','IVA General'],['EX','Exento'],['MO','Monotributo']] },
+  US: { flag: '🇺🇸', label: 'USA',       taxId: 'EIN / TIN', taxPh: '12-3456789',
+        ivaOpts: [['W9','W-9 (US person)'],['W8','W-8BEN (foreign)']] },
+};
+
+// HTML de los campos de pago según país (mostrados/ocultos por _supOnCountry).
+function _supPaymentFieldsHtml(pd, country) {
+  pd = pd || {};
+  function f(id, label, val, ph) {
+    return '<div class="form-group"><label class="form-label">' + label + '</label>' +
+      '<input class="form-control" id="' + id + '" value="' + escapeHtml(val || '') + '" placeholder="' + (ph || '') + '"></div>';
+  }
+  var ar = '<div id="sf-pay-AR" class="form-grid form-grid-2" style="margin:0">' +
+    f('sf-pay-cbu', 'CBU', pd.cbu, '22 dígitos') + f('sf-pay-alias', 'Alias', pd.alias, 'MI.ALIAS.CBU') +
+    f('sf-pay-bank', 'Banco', pd.bank) + f('sf-pay-holder', 'Titular de la cuenta', pd.holder) + '</div>';
+  var uy = '<div id="sf-pay-UY" class="form-grid form-grid-2" style="margin:0;display:none">' +
+    f('sf-pay-uy-account', 'Nº de cuenta', pd.uy_account) + f('sf-pay-uy-bank', 'Banco', pd.uy_bank) +
+    f('sf-pay-uy-holder', 'Titular', pd.uy_holder) +
+    '<div class="form-group"><label class="form-label">Moneda</label><select class="form-control" id="sf-pay-uy-cur">' +
+    ['UYU','USD'].map(function(c){return '<option value="'+c+'"'+((pd.uy_currency||'UYU')===c?' selected':'')+'>'+c+'</option>';}).join('') + '</select></div></div>';
+  var us = '<div id="sf-pay-US" class="form-grid form-grid-2" style="margin:0;display:none">' +
+    f('sf-pay-us-routing', 'Routing (ABA)', pd.us_routing, '9 dígitos') + f('sf-pay-us-account', 'Account number', pd.us_account) +
+    f('sf-pay-us-iban', 'IBAN (internacional)', pd.us_iban) + f('sf-pay-us-swift', 'SWIFT / BIC', pd.us_swift) +
+    f('sf-pay-us-holder', 'Account holder', pd.us_holder) + '</div>';
+  return ar + uy + us;
+}
+
+function _supOnCountry() {
+  var c = document.getElementById('sf-country').value;
+  ['AR','UY','US'].forEach(function(k){ var el=document.getElementById('sf-pay-'+k); if(el) el.style.display = (k===c?'':'none'); });
+  var cfg = SUPPLIER_COUNTRIES[c] || SUPPLIER_COUNTRIES.AR;
+  var tl = document.getElementById('sf-taxid-label'); if (tl) tl.textContent = cfg.taxId;
+  var ti = document.getElementById('sf-cuit'); if (ti) ti.placeholder = cfg.taxPh;
+  var iv = document.getElementById('sf-iva');
+  if (iv) iv.innerHTML = cfg.ivaOpts.map(function(o){ return '<option value="'+o[0]+'">'+o[1]+'</option>'; }).join('');
+}
+
+// Guard anti-BEC: ¿este proveedor tiene los pagos bloqueados? (datos bancarios sin
+// verificar tras un cambio). Lo usa el flujo de órdenes de pago para frenar egresos.
+function supplierPaymentBlocked(supplierId) {
+  if (!supplierId) return false;
+  var s = null;
+  try { s = DB.getById('suppliers', supplierId) || (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('suppliers').find(function(x){ return x.id === supplierId; }) : null); } catch(e) {}
+  return !!(s && s.payment_blocked);
+}
+
 function openSupplierForm(id = null) {
   const s = id ? DB.getById('suppliers', id) : null;
-  openModal(s ? 'Editar Proveedor' : 'Nuevo Proveedor', `
+  const country = (s && s.country) || 'AR';
+  const cfg = SUPPLIER_COUNTRIES[country];
+  const pd = (s && s.payment) || {};
+  const blocked = s && s.payment_blocked;
+  const review = s && s.review_status === 'under_review';
+  var banner = '';
+  if (blocked || review) {
+    banner = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b91c1c">' +
+      '<i class="fas fa-shield-halved"></i> ' +
+      (blocked ? '<strong>Pagos bloqueados</strong> — datos bancarios sin verificar. ' : '') +
+      (review ? '<strong>Sujeto a revisión</strong> — hay cambios pendientes de aprobar.' : '') + '</div>';
+  }
+  openModal(s ? 'Editar Proveedor' : 'Nuevo Proveedor', banner + `
 <div class="form-grid form-grid-2">
-  <div class="form-group full">
-    <label class="form-label">Razón Social *</label>
-    <input class="form-control" id="sf-name" value="${s?.name || ''}">
-  </div>
   <div class="form-group">
-    <label class="form-label">CUIT</label>
-    <input class="form-control" id="sf-cuit" value="${s?.cuit || ''}" placeholder="30-12345678-9">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Contacto</label>
-    <input class="form-control" id="sf-contact" value="${s?.contact || ''}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Email</label>
-    <input class="form-control" id="sf-email" type="email" value="${s?.email || ''}">
-  </div>
-  <div class="form-group">
-    <label class="form-label">Teléfono</label>
-    <input class="form-control" id="sf-phone" value="${s?.phone || ''}">
+    <label class="form-label">País *</label>
+    <select class="form-control" id="sf-country" onchange="_supOnCountry()">
+      ${Object.keys(SUPPLIER_COUNTRIES).map(function(k){ var c=SUPPLIER_COUNTRIES[k]; return '<option value="'+k+'"'+(k===country?' selected':'')+'>'+c.flag+' '+c.label+'</option>'; }).join('')}
+    </select>
   </div>
   <div class="form-group">
     <label class="form-label">Estado</label>
@@ -1023,32 +1074,75 @@ function openSupplierForm(id = null) {
     </select>
   </div>
   <div class="form-group full">
+    <label class="form-label">Razón Social *</label>
+    <input class="form-control" id="sf-name" value="${escapeHtml(s?.name || '')}">
+  </div>
+  <div class="form-group">
+    <label class="form-label"><span id="sf-taxid-label">${cfg.taxId}</span></label>
+    <input class="form-control" id="sf-cuit" value="${escapeHtml(s?.cuit || '')}" placeholder="${cfg.taxPh}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Condición fiscal</label>
+    <select class="form-control" id="sf-iva">
+      ${cfg.ivaOpts.map(function(o){ return '<option value="'+o[0]+'"'+((s?.iva)===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Contacto</label>
+    <input class="form-control" id="sf-contact" value="${escapeHtml(s?.contact || '')}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Email</label>
+    <input class="form-control" id="sf-email" type="email" value="${escapeHtml(s?.email || '')}">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Teléfono</label>
+    <input class="form-control" id="sf-phone" value="${escapeHtml(s?.phone || '')}">
+  </div>
+  <div class="form-group full">
     <label class="form-label">Dirección</label>
-    <input class="form-control" id="sf-address" value="${s?.address || ''}">
+    <input class="form-control" id="sf-address" value="${escapeHtml(s?.address || '')}">
   </div>
   <div class="form-group full">
     <label class="form-label">Categorías (separadas por coma)</label>
-    <input class="form-control" id="sf-category" value="${(s?.category || []).join(', ')}" placeholder="Materiales, Equipos, Servicios">
+    <input class="form-control" id="sf-category" value="${escapeHtml((s?.category || []).join(', '))}" placeholder="Materiales, Equipos, Servicios">
   </div>
 </div>
+<div style="margin:16px 0 8px;font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">
+  <i class="fas fa-university"></i> Datos de pago
+</div>
+${_supPaymentFieldsHtml(pd, country)}
 `, '', `
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
 <button class="btn btn-primary" onclick="saveSupplier('${id||''}')"><i class="fas fa-save"></i> Guardar</button>
 `);
+  _supOnCountry();
+}
+
+// Lee los datos de pago del formulario según el país elegido.
+function _supReadPayment(country) {
+  function v(id){ var el=document.getElementById(id); return el ? el.value.trim() : ''; }
+  if (country === 'UY') return { uy_account:v('sf-pay-uy-account'), uy_bank:v('sf-pay-uy-bank'), uy_holder:v('sf-pay-uy-holder'), uy_currency:v('sf-pay-uy-cur') };
+  if (country === 'US') return { us_routing:v('sf-pay-us-routing'), us_account:v('sf-pay-us-account'), us_iban:v('sf-pay-us-iban'), us_swift:v('sf-pay-us-swift'), us_holder:v('sf-pay-us-holder') };
+  return { cbu:v('sf-pay-cbu'), alias:v('sf-pay-alias'), bank:v('sf-pay-bank'), holder:v('sf-pay-holder') };
 }
 
 function saveSupplier(id) {
   const name = document.getElementById('sf-name').value.trim();
   if (!name) { toast('La razón social es obligatoria', 'error'); return; }
+  const country = document.getElementById('sf-country').value;
   const data = {
     name,
+    country: country,
     cuit: document.getElementById('sf-cuit').value.trim(),
+    iva: document.getElementById('sf-iva').value,
     contact: document.getElementById('sf-contact').value.trim(),
     email: document.getElementById('sf-email').value.trim(),
     phone: document.getElementById('sf-phone').value.trim(),
     status: document.getElementById('sf-status').value,
     address: document.getElementById('sf-address').value.trim(),
     category: document.getElementById('sf-category').value.split(',').map(c => c.trim()).filter(Boolean),
+    payment: _supReadPayment(country),
   };
   if (id) { DB.update('suppliers', id, data); toast('Proveedor actualizado', 'success'); }
   else { DB.insert('suppliers', data); toast('Proveedor creado', 'success'); }
