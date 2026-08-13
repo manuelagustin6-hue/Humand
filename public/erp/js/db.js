@@ -1234,6 +1234,89 @@ const DB = {
     return { ok: true, companies: summary };
   },
 
+  // Repara registros MAL UBICADOS: filas guardadas bajo una empresa (company_id) cuyo
+  // dato real pertenece a otra (data.company_id distinto). Ocurrió por un bug viejo que
+  // re-empujaba blobs inflados a la nube bajo la empresa equivocada (ej. Concreto duplicado
+  // dentro de Atlántida). Solo borra el duplicado SI la copia correcta existe bajo su
+  // empresa real (no pierde datos). dryRun=true solo analiza.
+  repairMisplaced: async function(opts) {
+    opts = opts || {};
+    var self = this, dryRun = !!opts.dryRun;
+    // Dueño real de un registro: por data.company_id (facturas) o por razon_social
+    // mapeada a empresa (retenciones, que no traen company_id).
+    var nameToId = {};
+    try {
+      (this.getAllCompanies() || []).forEach(function(c) {
+        var k = String(c.name || '').trim().toLowerCase();
+        if (k) nameToId[k] = c.id;
+      });
+    } catch(e) {}
+    function trueCid(rec) {
+      if (rec.company_id) return rec.company_id;
+      if (rec.razon_social) { var id = nameToId[String(rec.razon_social).trim().toLowerCase()]; if (id) return id; }
+      return null;
+    }
+    // Fuente: _blobs (RAM) + empresa activa fresca
+    var blobs = {};
+    Object.keys(this._blobs).forEach(function(cid) { blobs[cid] = self._blobs[cid]; });
+    try { blobs[this._companyId] = this.get(); } catch(e) {}
+    // Set de ids presentes por (cid|col) para verificar que la copia correcta exista.
+    var present = {};
+    Object.keys(blobs).forEach(function(cid) {
+      var blob = blobs[cid] || {};
+      Object.keys(blob).forEach(function(col) {
+        if (!Array.isArray(blob[col])) return;
+        blob[col].forEach(function(r) { if (r && r.id) { present[cid + '|' + col + '|' + r.id] = true; } });
+      });
+    });
+    var groups = {}, total = 0, skipped = 0;
+    Object.keys(blobs).forEach(function(cid) {
+      var blob = blobs[cid] || {};
+      Object.keys(blob).forEach(function(col) {
+        if (!Array.isArray(blob[col])) return;
+        blob[col].forEach(function(rec) {
+          if (!rec || !rec.id) return;
+          var owner = trueCid(rec);
+          if (!owner || owner === cid) return;
+          // ¿existe la copia correcta bajo su empresa real?
+          if (!present[owner + '|' + col + '|' + rec.id]) { skipped++; return; } // no borrar: sería mover, no duplicado
+          var k = cid + '|' + col;
+          if (!groups[k]) groups[k] = { wrongCid: cid, col: col, ids: [], correct: {} };
+          groups[k].ids.push(rec.id);
+          groups[k].correct[owner] = (groups[k].correct[owner] || 0) + 1;
+          total++;
+        });
+      });
+    });
+    var report = Object.keys(groups).map(function(k) { return groups[k]; });
+    if (dryRun) return { total: total, skipped: skipped, groups: report };
+    if (!(_SUPA.session && _SUPA.session.access_token)) return { total: total, deleted: 0, errors: ['sin sesión'], groups: report };
+    var deleted = 0, errors = [];
+    for (var gi = 0; gi < report.length; gi++) {
+      var g = report[gi];
+      for (var i = 0; i < g.ids.length; i += 80) {
+        var batch = g.ids.slice(i, i + 80);
+        var inList = batch.map(function(x) { return '"' + String(x).replace(/"/g, '') + '"'; }).join(',');
+        try {
+          var res = await fetch(_SUPA.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(g.wrongCid) +
+            '&collection=eq.' + encodeURIComponent(g.col) + '&record_id=in.(' + inList + ')',
+            { method: 'DELETE', headers: _SUPA.hdrs({ 'Prefer': 'return=minimal' }) });
+          if (res.ok) deleted += batch.length; else errors.push('HTTP ' + res.status + ' ' + g.wrongCid + '/' + g.col);
+        } catch(e) { errors.push((e && e.message) || String(e)); }
+      }
+      // Limpiar local: quitar del blob los mal ubicados
+      var idset = {}; g.ids.forEach(function(x) { idset[x] = true; });
+      var b = self._blobs[g.wrongCid];
+      if (b && Array.isArray(b[g.col])) {
+        b[g.col] = b[g.col].filter(function(r) { return !(r && idset[r.id]); });
+        try { localStorage.setItem('erp_company_' + g.wrongCid + '_v1', JSON.stringify(b)); }
+        catch(e) { try { localStorage.removeItem('erp_company_' + g.wrongCid + '_v1'); } catch(e2) {} }
+        if (g.wrongCid === self._companyId) { self._cache = b; self._cacheKey = self.KEY; }
+      }
+    }
+    return { total: total, deleted: deleted, errors: errors, groups: report };
+  },
+
   // ---- BACKUP / RESTORE ----
   export() {
     var data = this.get();
