@@ -191,10 +191,53 @@ function renderCentralProveedores() {
       '<div class="stat-card"><div class="stat-icon green"><i class="fas fa-truck"></i></div><div>' +
         '<div class="stat-value">' + supArr.length + '</div><div class="stat-label">Proveedores</div></div></div>' +
     '</div>' +
-    '<div class="card"><div class="card-header"><span class="card-title"><i class="fas fa-list-check text-primary"></i> Cambios pendientes de aprobación</span></div>' +
-    '<div class="card-body" style="padding:0"><div class="table-wrap">' + _cpPendingTable(pending) + '</div></div></div>' +
+    (pending.length ? '<div class="card" style="border-left:3px solid var(--warning)"><div class="card-header"><span class="card-title"><i class="fas fa-bell text-warning"></i> Alertas — cambios pendientes de aprobación (' + pending.length + ')</span></div>' +
+      '<div class="card-body" style="padding:0"><div class="table-wrap">' + _cpPendingTable(pending) + '</div></div></div>' : '') +
+    '<div class="card mt-3"><div class="card-header"><span class="card-title"><i class="fas fa-truck text-primary"></i> Proveedores</span>' +
+      '<button class="btn btn-primary btn-sm" onclick="openSupplierForm()"><i class="fas fa-plus"></i> Nuevo proveedor</button></div>' +
+    '<div class="card-body">' +
+      '<div class="search-input-wrap" style="margin-bottom:12px"><i class="fas fa-search"></i>' +
+      '<input type="text" id="cp-sup-search" placeholder="Buscar por razón social, CUIT/RUT..." oninput="cpFilterSuppliers(this.value)"></div>' +
+      '<div class="table-wrap" id="cp-sup-wrap">' + _cpSupplierTable(supArr) + '</div>' +
+    '</div></div>' +
     '<div class="card mt-3"><div class="card-header"><span class="card-title"><i class="fas fa-history text-primary"></i> Historial de cambios</span></div>' +
     '<div class="card-body" style="padding:0"><div class="table-wrap">' + _cpHistoryTable(reqs.filter(function(r){ return r.status !== 'pending'; }).slice(0, 40)) + '</div></div></div>';
+  window._cpSuppliers = supArr;
+}
+
+var CP_FLAGS = { AR: '🇦🇷', UY: '🇺🇾', US: '🇺🇸' };
+function _cpPayResumen(s) {
+  var p = s.payment || {};
+  if ((s.country || 'AR') === 'UY') return p.uy_account ? (p.uy_bank ? p.uy_bank + ' · ' : '') + p.uy_account : '<span style="color:#cbd5e1">sin datos</span>';
+  if ((s.country || 'AR') === 'US') return (p.us_account || p.us_iban) ? (p.us_routing ? 'ABA ' + p.us_routing + ' · ' : '') + (p.us_account || p.us_iban) : '<span style="color:#cbd5e1">sin datos</span>';
+  return (p.cbu || p.alias) ? escapeHtml(p.alias || p.cbu) : '<span style="color:#cbd5e1">sin datos</span>';
+}
+function _cpSupplierTable(suppliers) {
+  if (!suppliers.length) return '<div class="empty-state"><i class="fas fa-truck"></i><p>No hay proveedores</p></div>';
+  return '<table><thead><tr><th>Proveedor</th><th>CUIT/RUT/EIN</th><th>Datos de pago</th><th>Estado</th><th></th></tr></thead><tbody>' +
+    suppliers.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).map(function(s) {
+      return '<tr>' +
+        '<td><strong>' + (CP_FLAGS[s.country||'AR']||'🏢') + ' ' + escapeHtml(s.name||'') + '</strong>' +
+          (s.payment_blocked ? ' <span class="badge badge-red" title="Datos bancarios sin verificar"><i class="fas fa-lock"></i> Pago bloqueado</span>' : '') +
+          (s.review_status==='under_review' ? ' <span class="badge badge-yellow"><i class="fas fa-clock"></i> En revisión</span>' : '') + '</td>' +
+        '<td style="font-size:12px">' + escapeHtml(s.cuit||'') + '</td>' +
+        '<td style="font-size:12px">' + _cpPayResumen(s) + '</td>' +
+        '<td>' + (typeof statusBadge==='function' ? statusBadge(s.status) : (s.status||'')) + '</td>' +
+        '<td><button class="btn-ghost btn btn-sm" onclick="cpEditSupplier(\'' + s.id + '\')"><i class="fas fa-edit"></i></button></td>' +
+      '</tr>';
+    }).join('') + '</tbody></table>';
+}
+function cpFilterSuppliers(q) {
+  q = (q||'').toLowerCase();
+  var arr = (window._cpSuppliers||[]).filter(function(s){ return !q || (s.name||'').toLowerCase().indexOf(q)!==-1 || (s.cuit||'').toLowerCase().indexOf(q)!==-1; });
+  var wrap = document.getElementById('cp-sup-wrap'); if (wrap) wrap.innerHTML = _cpSupplierTable(arr);
+}
+// Editar un proveedor desde la Central: asegura su razón social activa y abre el form.
+function cpEditSupplier(id) {
+  try {
+    if (!DB.getById('suppliers', id) && typeof rsEnsureCompany === 'function') rsEnsureCompany('suppliers', id);
+  } catch(e) {}
+  if (typeof openSupplierForm === 'function') openSupplierForm(id);
 }
 
 function _cpChangesHtml(cr) {
