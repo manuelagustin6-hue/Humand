@@ -312,7 +312,7 @@ function runAjustesIntegrity() {
 // ---- SYSTEM TAB ----
 // Identificador del build desplegado. Bumpear en cada deploy para poder confirmar
 // desde el celular (sin consola) si el dispositivo ya tomó el código nuevo.
-window.ERP_BUILD = 'erp-v77';
+window.ERP_BUILD = 'erp-v78';
 
 // Diagnóstico visible en pantalla (mobile-friendly, sin consola). Muestra versión de
 // código cargada, sesión, empresas conocidas y conteo real en la nube vs en la app.
@@ -357,6 +357,36 @@ function runDiag() {
   });
 }
 
+// Reparación de registros mal ubicados entre empresas (duplicados en la nube).
+function runRepairDup() {
+  var el = document.getElementById('erp-diag-out');
+  if (!el) return;
+  el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analizando duplicados entre empresas…';
+  var names = {}; try { (DB.getAllCompanies() || []).forEach(function(c) { names[c.id] = c.name || c.id; }); } catch(e) {}
+  function nm(cid) { return names[cid] || cid; }
+  DB.repairMisplaced({ dryRun: true }).then(function(r) {
+    if (!r.total) { el.innerHTML = '<div style="color:var(--success)"><i class="fas fa-check-circle"></i> No hay registros mal ubicados. Todo limpio.</div>'; return; }
+    var lines = r.groups.map(function(g) {
+      var correct = Object.keys(g.correct).map(function(cid) { return escapeHtml(nm(cid)); }).join(', ');
+      return '<div>• <strong>' + g.ids.length + '</strong> ' + escapeHtml(g.col) + ' guardados en <strong>' + escapeHtml(nm(g.wrongCid)) + '</strong> que en realidad son de <strong>' + correct + '</strong></div>';
+    }).join('');
+    el.innerHTML = '<div style="margin-bottom:8px">Se detectaron <strong>' + r.total + '</strong> registros mal ubicados (duplicados):</div>' + lines +
+      (r.skipped ? '<div style="color:var(--warning);margin-top:6px">' + r.skipped + ' no se tocan (no tienen copia correcta — requieren revisión manual).</div>' : '') +
+      '<div style="margin-top:10px"><button class="btn btn-danger btn-sm" onclick="_doRepairDup()"><i class="fas fa-broom"></i> Borrar duplicados de la nube (' + r.total + ')</button></div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px">Se borra solo la copia mal ubicada; la copia correcta queda intacta.</div>';
+  }).catch(function(e) { el.innerHTML = '<div style="color:var(--danger)">Error al analizar: ' + (e && e.message || e) + '</div>'; });
+}
+
+function _doRepairDup() {
+  var el = document.getElementById('erp-diag-out');
+  if (el) el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reparando en la nube… no cierres la pestaña';
+  DB.repairMisplaced({}).then(function(res) {
+    if (el) el.innerHTML = '<div style="color:var(--success)"><i class="fas fa-check-circle"></i> Reparado: ' + res.deleted + ' registros duplicados borrados' +
+      (res.errors && res.errors.length ? ' (' + res.errors.length + ' errores)' : '') + '. Recargando…</div>';
+    setTimeout(function() { location.reload(); }, 2200);
+  }).catch(function(e) { if (el) el.innerHTML = '<div style="color:var(--danger)">Error: ' + (e && e.message || e) + '</div>'; });
+}
+
 function buildSystemTab() {
   var connGuess = (typeof _SUPA !== 'undefined' && _SUPA.online)
     ? '<span style="color:var(--success);font-weight:600"><i class="fas fa-circle" style="font-size:8px"></i> Conectado</span>'
@@ -387,7 +417,8 @@ function buildSystemTab() {
     '<div><span style="color:var(--text-muted)">Fecha del sistema: </span><strong>' + fmtDate(new Date().toISOString().split('T')[0]) + '</strong></div>' +
     '</div>' +
     '<hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">' +
-    '<button class="btn btn-secondary btn-sm" onclick="runDiag()"><i class="fas fa-stethoscope"></i> Ejecutar diagnóstico</button>' +
+    '<button class="btn btn-secondary btn-sm" onclick="runDiag()"><i class="fas fa-stethoscope"></i> Ejecutar diagnóstico</button> ' +
+    '<button class="btn btn-secondary btn-sm" onclick="runRepairDup()"><i class="fas fa-broom"></i> Reparar duplicados entre empresas</button>' +
     '<div id="erp-diag-out" style="margin-top:12px;font-size:12px;line-height:1.7"></div>' +
     '</div></div>' +
 
