@@ -474,6 +474,13 @@ function savePaymentOrder(id) {
   const gross = numParse(document.getElementById('op-gross').value);
   if (!supplierId || !concept || !gross) { toast('Proveedor, concepto e importe son obligatorios', 'error'); return; }
 
+  // Control anti-BEC: no permitir generar una OP a un proveedor con pagos bloqueados
+  // (datos bancarios cambiados y sin verificar/aprobar).
+  if (typeof supplierPaymentBlocked === 'function' && supplierPaymentBlocked(supplierId)) {
+    toast('Proveedor con PAGOS BLOQUEADOS: sus datos bancarios cambiaron y están sin verificar. Aprobá el cambio en Compras → Proveedores antes de pagar.', 'error');
+    return;
+  }
+
   const _ret = _poReadRetentions();
   const retentions = _ret.retentions;
   const totalRet = retentions.reduce((s,r) => s + (r.amount || 0), 0);
