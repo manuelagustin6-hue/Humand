@@ -477,7 +477,8 @@ function savePaymentOrder(id) {
   // Control anti-BEC: no permitir generar una OP a un proveedor con pagos bloqueados
   // (datos bancarios cambiados y sin verificar/aprobar).
   if (typeof supplierPaymentBlocked === 'function' && supplierPaymentBlocked(supplierId)) {
-    toast('Proveedor con PAGOS BLOQUEADOS: sus datos bancarios cambiaron y están sin verificar. Aprobá el cambio en Compras → Proveedores antes de pagar.', 'error');
+    var _reason = (typeof supplierBlockReason === 'function') ? supplierBlockReason(supplierId) : '';
+    toast('Proveedor con PAGOS BLOQUEADOS: ' + (_reason || 'requiere validación') + '. Resolvelo en Compras → Central de Proveedores antes de pagar.', 'error');
     return;
   }
 

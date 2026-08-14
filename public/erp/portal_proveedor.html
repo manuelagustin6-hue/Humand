@@ -53,19 +53,37 @@
       <button class="btn btn-ghost" id="au-secondary" onclick="toggleAuthMode()">Primera vez — crear contraseña</button>
     </div>
 
-    <!-- Profile -->
-    <div id="state-profile" class="card hidden">
-      <h2><i class="fas fa-building"></i> <span id="pf-name"></span></h2>
-      <p class="muted">Revisá y actualizá tus datos. Los cambios quedan sujetos a revisión de la empresa antes de aplicarse.</p>
-      <label>Email de contacto</label><input id="pf-email" type="email">
-      <label>Teléfono</label><input id="pf-phone">
-      <label>Dirección</label><input id="pf-address">
-      <div id="pf-payment"></div>
-      <div class="bank-note"><i class="fas fa-lock"></i> Por seguridad, todo cambio en tus <strong>datos bancarios</strong> es verificado y aprobado por la empresa (con doble control) antes de usarse para pagarte.</div>
-      <div class="err" id="pf-err"></div>
-      <button class="btn btn-primary" onclick="submitChanges()"><i class="fas fa-paper-plane"></i> Enviar cambios a revisión</button>
-      <button class="btn btn-ghost" onclick="doLogout()">Cerrar sesión</button>
-      <div id="pf-pending" class="muted" style="margin-top:14px"></div>
+    <!-- Dashboard -->
+    <div id="state-profile" class="hidden">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <h2 style="margin:0"><i class="fas fa-building"></i> <span id="pf-name"></span></h2>
+          <span id="pf-status-badge"></span>
+        </div>
+        <div id="pf-summary" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <h2><i class="fas fa-pen"></i> Actualizar datos</h2>
+        <p class="muted">Completá solo lo que quieras actualizar. Los cambios quedan sujetos a revisión de la empresa antes de aplicarse.</p>
+        <label>Email de contacto</label><input id="pf-email" type="email" placeholder="Ingresá el dato actualizado">
+        <label>Teléfono</label><input id="pf-phone" placeholder="Ingresá el dato actualizado">
+        <label>Dirección</label><input id="pf-address" placeholder="Ingresá el dato actualizado">
+        <div id="pf-payment"></div>
+        <div class="bank-note"><i class="fas fa-lock"></i> Por seguridad, todo cambio en tus <strong>datos bancarios</strong> es verificado y aprobado por la empresa (con doble control) antes de usarse para pagarte.</div>
+      </div>
+
+      <div class="card">
+        <h2><i class="fas fa-folder-open"></i> Documentación <span style="color:#dc2626">*</span></h2>
+        <p class="muted">Para enviar tu solicitud a aprobación, adjuntá la documentación requerida (PDF o imagen, máx 4 MB c/u).</p>
+        <div id="pf-docs"></div>
+      </div>
+
+      <div class="card">
+        <div class="err" id="pf-err"></div>
+        <button class="btn btn-primary" onclick="submitChanges()"><i class="fas fa-paper-plane"></i> Enviar a aprobación</button>
+        <button class="btn btn-ghost" onclick="doLogout()">Cerrar sesión</button>
+      </div>
     </div>
 
     <div id="state-success" class="card hidden">
@@ -154,19 +172,51 @@
     renderProfile();
   }
 
+  var REQUIRED_DOCS = {
+    AR: [['afip','Constancia de inscripción AFIP', true], ['cbu','Constancia de CBU (banco)', true], ['otros','Otros (opcional)', false]],
+    UY: [['dgi','Constancia DGI / RUT', true], ['banco','Comprobante de cuenta bancaria', true], ['otros','Otros (opcional)', false]],
+    US: [['w9','W-9 / W-8BEN', true], ['bank','Voided check / bank letter', true], ['otros','Other (optional)', false]],
+  };
+
   function renderProfile() {
     document.getElementById('pf-name').textContent = _inv.supplier_name || '';
+    var snap = _inv.snapshot || {};
+    var vs = snap.verification_status || 'pending';
+    document.getElementById('pf-status-badge').innerHTML = vs === 'validated'
+      ? '<span style="background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700"><i class="fas fa-circle-check"></i> Validado</span>'
+      : '<span style="background:#fef9c3;color:#a16207;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700"><i class="fas fa-hourglass-half"></i> Pendiente de validación</span>';
+    // Resumen (dashboard) de los datos registrados
+    function row(l, v) { return v ? '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px"><span style="color:#64748b">' + esc(l) + '</span><strong>' + esc(v) + '</strong></div>' : ''; }
+    document.getElementById('pf-summary').innerHTML =
+      '<div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Datos registrados</div>' +
+      row('CUIT/RUT/EIN', snap.cuit) + row('Email', snap.email) + row('Teléfono', snap.phone) + row('Dirección', snap.address) +
+      row('Banco', snap.bank) + row('Titular', snap.holder) + row('Alias', snap.alias) + row('Cuenta', snap.cbu_masked) +
+      '<div class="muted" style="margin-top:8px;font-size:12px">Los datos bancarios se muestran enmascarados por seguridad. Para cambiarlos, cargá el dato completo abajo.</div>';
+    // Campos de pago editables
     var fields = PAY_FIELDS[_company] || PAY_FIELDS.AR;
     document.getElementById('pf-payment').innerHTML =
       '<div style="margin-top:16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase"><i class="fas fa-university"></i> Datos de pago</div>' +
       fields.map(function(f){ return '<label>' + esc(f[1]) + '</label><input data-pay="' + f[0] + '" placeholder="Ingresá el dato actualizado">'; }).join('');
+    // Documentos requeridos
+    var docs = REQUIRED_DOCS[_company] || REQUIRED_DOCS.AR;
+    document.getElementById('pf-docs').innerHTML = docs.map(function(d){
+      return '<label>' + esc(d[1]) + (d[2] ? ' <span style="color:#dc2626">*</span>' : '') + '</label>' +
+        '<input type="file" data-doc="' + d[0] + '" data-req="' + (d[2]?'1':'0') + '" data-label="' + esc(d[1]) + '" accept="application/pdf,image/*">';
+    }).join('');
     show('state-profile');
+  }
+
+  function readFileB64(file) {
+    return new Promise(function(res, rej){
+      var r = new FileReader();
+      r.onload = function(){ res(r.result); };
+      r.onerror = function(){ rej(new Error('No se pudo leer ' + file.name)); };
+      r.readAsDataURL(file);
+    });
   }
 
   window.submitChanges = async function() {
     var errEl = document.getElementById('pf-err'); errEl.textContent='';
-    // Sólo se envían los campos que el proveedor completó (con valor). El valor
-    // anterior lo tiene la empresa en su sistema; acá sólo proponemos el nuevo.
     var fields = {};
     [['email','pf-email'],['phone','pf-phone'],['address','pf-address']].forEach(function(p){
       var nv = (document.getElementById(p[1]).value||'').trim();
@@ -176,7 +226,20 @@
       var k = el.getAttribute('data-pay'), nv = (el.value||'').trim();
       if (nv) fields[k] = { old: '', new: nv };
     });
-    if (!Object.keys(fields).length) { errEl.textContent = 'Completá al menos un dato para enviar.'; return; }
+    // Documentación requerida
+    var docEls = Array.prototype.slice.call(document.querySelectorAll('[data-doc]'));
+    var missing = [];
+    docEls.forEach(function(el){ if (el.getAttribute('data-req')==='1' && !(el.files && el.files[0])) missing.push(el.getAttribute('data-label')); });
+    if (missing.length) { errEl.textContent = 'Falta adjuntar: ' + missing.join(', ') + '.'; return; }
+    var documents = [];
+    for (var i=0;i<docEls.length;i++){
+      var el = docEls[i], f = el.files && el.files[0];
+      if (!f) continue;
+      if (f.size > 4*1024*1024) { errEl.textContent = 'El archivo "' + f.name + '" supera 4 MB.'; return; }
+      try { var b64 = await readFileB64(f); documents.push({ key: el.getAttribute('data-doc'), label: el.getAttribute('data-label'), filename: f.name, type: f.type, size: f.size, dataUrl: b64 }); }
+      catch(e){ errEl.textContent = e.message; return; }
+    }
+    if (!Object.keys(fields).length && !documents.length) { errEl.textContent = 'Completá al menos un dato o adjuntá documentación.'; return; }
     var isBank = Object.keys(fields).some(function(k){ return BANK_KEYS.indexOf(k) !== -1; });
     var ses = await sb.auth.getSession();
     var email = ses.data && ses.data.session && ses.data.session.user ? ses.data.session.user.email : (_inv.email||'');
@@ -185,7 +248,7 @@
       supplier_id: _inv.supplier_id, supplier_name: _inv.supplier_name || '',
       scope_company_id: _inv.company_id,
       type: isBank ? 'bank' : 'general', risk: isBank ? 'high' : 'normal',
-      fields: fields, status: 'pending', source: 'portal',
+      fields: fields, documents: documents, status: 'pending', source: 'portal',
       requested_by: email, requested_at: new Date().toISOString(), approvals: [],
     };
     try {

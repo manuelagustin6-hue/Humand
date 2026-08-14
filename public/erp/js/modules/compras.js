@@ -1042,7 +1042,19 @@ function supplierPaymentBlocked(supplierId) {
   if (!supplierId) return false;
   var s = null;
   try { s = DB.getById('suppliers', supplierId) || (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('suppliers').find(function(x){ return x.id === supplierId; }) : null); } catch(e) {}
-  return !!(s && s.payment_blocked);
+  if (!s) return false;
+  // Bloqueado por cambio bancario sin verificar, o por estar pendiente de validación
+  // (un proveedor sin validar no es pagable). Los migrados (sin el campo) NO se bloquean.
+  return !!(s.payment_blocked || s.verification_status === 'pending');
+}
+// Motivo del bloqueo (para el mensaje).
+function supplierBlockReason(supplierId) {
+  var s = null;
+  try { s = DB.getById('suppliers', supplierId) || (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('suppliers').find(function(x){ return x.id === supplierId; }) : null); } catch(e) {}
+  if (!s) return '';
+  if (s.payment_blocked) return 'datos bancarios cambiados y sin verificar';
+  if (s.verification_status === 'pending') return 'proveedor pendiente de validación (falta validarlo en Central de Proveedores)';
+  return '';
 }
 
 function openSupplierForm(id = null) {
@@ -1168,8 +1180,9 @@ function saveSupplier(id) {
     DB.update('suppliers', id, Object.assign({}, data, { payment: newPayment }));
     toast('Proveedor actualizado', 'success');
   } else {
-    DB.insert('suppliers', Object.assign({}, data, { payment: newPayment }));
-    toast('Proveedor creado', 'success');
+    // Proveedor nuevo: nace PENDIENTE de validación (no pagable hasta validarlo).
+    DB.insert('suppliers', Object.assign({}, data, { payment: newPayment, verification_status: 'pending' }));
+    toast('Proveedor creado — queda PENDIENTE de validación (validalo en Central de Proveedores para poder pagarle).', 'info');
   }
   closeModal();
   _refreshCurrentComprasView();
