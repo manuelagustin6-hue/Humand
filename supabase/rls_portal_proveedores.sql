@@ -37,9 +37,27 @@ create policy erp_portal_changereq_insert on public.erp_data
 
 -- ============================================================================
 --  (3) DASHBOARD EN VIVO: el proveedor lee SOLO su propia ficha.
---  Vinculación segura cuenta(auth.uid) ↔ supplier_id, gateada por el token de la
---  invitación (que solo el proveedor invitado tiene). No requiere edge function.
+--  IMPORTANTE: las políticas NO pueden consultar erp_data directamente (causa
+--  "infinite recursion"). Se usan funciones SECURITY DEFINER que saltean RLS,
+--  igual que erp_is_member.
 -- ============================================================================
+
+-- Helpers SECURITY DEFINER (bypass RLS) para evitar recursión.
+create or replace function public.portal_supplier_of_uid(p_uid text)
+  returns text language sql security definer stable set search_path = public as $$
+  select (data->>'supplier_id') from public.erp_data
+  where collection = 'supplierPortalAccounts' and deleted = false and data->>'uid' = p_uid
+  limit 1
+$$;
+
+create or replace function public.portal_invite_matches(p_token text, p_supplier text)
+  returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from public.erp_data
+    where collection = 'supplierPortalInvites' and deleted = false
+      and data->>'token' = p_token and data->>'supplier_id' = p_supplier
+  )
+$$;
 
 -- 3a) El proveedor crea su vínculo (uid -> supplier_id) SOLO si el token+supplier_id
 --     coinciden con una invitación real. Así no puede vincularse a otro proveedor.
@@ -49,16 +67,10 @@ create policy erp_portal_account_insert on public.erp_data
   with check (
     collection = 'supplierPortalAccounts'
     and (data->>'uid') = auth.uid()::text
-    and exists (
-      select 1 from public.erp_data i
-      where i.collection = 'supplierPortalInvites'
-        and i.deleted = false
-        and i.data->>'token' = erp_data.data->>'token'
-        and i.data->>'supplier_id' = erp_data.data->>'supplier_id'
-    )
+    and public.portal_invite_matches(data->>'token', data->>'supplier_id')
   );
 
--- 3b) El proveedor lee/actualiza SOLO su propio vínculo.
+-- 3b) El proveedor lee/actualiza SOLO su propio vínculo (sin subconsulta a erp_data).
 drop policy if exists erp_portal_account_select on public.erp_data;
 create policy erp_portal_account_select on public.erp_data
   for select to authenticated
@@ -70,18 +82,13 @@ create policy erp_portal_account_update on public.erp_data
   using (collection = 'supplierPortalAccounts' and (data->>'uid') = auth.uid()::text)
   with check (collection = 'supplierPortalAccounts' and (data->>'uid') = auth.uid()::text);
 
--- 3c) El proveedor lee SOLO su propia ficha de proveedor (la vinculada a su uid).
+-- 3c) El proveedor lee SOLO su propia ficha (la vinculada a su uid), vía la función.
 drop policy if exists erp_portal_supplier_select on public.erp_data;
 create policy erp_portal_supplier_select on public.erp_data
   for select to authenticated
   using (
     collection = 'suppliers'
-    and exists (
-      select 1 from public.erp_data a
-      where a.collection = 'supplierPortalAccounts'
-        and a.data->>'uid' = auth.uid()::text
-        and a.data->>'supplier_id' = erp_data.record_id
-    )
+    and record_id = public.portal_supplier_of_uid(auth.uid()::text)
   );
 
 -- NOTA: el proveedor NO puede leer supplierChangeRequests de otros ni ninguna otra
