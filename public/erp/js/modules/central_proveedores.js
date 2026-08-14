@@ -61,14 +61,13 @@ function cpAllRequests() {
 
 // Actualiza el proveedor (en TODAS las razones sociales donde exista ese supplier_id)
 // aplicando los valores nuevos del cambio, y ajusta bloqueo/estado de revisión.
-function cpApplyToSupplier(supplierId, newValues, opts) {
+async function cpApplyToSupplier(supplierId, newValues, opts) {
   opts = opts || {};
   var prev = DB._companyId;
-  var updatedAny = false;
+  var toPush = [];  // { cid, record } para escritura autoritativa a la nube
   try {
     var all = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('suppliers') : DB.getAll('suppliers');
     var targets = all.filter(function(s) { return s.id === supplierId; });
-    // Empresas donde vive ese proveedor (al menos la activa)
     var byCompany = {};
     targets.forEach(function(s) { byCompany[s._company_id || prev] = true; });
     if (!Object.keys(byCompany).length) byCompany[prev] = true;
@@ -79,7 +78,6 @@ function cpApplyToSupplier(supplierId, newValues, opts) {
         var s = DB.getById('suppliers', supplierId);
         if (!s) return;
         var patch = {};
-        // Aplicar valores de pago (merge sobre payment) y/o campos de perfil.
         var payment = Object.assign({}, s.payment || {});
         Object.keys(newValues).forEach(function(k) {
           if (CP_BANK_FIELDS.indexOf(k) !== -1) payment[k] = newValues[k];
@@ -87,14 +85,23 @@ function cpApplyToSupplier(supplierId, newValues, opts) {
         });
         patch.payment = payment;
         if (opts.setReviewOk) { patch.review_status = 'ok'; patch.payment_blocked = false; }
-        DB.update('suppliers', supplierId, patch);
-        updatedAny = true;
+        var upd = DB.update('suppliers', supplierId, patch);
+        if (upd) { var rec = Object.assign({}, upd); delete rec._company_id; delete rec._company_name; delete rec._company_currency; toPush.push({ cid: cid, record: rec }); }
       } catch(e) {}
     });
-  } finally {
-    try { DB.setCompany(prev); } catch(e) {}
+  } finally { try { DB.setCompany(prev); } catch(e) {} }
+  // Escritura autoritativa a la nube (await) para que el desbloqueo persista.
+  if (_SUPA.session && _SUPA.session.access_token) {
+    for (var i = 0; i < toPush.length; i++) {
+      try {
+        await fetch(_SUPA.URL + '/rest/v1/erp_data', {
+          method: 'POST', headers: _SUPA.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+          body: JSON.stringify([{ company_id: toPush[i].cid, collection: 'suppliers', record_id: supplierId, data: toPush[i].record, deleted: false, updated_at: new Date().toISOString() }]),
+        });
+      } catch(e) {}
+    }
   }
-  return updatedAny;
+  return toPush.length > 0;
 }
 
 // Marca al proveedor bloqueado / en revisión (en todas sus empresas).
@@ -121,22 +128,34 @@ function cpFindRequest(id) {
 
 // Actualiza la solicitud en la empresa donde realmente vive (según el consolidado),
 // con fallback a scope_company_id. Verifica que el registro exista antes de escribir.
-function cpUpdateRequest(cr, patch) {
+// Actualiza la solicitud: local (UI inmediata) + escritura AUTORITATIVA a la nube con
+// await, para que el nuevo estado (aprobado/rechazado) persista aunque el push async
+// falle. Devuelve {ok, error}. Sin esto, al recargar reaparecía como pendiente.
+async function cpUpdateRequest(cr, patch) {
   var prev = DB._companyId;
   var cid = cr._company_id || cr.scope_company_id || prev;
-  var ok = false;
+  var updated = null;
   try {
     DB.setCompany(cid);
-    // Forzar que la empresa activa use la copia fresca de RAM (_blobs): la solicitud
-    // vino del portal a la nube y puede no estar en el localStorage local todavía.
     if (DB._blobs && DB._blobs[cid]) { DB._cache = DB._blobs[cid]; DB._cacheKey = DB.KEY; }
-    if (DB.getById('supplierChangeRequests', cr.id)) { DB.update('supplierChangeRequests', cr.id, patch); ok = true; }
+    if (DB.getById('supplierChangeRequests', cr.id)) updated = DB.update('supplierChangeRequests', cr.id, patch);
   } catch(e) {}
   finally { try { DB.setCompany(prev); } catch(e) {} }
-  return ok;
+  if (!updated) updated = Object.assign({}, cr, patch);
+  delete updated._company_id; delete updated._company_name; delete updated._company_currency;
+  if (!(_SUPA.session && _SUPA.session.access_token)) return { ok: false, error: 'sin sesión' };
+  try {
+    var res = await fetch(_SUPA.URL + '/rest/v1/erp_data', {
+      method: 'POST',
+      headers: _SUPA.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify([{ company_id: cid, collection: 'supplierChangeRequests', record_id: cr.id, data: updated, deleted: false, updated_at: new Date().toISOString() }]),
+    });
+    if (!res.ok) { var t = ''; try { t = await res.text(); } catch(e) {} return { ok: false, error: 'HTTP ' + res.status + ' ' + t.slice(0, 140) }; }
+    return { ok: true };
+  } catch(e) { return { ok: false, error: (e && e.message) || String(e) }; }
 }
 
-function cpApprove(id) {
+async function cpApprove(id) {
   var cr = cpFindRequest(id);
   if (!cr || cr.status !== 'pending') return;
   var u = _cpUser();
@@ -148,20 +167,22 @@ function cpApprove(id) {
     }
     approvals.push({ by: u.email, at: _cpIso() });
     if (approvals.length < 2) {
-      var saved = cpUpdateRequest(cr, { approvals: approvals });
-      toast(saved ? '1ª aprobación registrada (1/2). Falta una 2ª aprobación de OTRA persona para aplicar el cambio bancario.'
-                  : 'No se pudo registrar la aprobación (reintentá).', saved ? 'info' : 'error');
+      var r1 = await cpUpdateRequest(cr, { approvals: approvals });
+      toast(r1.ok ? '1ª aprobación registrada (1/2). Falta una 2ª aprobación de OTRA persona para aplicar el cambio bancario.'
+                  : 'No se pudo registrar la aprobación: ' + (r1.error || '') + ' (reintentá).', r1.ok ? 'info' : 'error');
       renderCentralProveedores();
       return;
     }
   } else {
     approvals.push({ by: u.email, at: _cpIso() });
   }
-  // Aplicar
+  // Escribir primero el estado aprobado (autoritativo); si falla, no aplicamos.
+  var res = await cpUpdateRequest(cr, { status: 'approved', approvals: approvals, reviewed_by: u.email, reviewed_at: _cpIso() });
+  if (!res.ok) { toast('No se pudo aprobar: ' + (res.error || '') + ' (reintentá).', 'error'); return; }
+  // Aplicar el cambio al proveedor y desbloquear pagos.
   var newValues = {};
   Object.keys(cr.fields || {}).forEach(function(k) { newValues[k] = cr.fields[k].new; });
-  cpApplyToSupplier(cr.supplier_id, newValues, { setReviewOk: true });
-  cpUpdateRequest(cr, { status: 'approved', approvals: approvals, reviewed_by: u.email, reviewed_at: _cpIso() });
+  await cpApplyToSupplier(cr.supplier_id, newValues, { setReviewOk: true });
   if (typeof window.auditLog === 'function') { try { window.auditLog('approve', 'supplierChangeRequests', cr.id, cr); } catch(e) {} }
   toast('Cambio aprobado y aplicado. ' + (cr.risk === 'high' ? 'Pagos desbloqueados.' : ''), 'success');
   renderCentralProveedores();
@@ -175,12 +196,13 @@ function cpReject(id) {
     '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
     '<button class="btn btn-danger" onclick="cpDoReject(\'' + cr.id + '\')">Rechazar</button>');
 }
-function cpDoReject(id) {
+async function cpDoReject(id) {
   var cr = cpFindRequest(id);
   if (!cr) return;
   var note = (document.getElementById('cp-reject-note') || {}).value || '';
   var u = _cpUser();
-  cpUpdateRequest(cr, { status: 'rejected', reviewed_by: u.email, reviewed_at: _cpIso(), decision_note: note });
+  var res = await cpUpdateRequest(cr, { status: 'rejected', reviewed_by: u.email, reviewed_at: _cpIso(), decision_note: note });
+  if (!res.ok) { toast('No se pudo rechazar: ' + (res.error || '') + ' (reintentá).', 'error'); return; }
   // Si era bancario y no quedan otros cambios bancarios pendientes, levantar el bloqueo
   // (el dato viejo sigue vigente; se rechazó el nuevo).
   if (cr.risk === 'high') {
