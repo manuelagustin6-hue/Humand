@@ -32,9 +32,12 @@
   </style>
 </head>
 <body>
-  <div class="header wrap" style="max-width:620px;border-radius:0 0 16px 16px">
+  <div class="header wrap" style="max-width:620px;border-radius:0 0 16px 16px;position:relative">
     <h1><i class="fas fa-shield-halved"></i> Portal de Proveedores</h1>
     <p id="hdr-sub">Actualizá tus datos de forma segura</p>
+    <button onclick="doLogout()" title="Cerrar sesión"
+      style="position:absolute;top:18px;right:16px;background:rgba(255,255,255,.12);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer">
+      <i class="fas fa-right-from-bracket"></i> Cerrar sesión</button>
   </div>
   <div class="wrap">
     <div id="state-loading" class="card"><p class="muted"><i class="fas fa-spinner fa-spin"></i> Cargando…</p></div>
