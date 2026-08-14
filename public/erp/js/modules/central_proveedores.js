@@ -188,6 +188,14 @@ function renderCentralProveedores() {
   // dedupe proveedores por id (aparecen en varias empresas)
   var supById = {}; suppliers.forEach(function(s) { if (!supById[s.id]) supById[s.id] = s; });
   var supArr = Object.keys(supById).map(function(k) { return supById[k]; });
+  // Bloqueo automático: un cambio BANCARIO pendiente (incluido el que llega del portal)
+  // bloquea los pagos del proveedor hasta aprobarlo. El portal no toca la ficha, así
+  // que reconciliamos acá. Solo actúa sobre proveedores aún no bloqueados.
+  var _reblocked = false;
+  pending.forEach(function(cr) {
+    if (cr.risk === 'high') { var s = supById[cr.supplier_id]; if (s && !s.payment_blocked) { cpFlagSupplier(cr.supplier_id, { payment_blocked: true, review_status: 'under_review' }); _reblocked = true; } }
+  });
+  if (_reblocked && !window._cpReblockGuard) { window._cpReblockGuard = true; setTimeout(function(){ window._cpReblockGuard = false; try { if (window.APP_STATE && window.APP_STATE.currentModule === 'central_prov') renderCentralProveedores(); } catch(e){} }, 50); }
   var blocked = supArr.filter(function(s) { return s.payment_blocked; });
   var review = supArr.filter(function(s) { return s.review_status === 'under_review'; });
 
@@ -239,7 +247,10 @@ function _cpSupplierTable(suppliers) {
         '<td style="font-size:12px">' + escapeHtml(s.cuit||'') + '</td>' +
         '<td style="font-size:12px">' + _cpPayResumen(s) + '</td>' +
         '<td>' + (typeof statusBadge==='function' ? statusBadge(s.status) : (s.status||'')) + '</td>' +
-        '<td><button class="btn-ghost btn btn-sm" onclick="cpEditSupplier(\'' + s.id + '\')"><i class="fas fa-edit"></i></button></td>' +
+        '<td><div class="table-actions">' +
+          '<button class="btn-ghost btn btn-sm" title="Editar" onclick="cpEditSupplier(\'' + s.id + '\')"><i class="fas fa-edit"></i></button>' +
+          '<button class="btn-ghost btn btn-sm" title="Invitar al portal" onclick="cpInviteSupplier(\'' + s.id + '\')"><i class="fas fa-paper-plane"></i></button>' +
+        '</div></td>' +
       '</tr>';
     }).join('') + '</tbody></table>';
 }
@@ -248,6 +259,57 @@ function cpFilterSuppliers(q) {
   var arr = (window._cpSuppliers||[]).filter(function(s){ return !q || (s.name||'').toLowerCase().indexOf(q)!==-1 || (s.cuit||'').toLowerCase().indexOf(q)!==-1; });
   var wrap = document.getElementById('cp-sup-wrap'); if (wrap) wrap.innerHTML = _cpSupplierTable(arr);
 }
+/* ---- INVITACIONES AL PORTAL ---- */
+function _cpToken() {
+  var s = '';
+  for (var i = 0; i < 4; i++) s += Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0');
+  return s;
+}
+function _cpPortalBaseUrl() {
+  // portal_proveedor.html vive junto al index de la app
+  var u = window.location.href.split('#')[0].split('?')[0];
+  return u.replace(/[^/]*$/, '') + 'portal_proveedor.html';
+}
+function cpInviteSupplier(id) {
+  var s = null;
+  try { s = DB.getById('suppliers', id) || (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('suppliers').find(function(x){ return x.id === id; }) : null); } catch(e) {}
+  if (!s) { toast('No se encontró el proveedor', 'error'); return; }
+  openModal('Invitar al portal — ' + escapeHtml(s.name || ''),
+    '<div class="form-group"><label class="form-label">Email del proveedor *</label>' +
+    '<input class="form-control" id="cp-inv-email" type="email" value="' + escapeHtml(s.email || '') + '" placeholder="proveedor@empresa.com"></div>' +
+    '<div style="font-size:12px;color:var(--text-muted)">Se genera un link único. El proveedor entra, crea su contraseña y puede actualizar sus datos (los cambios llegan acá para aprobar).</div>',
+    'modal-sm',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="cpDoInvite(\'' + id + '\')"><i class="fas fa-paper-plane"></i> Generar invitación</button>');
+}
+function cpDoInvite(id) {
+  var email = ((document.getElementById('cp-inv-email') || {}).value || '').trim().toLowerCase();
+  if (!email) { toast('Ingresá el email del proveedor', 'error'); return; }
+  var s = DB.getById('suppliers', id) || (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('suppliers').find(function(x){ return x.id === id; }) : null);
+  var token = _cpToken();
+  var inv = {
+    id: (typeof uuid === 'function' ? uuid() : 'inv-' + Date.now()),
+    token: token, supplier_id: id, supplier_name: (s && s.name) || '',
+    company_id: DB._companyId, email: email, status: 'sent', created_at: _cpIso(),
+  };
+  DB.insert('supplierPortalInvites', inv);
+  var link = _cpPortalBaseUrl() + '?token=' + token;
+  closeModal();
+  openModal('Invitación generada',
+    '<div style="font-size:13px;margin-bottom:10px">Enviale este link al proveedor <strong>' + escapeHtml((s && s.name) || '') + '</strong>:</div>' +
+    '<div style="background:var(--bg-secondary);border-radius:8px;padding:10px;font-size:12px;word-break:break-all" id="cp-inv-link">' + escapeHtml(link) + '</div>' +
+    '<div style="font-size:12px;color:var(--text-muted);margin-top:10px"><i class="fas fa-shield-halved"></i> El proveedor crea su cuenta con ese link. Sus cambios de datos llegan a esta Central para aprobar (los bancarios, con doble aprobación).</div>',
+    'modal-sm',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>' +
+    '<button class="btn btn-primary" onclick="cpCopyInvite()"><i class="fas fa-copy"></i> Copiar link</button>');
+}
+function cpCopyInvite() {
+  var el = document.getElementById('cp-inv-link');
+  var txt = el ? el.textContent : '';
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){ toast('Link copiado', 'success'); });
+  else toast('Copiá el link manualmente', 'info');
+}
+
 // Editar un proveedor desde la Central: asegura su razón social activa y abre el form.
 function cpEditSupplier(id) {
   try {

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Portal de Proveedores</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: #0f172a; color: #0f172a; min-height: 100vh; }
+    .wrap { max-width: 620px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg,#131b2e,#1e3a5f); color: #fff; padding: 22px 20px; border-radius: 0 0 16px 16px; }
+    .header h1 { font-size: 19px; display: flex; align-items: center; gap: 10px; }
+    .header p { font-size: 13px; opacity: .85; margin-top: 4px; }
+    .card { background: #fff; border-radius: 14px; padding: 22px; margin-top: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+    .card h2 { font-size: 16px; margin-bottom: 14px; }
+    label { font-size: 12px; font-weight: 600; color: #374151; display: block; margin: 12px 0 5px; }
+    input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-family: inherit; }
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 9px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 14px; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-ghost { background: #eef2f7; color: #334155; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .muted { font-size: 12px; color: #64748b; }
+    .err { color: #dc2626; font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .ok-box { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 16px; text-align: center; }
+    .bank-note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #92400e; margin-top: 12px; }
+    .hidden { display: none; }
+    .field-changed { border-color: #f59e0b; background: #fffbeb; }
+  </style>
+</head>
+<body>
+  <div class="header wrap" style="max-width:620px;border-radius:0 0 16px 16px">
+    <h1><i class="fas fa-shield-halved"></i> Portal de Proveedores</h1>
+    <p id="hdr-sub">Actualizá tus datos de forma segura</p>
+  </div>
+  <div class="wrap">
+    <div id="state-loading" class="card"><p class="muted"><i class="fas fa-spinner fa-spin"></i> Cargando…</p></div>
+    <div id="state-error" class="card hidden"><h2><i class="fas fa-triangle-exclamation" style="color:#dc2626"></i> Error</h2><p id="err-msg" class="muted"></p></div>
+
+    <!-- Login / signup -->
+    <div id="state-auth" class="card hidden">
+      <h2 id="auth-title">Acceso proveedor</h2>
+      <p class="muted" id="auth-sub"></p>
+      <label>Email</label>
+      <input id="au-email" type="email" autocomplete="username" placeholder="proveedor@empresa.com">
+      <label>Contraseña</label>
+      <input id="au-pass" type="password" autocomplete="current-password" placeholder="Mínimo 6 caracteres">
+      <div class="err" id="au-err"></div>
+      <button class="btn btn-primary" id="au-primary" onclick="doAuthPrimary()">Ingresar</button>
+      <button class="btn btn-ghost" id="au-secondary" onclick="toggleAuthMode()">Primera vez — crear contraseña</button>
+    </div>
+
+    <!-- Profile -->
+    <div id="state-profile" class="card hidden">
+      <h2><i class="fas fa-building"></i> <span id="pf-name"></span></h2>
+      <p class="muted">Revisá y actualizá tus datos. Los cambios quedan sujetos a revisión de la empresa antes de aplicarse.</p>
+      <label>Email de contacto</label><input id="pf-email" type="email">
+      <label>Teléfono</label><input id="pf-phone">
+      <label>Dirección</label><input id="pf-address">
+      <div id="pf-payment"></div>
+      <div class="bank-note"><i class="fas fa-lock"></i> Por seguridad, todo cambio en tus <strong>datos bancarios</strong> es verificado y aprobado por la empresa (con doble control) antes de usarse para pagarte.</div>
+      <div class="err" id="pf-err"></div>
+      <button class="btn btn-primary" onclick="submitChanges()"><i class="fas fa-paper-plane"></i> Enviar cambios a revisión</button>
+      <button class="btn btn-ghost" onclick="doLogout()">Cerrar sesión</button>
+      <div id="pf-pending" class="muted" style="margin-top:14px"></div>
+    </div>
+
+    <div id="state-success" class="card hidden">
+      <div class="ok-box">
+        <i class="fas fa-check-circle" style="font-size:40px;color:#059669"></i>
+        <h2 style="margin-top:10px">Cambios enviados</h2>
+        <p class="muted" style="margin-top:6px">Tus cambios quedaron registrados y serán revisados por la empresa. Te contactarán para confirmar los datos bancarios si corresponde.</p>
+        <button class="btn btn-ghost" onclick="location.reload()">Volver</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  var SUPABASE_URL = 'https://yljmcqqncljpwxwdmovw.supabase.co';
+  var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsam1jcXFuY2xqcHd4d2Rtb3Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDI0MDksImV4cCI6MjA5NjQxODQwOX0.sjCH01CjOz6ncpFR7zYQhcv_ZooAsUfcMM-InpfRjLU';
+  var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  var _token, _inv, _sup, _company, _authMode = 'signin';
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function show(id){ ['state-loading','state-error','state-auth','state-profile','state-success'].forEach(function(s){ document.getElementById(s).classList.toggle('hidden', s!==id); }); }
+  function showError(m){ document.getElementById('err-msg').textContent = m; show('state-error'); }
+
+  var PAY_FIELDS = {
+    AR: [['cbu','CBU'],['alias','Alias'],['bank','Banco'],['holder','Titular']],
+    UY: [['uy_account','Nº cuenta'],['uy_bank','Banco'],['uy_holder','Titular']],
+    US: [['us_routing','Routing (ABA)'],['us_account','Account number'],['us_iban','IBAN'],['us_swift','SWIFT/BIC'],['us_holder','Account holder']],
+  };
+  var BANK_KEYS = ['cbu','alias','bank','holder','uy_account','uy_bank','uy_holder','uy_currency','us_routing','us_account','us_iban','us_swift','us_holder'];
+
+  async function init() {
+    _token = new URLSearchParams(window.location.search).get('token');
+    if (!_token) { showError('Falta el token de acceso en el link. Pedile a la empresa una invitación nueva.'); return; }
+    try {
+      var r = await sb.from('erp_data').select('*').eq('collection','supplierPortalInvites').eq('deleted', false);
+      if (r.error) throw new Error(r.error.message);
+      var row = (r.data||[]).find(function(x){ return x.data && x.data.token === _token; });
+      if (!row) { showError('Este link no es válido o expiró.'); return; }
+      _inv = Object.assign({ id: row.record_id }, row.data);
+      // ¿ya hay sesión?
+      var ses = await sb.auth.getSession();
+      if (ses.data && ses.data.session) { await afterAuth(); return; }
+      document.getElementById('au-email').value = _inv.email || '';
+      document.getElementById('auth-sub').textContent = 'Proveedor: ' + (_inv.supplier_name || '');
+      show('state-auth');
+    } catch(e) { showError('No se pudo cargar: ' + e.message); }
+  }
+
+  window.toggleAuthMode = function() {
+    _authMode = _authMode === 'signin' ? 'signup' : 'signin';
+    document.getElementById('au-primary').textContent = _authMode === 'signin' ? 'Ingresar' : 'Crear cuenta';
+    document.getElementById('au-secondary').textContent = _authMode === 'signin' ? 'Primera vez — crear contraseña' : 'Ya tengo cuenta — ingresar';
+    document.getElementById('au-pass').setAttribute('autocomplete', _authMode === 'signin' ? 'current-password' : 'new-password');
+  };
+
+  window.doAuthPrimary = async function() {
+    var email = (document.getElementById('au-email').value||'').trim().toLowerCase();
+    var pass = document.getElementById('au-pass').value||'';
+    var errEl = document.getElementById('au-err'); errEl.textContent = '';
+    if (!email || pass.length < 6) { errEl.textContent = 'Ingresá tu email y una contraseña de 6+ caracteres.'; return; }
+    try {
+      var res;
+      if (_authMode === 'signup') {
+        res = await sb.auth.signUp({ email: email, password: pass, options: { data: { role: 'supplier', supplier_id: _inv.supplier_id, company_id: _inv.company_id } } });
+        if (res.error) throw new Error(res.error.message);
+        if (!res.data.session) { errEl.textContent = 'Cuenta creada. Revisá tu email para confirmar y después ingresá.'; _authMode='signin'; window.toggleAuthMode(); return; }
+      } else {
+        res = await sb.auth.signInWithPassword({ email: email, password: pass });
+        if (res.error) throw new Error(res.error.message);
+      }
+      await afterAuth();
+    } catch(e) {
+      var m = (e.message||'').toLowerCase();
+      errEl.textContent = m.indexOf('invalid login') !== -1 ? 'Email o contraseña incorrectos.'
+        : m.indexOf('already registered') !== -1 ? 'Ese email ya tiene cuenta. Usá "Ingresar".'
+        : e.message;
+    }
+  };
+
+  window.doLogout = async function(){ try { await sb.auth.signOut(); } catch(e){} location.reload(); };
+
+  async function afterAuth() {
+    show('state-loading');
+    // Cargar el proveedor vinculado a la invitación
+    var r = await sb.from('erp_data').select('*').eq('company_id', _inv.company_id).eq('collection','suppliers').eq('record_id', _inv.supplier_id).eq('deleted', false);
+    var row = (r.data||[])[0];
+    if (!row) { showError('No se encontró tu ficha de proveedor. Contactá a la empresa.'); return; }
+    _sup = Object.assign({ id: row.record_id }, row.data);
+    _company = (_sup.country || 'AR');
+    renderProfile();
+  }
+
+  function renderProfile() {
+    document.getElementById('pf-name').textContent = _sup.name || '';
+    document.getElementById('pf-email').value = _sup.email || '';
+    document.getElementById('pf-phone').value = _sup.phone || '';
+    document.getElementById('pf-address').value = _sup.address || '';
+    var pay = _sup.payment || {};
+    var fields = PAY_FIELDS[_company] || PAY_FIELDS.AR;
+    document.getElementById('pf-payment').innerHTML =
+      '<div style="margin-top:16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase"><i class="fas fa-university"></i> Datos de pago</div>' +
+      fields.map(function(f){ return '<label>' + esc(f[1]) + '</label><input data-pay="' + f[0] + '" value="' + esc(pay[f[0]]||'') + '">'; }).join('');
+    show('state-profile');
+  }
+
+  window.submitChanges = async function() {
+    var errEl = document.getElementById('pf-err'); errEl.textContent='';
+    // Detectar cambios de perfil y de pago
+    var fields = {};
+    [['email','pf-email'],['phone','pf-phone'],['address','pf-address']].forEach(function(p){
+      var nv = (document.getElementById(p[1]).value||'').trim(), ov = _sup[p[0]]||'';
+      if (nv !== ov) fields[p[0]] = { old: ov, new: nv };
+    });
+    var pay = _sup.payment || {};
+    document.querySelectorAll('[data-pay]').forEach(function(el){
+      var k = el.getAttribute('data-pay'), nv = (el.value||'').trim(), ov = pay[k]||'';
+      if (nv !== ov) fields[k] = { old: ov, new: nv };
+    });
+    if (!Object.keys(fields).length) { errEl.textContent = 'No hay cambios para enviar.'; return; }
+    var isBank = Object.keys(fields).some(function(k){ return BANK_KEYS.indexOf(k) !== -1; });
+    var ses = await sb.auth.getSession();
+    var email = ses.data && ses.data.session && ses.data.session.user ? ses.data.session.user.email : (_inv.email||'');
+    var cr = {
+      id: _token + '-' + Date.now(),
+      supplier_id: _inv.supplier_id, supplier_name: _sup.name || _inv.supplier_name || '',
+      scope_company_id: _inv.company_id,
+      type: isBank ? 'bank' : 'general', risk: isBank ? 'high' : 'normal',
+      fields: fields, status: 'pending', source: 'portal',
+      requested_by: email, requested_at: new Date().toISOString(), approvals: [],
+    };
+    try {
+      var ins = await sb.from('erp_data').insert({ company_id: _inv.company_id, collection: 'supplierChangeRequests', record_id: cr.id, data: cr, deleted: false });
+      if (ins.error) throw new Error(ins.error.message);
+      show('state-success');
+    } catch(e) { errEl.textContent = 'No se pudo enviar: ' + e.message; }
+  };
+
+  init();
+})();
+</script>
+</body>
+</html>
