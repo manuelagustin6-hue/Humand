@@ -145,12 +145,27 @@ async function cpFlagSupplier(supplierId, flags) {
   for (var i = 0; i < toPush.length; i++) { await cpCloudWrite(toPush[i].cid, 'suppliers', supplierId, toPush[i].record); }
 }
 
+// Sincroniza el snapshot de las invitaciones del proveedor (lo que el portal SÍ puede
+// leer) con campos del estado actual, para que el dashboard del portal no quede viejo.
+async function cpSyncInvites(supplierId, snapPatch) {
+  var invs = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('supplierPortalInvites') : DB.getAll('supplierPortalInvites');
+  invs = invs.filter(function(x) { return x.supplier_id === supplierId; });
+  for (var i = 0; i < invs.length; i++) {
+    var inv = Object.assign({}, invs[i]);
+    var cid = inv._company_id || inv.company_id || DB._companyId;
+    delete inv._company_id; delete inv._company_name; delete inv._company_currency;
+    inv.snapshot = Object.assign({}, inv.snapshot || {}, snapPatch);
+    await cpCloudWrite(cid, 'supplierPortalInvites', inv.id, inv);
+  }
+}
+
 // Validar / quitar validación de un proveedor. Un proveedor validado es "pagable".
 async function cpValidateSupplier(id, validated) {
   var u = _cpUser();
   await cpFlagSupplier(id, validated
     ? { verification_status: 'validated', validated_by: u.email, validated_at: _cpIso() }
     : { verification_status: 'pending' });
+  await cpSyncInvites(id, { verification_status: validated ? 'validated' : 'pending' });
   toast(validated ? 'Proveedor VALIDADO — ya es pagable.' : 'Validación quitada — el proveedor queda pendiente.', validated ? 'success' : 'warning');
   renderCentralProveedores();
 }
@@ -208,6 +223,14 @@ async function cpApprove(id) {
   var newValues = {};
   Object.keys(cr.fields || {}).forEach(function(k) { newValues[k] = cr.fields[k].new; });
   await cpApplyToSupplier(cr.supplier_id, newValues, { setReviewOk: true });
+  // Refrescar el snapshot del portal (banco enmascarado / contacto) con lo aprobado.
+  function _mask(v) { v = String(v || ''); return v.length > 4 ? '••••' + v.slice(-4) : (v ? '••••' : ''); }
+  var snapPatch = {};
+  ['email', 'phone', 'address', 'bank', 'holder', 'alias'].forEach(function(k) { if (newValues[k] != null) snapPatch[k] = newValues[k]; });
+  if (newValues.uy_bank != null) snapPatch.bank = newValues.uy_bank;
+  var acct = newValues.cbu || newValues.uy_account || newValues.us_account || newValues.us_iban;
+  if (acct != null) snapPatch.cbu_masked = _mask(acct);
+  if (Object.keys(snapPatch).length) { try { await cpSyncInvites(cr.supplier_id, snapPatch); } catch(e) {} }
   if (typeof window.auditLog === 'function') { try { window.auditLog('approve', 'supplierChangeRequests', cr.id, cr); } catch(e) {} }
   toast('Cambio aprobado y aplicado. ' + (cr.risk === 'high' ? 'Pagos desbloqueados.' : ''), 'success');
   renderCentralProveedores();
