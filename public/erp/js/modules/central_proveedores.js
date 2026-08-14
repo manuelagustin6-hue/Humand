@@ -290,6 +290,7 @@ function cpDoInvite(id) {
   var inv = {
     id: (typeof uuid === 'function' ? uuid() : 'inv-' + Date.now()),
     token: token, supplier_id: id, supplier_name: (s && s.name) || '',
+    country: (s && s.country) || 'AR',
     company_id: DB._companyId, email: email, status: 'sent', created_at: _cpIso(),
   };
   DB.insert('supplierPortalInvites', inv);

@@ -148,49 +148,41 @@
   window.doLogout = async function(){ try { await sb.auth.signOut(); } catch(e){} location.reload(); };
 
   async function afterAuth() {
-    show('state-loading');
-    // Cargar el proveedor vinculado a la invitación
-    var r = await sb.from('erp_data').select('*').eq('company_id', _inv.company_id).eq('collection','suppliers').eq('record_id', _inv.supplier_id).eq('deleted', false);
-    var row = (r.data||[])[0];
-    if (!row) { showError('No se encontró tu ficha de proveedor. Contactá a la empresa.'); return; }
-    _sup = Object.assign({ id: row.record_id }, row.data);
-    _company = (_sup.country || 'AR');
+    // Por seguridad el portal NO lee la ficha del proveedor (no expone datos bancarios).
+    // Usa los datos de la invitación y el proveedor completa/actualiza sus datos.
+    _company = _inv.country || 'AR';
     renderProfile();
   }
 
   function renderProfile() {
-    document.getElementById('pf-name').textContent = _sup.name || '';
-    document.getElementById('pf-email').value = _sup.email || '';
-    document.getElementById('pf-phone').value = _sup.phone || '';
-    document.getElementById('pf-address').value = _sup.address || '';
-    var pay = _sup.payment || {};
+    document.getElementById('pf-name').textContent = _inv.supplier_name || '';
     var fields = PAY_FIELDS[_company] || PAY_FIELDS.AR;
     document.getElementById('pf-payment').innerHTML =
       '<div style="margin-top:16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase"><i class="fas fa-university"></i> Datos de pago</div>' +
-      fields.map(function(f){ return '<label>' + esc(f[1]) + '</label><input data-pay="' + f[0] + '" value="' + esc(pay[f[0]]||'') + '">'; }).join('');
+      fields.map(function(f){ return '<label>' + esc(f[1]) + '</label><input data-pay="' + f[0] + '" placeholder="Ingresá el dato actualizado">'; }).join('');
     show('state-profile');
   }
 
   window.submitChanges = async function() {
     var errEl = document.getElementById('pf-err'); errEl.textContent='';
-    // Detectar cambios de perfil y de pago
+    // Sólo se envían los campos que el proveedor completó (con valor). El valor
+    // anterior lo tiene la empresa en su sistema; acá sólo proponemos el nuevo.
     var fields = {};
     [['email','pf-email'],['phone','pf-phone'],['address','pf-address']].forEach(function(p){
-      var nv = (document.getElementById(p[1]).value||'').trim(), ov = _sup[p[0]]||'';
-      if (nv !== ov) fields[p[0]] = { old: ov, new: nv };
+      var nv = (document.getElementById(p[1]).value||'').trim();
+      if (nv) fields[p[0]] = { old: '', new: nv };
     });
-    var pay = _sup.payment || {};
     document.querySelectorAll('[data-pay]').forEach(function(el){
-      var k = el.getAttribute('data-pay'), nv = (el.value||'').trim(), ov = pay[k]||'';
-      if (nv !== ov) fields[k] = { old: ov, new: nv };
+      var k = el.getAttribute('data-pay'), nv = (el.value||'').trim();
+      if (nv) fields[k] = { old: '', new: nv };
     });
-    if (!Object.keys(fields).length) { errEl.textContent = 'No hay cambios para enviar.'; return; }
+    if (!Object.keys(fields).length) { errEl.textContent = 'Completá al menos un dato para enviar.'; return; }
     var isBank = Object.keys(fields).some(function(k){ return BANK_KEYS.indexOf(k) !== -1; });
     var ses = await sb.auth.getSession();
     var email = ses.data && ses.data.session && ses.data.session.user ? ses.data.session.user.email : (_inv.email||'');
     var cr = {
       id: _token + '-' + Date.now(),
-      supplier_id: _inv.supplier_id, supplier_name: _sup.name || _inv.supplier_name || '',
+      supplier_id: _inv.supplier_id, supplier_name: _inv.supplier_name || '',
       scope_company_id: _inv.company_id,
       type: isBank ? 'bank' : 'general', risk: isBank ? 'high' : 'normal',
       fields: fields, status: 'pending', source: 'portal',
