@@ -63,6 +63,7 @@ function cpApplyToSupplier(supplierId, newValues, opts) {
     Object.keys(byCompany).forEach(function(cid) {
       try {
         DB.setCompany(cid);
+        if (DB._blobs && DB._blobs[cid]) { DB._cache = DB._blobs[cid]; DB._cacheKey = DB.KEY; }
         var s = DB.getById('suppliers', supplierId);
         if (!s) return;
         var patch = {};
@@ -93,7 +94,11 @@ function cpFlagSupplier(supplierId, flags) {
     all.filter(function(s){ return s.id === supplierId; }).forEach(function(s){ byCompany[s._company_id || prev] = true; });
     if (!Object.keys(byCompany).length) byCompany[prev] = true;
     Object.keys(byCompany).forEach(function(cid) {
-      try { DB.setCompany(cid); if (DB.getById('suppliers', supplierId)) DB.update('suppliers', supplierId, flags); } catch(e) {}
+      try {
+        DB.setCompany(cid);
+        if (DB._blobs && DB._blobs[cid]) { DB._cache = DB._blobs[cid]; DB._cacheKey = DB.KEY; }
+        if (DB.getById('suppliers', supplierId)) DB.update('suppliers', supplierId, flags);
+      } catch(e) {}
     });
   } finally { try { DB.setCompany(prev); } catch(e) {} }
 }
@@ -110,6 +115,9 @@ function cpUpdateRequest(cr, patch) {
   var ok = false;
   try {
     DB.setCompany(cid);
+    // Forzar que la empresa activa use la copia fresca de RAM (_blobs): la solicitud
+    // vino del portal a la nube y puede no estar en el localStorage local todavía.
+    if (DB._blobs && DB._blobs[cid]) { DB._cache = DB._blobs[cid]; DB._cacheKey = DB.KEY; }
     if (DB.getById('supplierChangeRequests', cr.id)) { DB.update('supplierChangeRequests', cr.id, patch); ok = true; }
   } catch(e) {}
   finally { try { DB.setCompany(prev); } catch(e) {} }
