@@ -120,8 +120,14 @@
     try {
       var r = await sb.from('erp_data').select('*').eq('collection','supplierPortalInvites').eq('deleted', false);
       if (r.error) throw new Error(r.error.message);
-      var row = (r.data||[]).find(function(x){ return x.data && x.data.token === _token; });
-      if (!row) { showError('Este link no es válido o expiró.'); return; }
+      var invRows = r.data || [];
+      var row = invRows.find(function(x){ return x.data && x.data.token === _token; });
+      if (!row) {
+        showError(invRows.length === 0
+          ? 'No se pueden leer las invitaciones (falta la política RLS erp_portal_invites_select en Supabase).'
+          : 'Este link no es válido o expiró. Pedile a la empresa una invitación nueva. (invitaciones visibles: ' + invRows.length + ')');
+        return;
+      }
       _inv = Object.assign({ id: row.record_id }, row.data);
       // ¿ya hay sesión?
       var ses = await sb.auth.getSession();
