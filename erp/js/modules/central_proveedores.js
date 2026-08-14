@@ -16,6 +16,31 @@ function cpToggleDual() {
   renderCentralProveedores();
 }
 
+// Escritura autoritativa a la nube (await) con fallback: si el upsert da 409 (la
+// constraint (company_id,collection,record_id) choca y RLS oculta la fila para el
+// ON CONFLICT), reintenta con un PATCH explícito. Devuelve {ok, error}.
+async function cpCloudWrite(cid, collection, recordId, record) {
+  if (!(_SUPA.session && _SUPA.session.access_token)) return { ok: false, error: 'sin sesión' };
+  var iso = new Date().toISOString();
+  try {
+    var res = await fetch(_SUPA.URL + '/rest/v1/erp_data', {
+      method: 'POST', headers: _SUPA.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify([{ company_id: cid, collection: collection, record_id: recordId, data: record, deleted: false, updated_at: iso }]),
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 409) {
+      var r2 = await fetch(_SUPA.URL + '/rest/v1/erp_data?company_id=eq.' + encodeURIComponent(cid) +
+        '&collection=eq.' + encodeURIComponent(collection) + '&record_id=eq.' + encodeURIComponent(String(recordId)),
+        { method: 'PATCH', headers: _SUPA.hdrs({ 'Prefer': 'return=minimal' }), body: JSON.stringify({ data: record, deleted: false, updated_at: iso }) });
+      if (r2.ok) return { ok: true };
+      var t2 = ''; try { t2 = await r2.text(); } catch(e) {}
+      return { ok: false, error: 'PATCH ' + r2.status + ' ' + t2.slice(0, 120) };
+    }
+    var t = ''; try { t = await res.text(); } catch(e) {}
+    return { ok: false, error: 'HTTP ' + res.status + ' ' + t.slice(0, 120) };
+  } catch(e) { return { ok: false, error: (e && e.message) || String(e) }; }
+}
+
 function _cpUser() {
   var u = (window.APP_STATE && window.APP_STATE.currentUser) || {};
   return { email: (u.email || 'sistema'), name: (u.name || u.email || 'sistema'), role: (u.role || 'viewer') };
@@ -90,16 +115,9 @@ async function cpApplyToSupplier(supplierId, newValues, opts) {
       } catch(e) {}
     });
   } finally { try { DB.setCompany(prev); } catch(e) {} }
-  // Escritura autoritativa a la nube (await) para que el desbloqueo persista.
-  if (_SUPA.session && _SUPA.session.access_token) {
-    for (var i = 0; i < toPush.length; i++) {
-      try {
-        await fetch(_SUPA.URL + '/rest/v1/erp_data', {
-          method: 'POST', headers: _SUPA.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-          body: JSON.stringify([{ company_id: toPush[i].cid, collection: 'suppliers', record_id: supplierId, data: toPush[i].record, deleted: false, updated_at: new Date().toISOString() }]),
-        });
-      } catch(e) {}
-    }
+  // Escritura autoritativa a la nube (await, con fallback PATCH) para que persista.
+  for (var i = 0; i < toPush.length; i++) {
+    await cpCloudWrite(toPush[i].cid, 'suppliers', supplierId, toPush[i].record);
   }
   return toPush.length > 0;
 }
@@ -142,17 +160,9 @@ async function cpUpdateRequest(cr, patch) {
   } catch(e) {}
   finally { try { DB.setCompany(prev); } catch(e) {} }
   if (!updated) updated = Object.assign({}, cr, patch);
+  updated = Object.assign({}, updated);
   delete updated._company_id; delete updated._company_name; delete updated._company_currency;
-  if (!(_SUPA.session && _SUPA.session.access_token)) return { ok: false, error: 'sin sesión' };
-  try {
-    var res = await fetch(_SUPA.URL + '/rest/v1/erp_data', {
-      method: 'POST',
-      headers: _SUPA.hdrs({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-      body: JSON.stringify([{ company_id: cid, collection: 'supplierChangeRequests', record_id: cr.id, data: updated, deleted: false, updated_at: new Date().toISOString() }]),
-    });
-    if (!res.ok) { var t = ''; try { t = await res.text(); } catch(e) {} return { ok: false, error: 'HTTP ' + res.status + ' ' + t.slice(0, 140) }; }
-    return { ok: true };
-  } catch(e) { return { ok: false, error: (e && e.message) || String(e) }; }
+  return await cpCloudWrite(cid, 'supplierChangeRequests', cr.id, updated);
 }
 
 async function cpApprove(id) {
