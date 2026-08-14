@@ -166,9 +166,26 @@
   window.doLogout = async function(){ try { await sb.auth.signOut(); } catch(e){} location.reload(); };
 
   async function afterAuth() {
-    // Por seguridad el portal NO lee la ficha del proveedor (no expone datos bancarios).
-    // Usa los datos de la invitación y el proveedor completa/actualiza sus datos.
-    _company = _inv.country || 'AR';
+    show('state-loading');
+    var ses = await sb.auth.getSession();
+    var user = ses.data && ses.data.session && ses.data.session.user;
+    var uid = user ? user.id : null;
+    var email = user ? user.email : (_inv.email || '');
+    // 1) Vincular la cuenta (uid) al proveedor de la invitación. RLS solo lo permite si
+    //    el token+supplier_id coinciden con una invitación real (seguro). Idempotente.
+    if (uid) {
+      try {
+        await sb.from('erp_data').insert({ company_id: _inv.company_id, collection: 'supplierPortalAccounts',
+          record_id: uid, data: { uid: uid, supplier_id: _inv.supplier_id, token: _token, email: email }, deleted: false });
+      } catch(e) { /* ya existe / RLS aún no aplicado — seguimos con snapshot */ }
+    }
+    // 2) Leer la ficha EN VIVO (si la RLS de portal está aplicada). Si no, snapshot.
+    _sup = null;
+    try {
+      var r = await sb.from('erp_data').select('*').eq('collection', 'suppliers').eq('record_id', _inv.supplier_id).eq('deleted', false).limit(1);
+      if (r.data && r.data[0]) _sup = Object.assign({ id: r.data[0].record_id }, r.data[0].data);
+    } catch(e) {}
+    _company = (_sup && _sup.country) || _inv.country || 'AR';
     renderProfile();
   }
 
@@ -179,24 +196,36 @@
   };
 
   function renderProfile() {
-    document.getElementById('pf-name').textContent = _inv.supplier_name || '';
+    document.getElementById('pf-name').textContent = _inv.supplier_name || (_sup && _sup.name) || '';
     var snap = _inv.snapshot || {};
-    var vs = snap.verification_status || 'pending';
+    var live = !!_sup;
+    var pay = live ? (_sup.payment || {}) : {};
+    // Datos a mostrar: en vivo (completo) si RLS lo permite, si no el snapshot (enmascarado).
+    var d = live ? {
+      cuit: _sup.cuit, email: _sup.email, phone: _sup.phone, address: _sup.address,
+      bank: pay.bank || pay.uy_bank, holder: pay.holder || pay.uy_holder || pay.us_holder,
+      alias: pay.alias, account: pay.cbu || pay.uy_account || pay.us_account || pay.us_iban,
+      verification_status: _sup.verification_status || 'pending',
+    } : {
+      cuit: snap.cuit, email: snap.email, phone: snap.phone, address: snap.address,
+      bank: snap.bank, holder: snap.holder, alias: snap.alias, account: snap.cbu_masked,
+      verification_status: snap.verification_status || 'pending',
+    };
+    var vs = d.verification_status;
     document.getElementById('pf-status-badge').innerHTML = vs === 'validated'
       ? '<span style="background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700"><i class="fas fa-circle-check"></i> Validado</span>'
       : '<span style="background:#fef9c3;color:#a16207;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700"><i class="fas fa-hourglass-half"></i> Pendiente de validación</span>';
-    // Resumen (dashboard) de los datos registrados
     function row(l, v) { return v ? '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px"><span style="color:#64748b">' + esc(l) + '</span><strong>' + esc(v) + '</strong></div>' : ''; }
     document.getElementById('pf-summary').innerHTML =
       '<div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Datos registrados</div>' +
-      row('CUIT/RUT/EIN', snap.cuit) + row('Email', snap.email) + row('Teléfono', snap.phone) + row('Dirección', snap.address) +
-      row('Banco', snap.bank) + row('Titular', snap.holder) + row('Alias', snap.alias) + row('Cuenta', snap.cbu_masked) +
-      '<div class="muted" style="margin-top:8px;font-size:12px">Los datos bancarios se muestran enmascarados por seguridad. Para cambiarlos, cargá el dato completo abajo.</div>';
-    // Campos de pago editables
+      row('CUIT/RUT/EIN', d.cuit) + row('Email', d.email) + row('Teléfono', d.phone) + row('Dirección', d.address) +
+      row('Banco', d.bank) + row('Titular', d.holder) + row('Alias', d.alias) + row('Cuenta', d.account) +
+      '<div class="muted" style="margin-top:8px;font-size:12px">' + (live ? 'Datos actualizados. Para cambiarlos, cargá el nuevo valor abajo.' : 'Los datos bancarios se muestran enmascarados por seguridad. Para cambiarlos, cargá el dato completo abajo.') + '</div>';
+    // Campos de pago editables (prellenados con el valor en vivo si está disponible)
     var fields = PAY_FIELDS[_company] || PAY_FIELDS.AR;
     document.getElementById('pf-payment').innerHTML =
       '<div style="margin-top:16px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase"><i class="fas fa-university"></i> Datos de pago</div>' +
-      fields.map(function(f){ return '<label>' + esc(f[1]) + '</label><input data-pay="' + f[0] + '" placeholder="Ingresá el dato actualizado">'; }).join('');
+      fields.map(function(f){ return '<label>' + esc(f[1]) + '</label><input data-pay="' + f[0] + '" value="' + esc(live ? (pay[f[0]] || '') : '') + '" placeholder="Ingresá el dato actualizado">'; }).join('');
     // Documentos requeridos
     var docs = REQUIRED_DOCS[_company] || REQUIRED_DOCS.AR;
     document.getElementById('pf-docs').innerHTML = docs.map(function(d){
@@ -218,13 +247,15 @@
   window.submitChanges = async function() {
     var errEl = document.getElementById('pf-err'); errEl.textContent='';
     var fields = {};
+    // Valores actuales (en vivo si RLS lo permite) para comparar y enviar solo cambios.
+    var liveMap = _sup ? Object.assign({ email: _sup.email || '', phone: _sup.phone || '', address: _sup.address || '' }, _sup.payment || {}) : {};
     [['email','pf-email'],['phone','pf-phone'],['address','pf-address']].forEach(function(p){
       var nv = (document.getElementById(p[1]).value||'').trim();
-      if (nv) fields[p[0]] = { old: '', new: nv };
+      if (nv && nv !== (liveMap[p[0]] || '')) fields[p[0]] = { old: liveMap[p[0]] || '', new: nv };
     });
     document.querySelectorAll('[data-pay]').forEach(function(el){
       var k = el.getAttribute('data-pay'), nv = (el.value||'').trim();
-      if (nv) fields[k] = { old: '', new: nv };
+      if (nv && nv !== (liveMap[k] || '')) fields[k] = { old: liveMap[k] || '', new: nv };
     });
     // Documentación requerida
     var docEls = Array.prototype.slice.call(document.querySelectorAll('[data-doc]'));

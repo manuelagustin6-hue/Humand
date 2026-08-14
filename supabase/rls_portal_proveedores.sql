@@ -35,9 +35,58 @@ create policy erp_portal_changereq_insert on public.erp_data
     and (data->>'source') = 'portal'
   );
 
--- NOTA: el proveedor NO puede leer supplierChangeRequests (solo insertar), ni leer
--- 'suppliers' ni ninguna otra colección. La Central (usuarios internos, miembros)
--- lee y aprueba con la política general erp_data_select.
+-- ============================================================================
+--  (3) DASHBOARD EN VIVO: el proveedor lee SOLO su propia ficha.
+--  Vinculación segura cuenta(auth.uid) ↔ supplier_id, gateada por el token de la
+--  invitación (que solo el proveedor invitado tiene). No requiere edge function.
+-- ============================================================================
+
+-- 3a) El proveedor crea su vínculo (uid -> supplier_id) SOLO si el token+supplier_id
+--     coinciden con una invitación real. Así no puede vincularse a otro proveedor.
+drop policy if exists erp_portal_account_insert on public.erp_data;
+create policy erp_portal_account_insert on public.erp_data
+  for insert to authenticated
+  with check (
+    collection = 'supplierPortalAccounts'
+    and (data->>'uid') = auth.uid()::text
+    and exists (
+      select 1 from public.erp_data i
+      where i.collection = 'supplierPortalInvites'
+        and i.deleted = false
+        and i.data->>'token' = erp_data.data->>'token'
+        and i.data->>'supplier_id' = erp_data.data->>'supplier_id'
+    )
+  );
+
+-- 3b) El proveedor lee/actualiza SOLO su propio vínculo.
+drop policy if exists erp_portal_account_select on public.erp_data;
+create policy erp_portal_account_select on public.erp_data
+  for select to authenticated
+  using (collection = 'supplierPortalAccounts' and (data->>'uid') = auth.uid()::text);
+
+drop policy if exists erp_portal_account_update on public.erp_data;
+create policy erp_portal_account_update on public.erp_data
+  for update to authenticated
+  using (collection = 'supplierPortalAccounts' and (data->>'uid') = auth.uid()::text)
+  with check (collection = 'supplierPortalAccounts' and (data->>'uid') = auth.uid()::text);
+
+-- 3c) El proveedor lee SOLO su propia ficha de proveedor (la vinculada a su uid).
+drop policy if exists erp_portal_supplier_select on public.erp_data;
+create policy erp_portal_supplier_select on public.erp_data
+  for select to authenticated
+  using (
+    collection = 'suppliers'
+    and exists (
+      select 1 from public.erp_data a
+      where a.collection = 'supplierPortalAccounts'
+        and a.data->>'uid' = auth.uid()::text
+        and a.data->>'supplier_id' = erp_data.record_id
+    )
+  );
+
+-- NOTA: el proveedor NO puede leer supplierChangeRequests de otros ni ninguna otra
+-- colección. Solo su vínculo, su propia ficha (en vivo) y crear solicitudes.
+-- La Central (usuarios internos, miembros) sigue con la política general.
 
 -- Verificación:
 --   select policyname, cmd, roles from pg_policies
