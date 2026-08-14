@@ -122,9 +122,10 @@ async function cpApplyToSupplier(supplierId, newValues, opts) {
   return toPush.length > 0;
 }
 
-// Marca al proveedor bloqueado / en revisión (en todas sus empresas).
-function cpFlagSupplier(supplierId, flags) {
-  var prev = DB._companyId;
+// Marca banderas del proveedor (bloqueo/revisión/validación) en todas sus empresas,
+// con escritura autoritativa a la nube (persiste sin el 409).
+async function cpFlagSupplier(supplierId, flags) {
+  var prev = DB._companyId, toPush = [];
   try {
     var all = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('suppliers') : DB.getAll('suppliers');
     var byCompany = {};
@@ -134,10 +135,24 @@ function cpFlagSupplier(supplierId, flags) {
       try {
         DB.setCompany(cid);
         if (DB._blobs && DB._blobs[cid]) { DB._cache = DB._blobs[cid]; DB._cacheKey = DB.KEY; }
-        if (DB.getById('suppliers', supplierId)) DB.update('suppliers', supplierId, flags);
+        if (DB.getById('suppliers', supplierId)) {
+          var upd = DB.update('suppliers', supplierId, flags);
+          if (upd) { var rec = Object.assign({}, upd); delete rec._company_id; delete rec._company_name; delete rec._company_currency; toPush.push({ cid: cid, record: rec }); }
+        }
       } catch(e) {}
     });
   } finally { try { DB.setCompany(prev); } catch(e) {} }
+  for (var i = 0; i < toPush.length; i++) { await cpCloudWrite(toPush[i].cid, 'suppliers', supplierId, toPush[i].record); }
+}
+
+// Validar / quitar validación de un proveedor. Un proveedor validado es "pagable".
+async function cpValidateSupplier(id, validated) {
+  var u = _cpUser();
+  await cpFlagSupplier(id, validated
+    ? { verification_status: 'validated', validated_by: u.email, validated_at: _cpIso() }
+    : { verification_status: 'pending' });
+  toast(validated ? 'Proveedor VALIDADO — ya es pagable.' : 'Validación quitada — el proveedor queda pendiente.', validated ? 'success' : 'warning');
+  renderCentralProveedores();
 }
 
 function cpFindRequest(id) {
@@ -235,6 +250,7 @@ function renderCentralProveedores() {
     });
   }
   var reqs = cpAllRequests();
+  window._cpReqById = {}; reqs.forEach(function(r) { window._cpReqById[r.id] = r; });
   var pending = reqs.filter(function(r) { return r.status === 'pending'; });
   var suppliers = (typeof DB.getAllConsolidated === 'function') ? DB.getAllConsolidated('suppliers') : DB.getAll('suppliers');
   // dedupe proveedores por id (aparecen en varias empresas)
@@ -298,14 +314,21 @@ function _cpSupplierTable(suppliers) {
   if (!suppliers.length) return '<div class="empty-state"><i class="fas fa-truck"></i><p>No hay proveedores</p></div>';
   return '<table><thead><tr><th>Proveedor</th><th>CUIT/RUT/EIN</th><th>Datos de pago</th><th>Estado</th><th></th></tr></thead><tbody>' +
     suppliers.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).map(function(s) {
+      var vs = s.verification_status;
+      var vbadge = vs === 'validated' ? ' <span class="badge badge-green" title="Proveedor validado — pagable"><i class="fas fa-circle-check"></i> Validado</span>'
+                 : vs === 'pending' ? ' <span class="badge badge-yellow" title="Pendiente de validación — no pagable"><i class="fas fa-hourglass-half"></i> Pend. validación</span>'
+                 : '';
       return '<tr>' +
-        '<td><strong>' + (CP_FLAGS[s.country||'AR']||'🏢') + ' ' + escapeHtml(s.name||'') + '</strong>' +
+        '<td><strong>' + (CP_FLAGS[s.country||'AR']||'🏢') + ' ' + escapeHtml(s.name||'') + '</strong>' + vbadge +
           (s.payment_blocked ? ' <span class="badge badge-red" title="Datos bancarios sin verificar"><i class="fas fa-lock"></i> Pago bloqueado</span>' : '') +
           (s.review_status==='under_review' ? ' <span class="badge badge-yellow"><i class="fas fa-clock"></i> En revisión</span>' : '') + '</td>' +
         '<td style="font-size:12px">' + escapeHtml(s.cuit||'') + '</td>' +
         '<td style="font-size:12px">' + _cpPayResumen(s) + '</td>' +
         '<td>' + (typeof statusBadge==='function' ? statusBadge(s.status) : (s.status||'')) + '</td>' +
         '<td><div class="table-actions">' +
+          (vs === 'validated'
+            ? '<button class="btn-ghost btn btn-sm" title="Quitar validación" onclick="cpValidateSupplier(\'' + s.id + '\', false)"><i class="fas fa-user-slash"></i></button>'
+            : '<button class="btn btn-sm btn-primary" title="Validar proveedor" onclick="cpValidateSupplier(\'' + s.id + '\', true)"><i class="fas fa-user-check"></i> Validar</button>') +
           '<button class="btn-ghost btn btn-sm" title="Editar" onclick="cpEditSupplier(\'' + s.id + '\')"><i class="fas fa-edit"></i></button>' +
           '<button class="btn-ghost btn btn-sm" title="Invitar al portal" onclick="cpInviteSupplier(\'' + s.id + '\')"><i class="fas fa-paper-plane"></i></button>' +
         '</div></td>' +
@@ -345,10 +368,20 @@ function cpDoInvite(id) {
   if (!email) { toast('Ingresá el email del proveedor', 'error'); return; }
   var s = DB.getById('suppliers', id) || (typeof DB.getAllConsolidated === 'function' ? DB.getAllConsolidated('suppliers').find(function(x){ return x.id === id; }) : null);
   var token = _cpToken();
+  // Snapshot para el dashboard del portal (RLS no deja leer la ficha desde el portal).
+  // Datos de contacto + banco ENMASCARADO (nunca el CBU completo en la invitación).
+  function mask(v) { v = String(v || ''); return v.length > 4 ? '••••' + v.slice(-4) : (v ? '••••' : ''); }
+  var pay = (s && s.payment) || {};
+  var snapshot = {
+    cuit: (s && s.cuit) || '', email: (s && s.email) || '', phone: (s && s.phone) || '', address: (s && s.address) || '',
+    verification_status: (s && s.verification_status) || 'pending',
+    bank: pay.bank || pay.uy_bank || '', holder: pay.holder || pay.uy_holder || pay.us_holder || '',
+    cbu_masked: mask(pay.cbu || pay.uy_account || pay.us_account || pay.us_iban), alias: pay.alias || '',
+  };
   var inv = {
     id: (typeof uuid === 'function' ? uuid() : 'inv-' + Date.now()),
     token: token, supplier_id: id, supplier_name: (s && s.name) || '',
-    country: (s && s.country) || 'AR',
+    country: (s && s.country) || 'AR', snapshot: snapshot,
     company_id: DB._companyId, email: email, status: 'sent', created_at: _cpIso(),
   };
   DB.insert('supplierPortalInvites', inv);
@@ -378,7 +411,7 @@ function cpEditSupplier(id) {
 }
 
 function _cpChangesHtml(cr) {
-  return Object.keys(cr.fields || {}).map(function(k) {
+  var out = Object.keys(cr.fields || {}).map(function(k) {
     var f = cr.fields[k];
     return '<div style="font-size:12px;margin:2px 0">' +
       '<span style="color:var(--text-muted)">' + escapeHtml(CP_FIELD_LABELS[k] || k) + ':</span> ' +
@@ -386,6 +419,28 @@ function _cpChangesHtml(cr) {
       '<i class="fas fa-arrow-right" style="font-size:9px;color:#94a3b8"></i> ' +
       '<strong>' + escapeHtml(String(f.new || '—')) + '</strong></div>';
   }).join('');
+  if (cr.documents && cr.documents.length) {
+    out += '<div style="font-size:12px;margin-top:6px"><span style="color:var(--text-muted)"><i class="fas fa-paperclip"></i> Documentos:</span> ' +
+      cr.documents.map(function(d, i) {
+        return '<a href="#" onclick="cpViewDoc(\'' + cr.id + '\',' + i + ');return false" style="color:var(--primary);margin-right:8px"><i class="fas fa-file"></i> ' + escapeHtml(d.label || d.filename || ('doc ' + (i + 1))) + '</a>';
+      }).join('') + '</div>';
+  }
+  return out;
+}
+
+// Abre un documento adjunto (dataUrl base64) en una pestaña nueva.
+function cpViewDoc(crId, idx) {
+  var cr = (window._cpReqById && window._cpReqById[crId]) || cpFindRequest(crId);
+  var d = cr && cr.documents && cr.documents[idx];
+  if (!d || !d.dataUrl) { toast('No se pudo abrir el documento', 'error'); return; }
+  try {
+    var parts = d.dataUrl.split(','), mime = (parts[0].match(/:(.*?);/) || [])[1] || 'application/octet-stream';
+    var bin = atob(parts[1]), arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([arr], { type: mime }));
+    window.open(url, '_blank');
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+  } catch(e) { toast('No se pudo abrir el documento', 'error'); }
 }
 
 function _cpPendingTable(pending) {
