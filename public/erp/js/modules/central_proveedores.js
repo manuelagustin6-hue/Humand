@@ -4,6 +4,18 @@
 // doble aprobación y auditoría. Al aprobar un cambio bancario se levanta el bloqueo
 // de pagos del proveedor.
 
+/* ---- CONFIG ---- */
+function cpGetSetting(key, def) { try { var g = DB.getGlobal(); return (g && g[key] != null) ? g[key] : def; } catch(e) { return def; } }
+function cpSetSetting(key, val) { try { var g = DB.getGlobal(); g[key] = val; DB.saveGlobal(g); } catch(e) {} }
+// ¿Los cambios BANCARIOS requieren doble aprobación (2 personas)? Default: sí.
+function cpRequireDual() { return cpGetSetting('cp_dual_bank_approval', true) !== false; }
+function cpToggleDual() {
+  var now = !cpRequireDual();
+  cpSetSetting('cp_dual_bank_approval', now);
+  toast(now ? 'Doble aprobación para banco: ACTIVADA (2 personas)' : 'Doble aprobación para banco: DESACTIVADA (alcanza 1 admin)', now ? 'success' : 'warning');
+  renderCentralProveedores();
+}
+
 function _cpUser() {
   var u = (window.APP_STATE && window.APP_STATE.currentUser) || {};
   return { email: (u.email || 'sistema'), name: (u.name || u.email || 'sistema'), role: (u.role || 'viewer') };
@@ -129,7 +141,7 @@ function cpApprove(id) {
   if (!cr || cr.status !== 'pending') return;
   var u = _cpUser();
   var approvals = (cr.approvals || []).slice();
-  if (cr.risk === 'high') {
+  if (cr.risk === 'high' && cpRequireDual()) {
     if (approvals.some(function(a) { return a.by === u.email; })) {
       toast('Ya registraste tu aprobación. Un cambio bancario necesita una 2ª aprobación de OTRA persona.', 'warning');
       return;
@@ -223,6 +235,12 @@ function renderCentralProveedores() {
       '<div class="stat-card"><div class="stat-icon green"><i class="fas fa-truck"></i></div><div>' +
         '<div class="stat-value">' + supArr.length + '</div><div class="stat-label">Proveedores</div></div></div>' +
     '</div>' +
+    '<div class="card" style="margin-bottom:12px"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px">' +
+      '<div style="font-size:13px"><i class="fas fa-user-shield" style="color:var(--primary)"></i> <strong>Doble aprobación para cambios bancarios</strong>' +
+        '<div style="font-size:11px;color:var(--text-muted)">' + (cpRequireDual() ? 'Un cambio de CBU/banco necesita 2 personas distintas para aplicarse.' : 'Alcanza con 1 admin para aprobar cambios bancarios (menos seguro).') + '</div></div>' +
+      '<button class="btn btn-sm ' + (cpRequireDual() ? 'btn-primary' : 'btn-secondary') + '" onclick="cpToggleDual()">' +
+        '<i class="fas fa-' + (cpRequireDual() ? 'toggle-on' : 'toggle-off') + '"></i> ' + (cpRequireDual() ? 'Activada' : 'Desactivada') + '</button>' +
+    '</div></div>' +
     (pending.length ? '<div class="card" style="border-left:3px solid var(--warning)"><div class="card-header"><span class="card-title"><i class="fas fa-bell text-warning"></i> Alertas — cambios pendientes de aprobación (' + pending.length + ')</span></div>' +
       '<div class="card-body" style="padding:0"><div class="table-wrap">' + _cpPendingTable(pending) + '</div></div></div>' : '') +
     '<div class="card mt-3"><div class="card-header"><span class="card-title"><i class="fas fa-truck text-primary"></i> Proveedores</span>' +
@@ -344,7 +362,7 @@ function _cpPendingTable(pending) {
     pending.map(function(cr) {
       var bankBadge = cr.risk === 'high' ? '<span class="badge badge-red"><i class="fas fa-university"></i> Bancario</span>' : '<span class="badge badge-gray">General</span>';
       var appr = (cr.approvals || []).length;
-      var apprNote = cr.risk === 'high' ? '<div style="font-size:11px;color:var(--text-muted)">' + appr + '/2 aprobaciones</div>' : '';
+      var apprNote = (cr.risk === 'high' && cpRequireDual()) ? '<div style="font-size:11px;color:var(--text-muted)">' + appr + '/2 aprobaciones</div>' : '';
       return '<tr>' +
         '<td><strong>' + escapeHtml(cr.supplier_name || cr.supplier_id) + '</strong>' + apprNote + '</td>' +
         '<td>' + _cpChangesHtml(cr) + '</td>' +
