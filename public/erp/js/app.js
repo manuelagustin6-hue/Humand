@@ -55,6 +55,7 @@ const MODULES = {
   rubros:          { title: 'Rubros de Obra',                icon: 'fa-list-ol',                render: renderRubros },
   apu:             { title: 'APU — Análisis de Precios Unitarios', icon: 'fa-calculator',       render: renderAPU },
   indices:         { title: 'Indices de Ajuste',             icon: 'fa-chart-line',             render: renderIndices },
+  polinomicas:     { title: 'Polinomicas de Redeterminacion', icon: 'fa-percent',               render: renderPolinomicas },
 
   // Clientes
   clientes:        { title: 'Clientes',                      icon: 'fa-users',                  render: renderClientes },
