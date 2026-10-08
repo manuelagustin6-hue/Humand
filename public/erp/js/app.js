@@ -109,6 +109,7 @@ const MODULES = {
   audit_log:       { title: 'Registro de Auditoría',         icon: 'fa-history',                render: renderAuditLog },
   usuarios:        { title: 'Usuarios',                      icon: 'fa-users',                  render: renderUsuarios },
   ajustes:         { title: 'Ajustes del Sistema',           icon: 'fa-cog',                    render: renderAjustes },
+  importador:      { title: 'Importador de Datos',            icon: 'fa-file-import',            render: renderImportador },
 };
 
 function navigate(module) {
