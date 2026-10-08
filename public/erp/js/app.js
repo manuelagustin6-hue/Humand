@@ -31,6 +31,7 @@ const MODULES = {
   pedidos:         { title: 'Pedidos de Materiales',          icon: 'fa-clipboard-list',         render: renderPedidos },
   ordenes_compra:  { title: 'Ordenes de Compra',             icon: 'fa-file-alt',               render: renderOrdenesCompra },
   licitaciones:    { title: 'Licitaciones',                   icon: 'fa-gavel',                  render: renderLicitaciones },
+  acopio:          { title: 'Acopio / Lista de Precios',      icon: 'fa-boxes-packing',          render: renderAcopio },
 
   // Proveedores
   central_prov:    { title: 'Central de Proveedores',         icon: 'fa-shield-halved',          render: renderCentralProveedores },
