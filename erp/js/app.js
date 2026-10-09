@@ -31,6 +31,8 @@ const MODULES = {
   pedidos:         { title: 'Pedidos de Materiales',          icon: 'fa-clipboard-list',         render: renderPedidos },
   ordenes_compra:  { title: 'Ordenes de Compra',             icon: 'fa-file-alt',               render: renderOrdenesCompra },
   licitaciones:    { title: 'Licitaciones',                   icon: 'fa-gavel',                  render: renderLicitaciones },
+  acopio:          { title: 'Acopio / Lista de Precios',      icon: 'fa-boxes-packing',          render: renderAcopio },
+  remitos:         { title: 'Remitos / Recepción',            icon: 'fa-truck-ramp-box',         render: renderRemitos },
 
   // Proveedores
   central_prov:    { title: 'Central de Proveedores',         icon: 'fa-shield-halved',          render: renderCentralProveedores },
@@ -55,6 +57,7 @@ const MODULES = {
   rubros:          { title: 'Rubros de Obra',                icon: 'fa-list-ol',                render: renderRubros },
   apu:             { title: 'APU — Análisis de Precios Unitarios', icon: 'fa-calculator',       render: renderAPU },
   indices:         { title: 'Indices de Ajuste',             icon: 'fa-chart-line',             render: renderIndices },
+  polinomicas:     { title: 'Polinomicas de Redeterminacion', icon: 'fa-percent',               render: renderPolinomicas },
 
   // Clientes
   clientes:        { title: 'Clientes',                      icon: 'fa-users',                  render: renderClientes },
@@ -106,6 +109,7 @@ const MODULES = {
   audit_log:       { title: 'Registro de Auditoría',         icon: 'fa-history',                render: renderAuditLog },
   usuarios:        { title: 'Usuarios',                      icon: 'fa-users',                  render: renderUsuarios },
   ajustes:         { title: 'Ajustes del Sistema',           icon: 'fa-cog',                    render: renderAjustes },
+  importador:      { title: 'Importador de Datos',            icon: 'fa-file-import',            render: renderImportador },
 };
 
 function navigate(module) {

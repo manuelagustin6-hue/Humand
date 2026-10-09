@@ -848,6 +848,13 @@ function vuNewVenta(prefillUnitId) {
           '<input type="date" id="vu-v-installments-start" class="form-control" value="' + today + '">' +
         '</div>' +
       '</div>' +
+      '<div style="margin-top:12px">' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="vu-v-cac-enabled" onchange="vuToggleCac(this.checked)"> Ajustar cuotas por índice (CAC) — cuotas en pesos</label>' +
+        '<div id="vu-cac-fields" style="display:none;margin-top:10px"><div class="form-grid">' +
+          '<div class="form-group"><label>Índice de ajuste</label><select id="vu-v-cac-index" class="form-control">' + cacIndexOptions() + '</select></div>' +
+          '<div class="form-group"><label>Fecha base (valor del índice al contrato)</label><input type="date" id="vu-v-cac-base" class="form-control" value="' + today + '"></div>' +
+        '</div><div style="font-size:11px;color:var(--text-muted)">El importe de cada cuota se recalcula al cobro: base × (índice del período / índice base).</div></div>' +
+      '</div>' +
     '</div>' +
     '<div class="form-group">' +
       '<label>Observaciones</label>' +
@@ -928,6 +935,20 @@ function vuSaveVenta(id) {
     notes: g('vu-v-notes'),
   };
 
+  // Ajuste CAC (solo planes de cuotas): capturar índice + valor base al contrato.
+  var cacOn = (document.getElementById('vu-v-cac-enabled') || {}).checked;
+  if (cacOn && (payType === 'installments' || payType === 'mixed')) {
+    var cacIdx = g('vu-v-cac-index');
+    var cacBaseDate = g('vu-v-cac-base') || saleDate;
+    var look = (typeof cacLookupValue === 'function') ? cacLookupValue(cacIdx, cacBaseDate) : { value: 0 };
+    data.cac_enabled = true;
+    data.cac_index_id = cacIdx;
+    data.cac_base_date = cacBaseDate;
+    data.cac_base_value = look.value || 0;
+  } else {
+    data.cac_enabled = false;
+  }
+
   if (id) {
     DB.update('ventasUnidades', id, data);
     toast('Venta actualizada', 'success');
@@ -992,7 +1013,8 @@ function vuRenderCuotas(filterSaleId) {
     ventas = ventas.filter(function(v) { return unitIds.indexOf(v.unit_id) !== -1; });
   }
 
-  var html = '<div style="margin-bottom:20px;">';
+  var html = '<div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+    '<button class="btn btn-sm btn-secondary" onclick="openCacResettlements()"><i class="fas fa-rotate"></i> Re-liquidaciones CAC</button>';
   if (ventas.length > 0) {
     html += '<select class="form-control" style="max-width:380px" id="vu-cuotas-filter" onchange="vuRenderCuotas(this.value)">' +
       '<option value="">Todos los contratos</option>' +
@@ -1039,17 +1061,23 @@ function vuRenderCuotas(filterSaleId) {
               var isOverdue = inst.status === 'pending' && inst.due_date < today;
               var statusLabel = inst.status === 'paid' ? '<span class="badge badge-green">Pagado</span>' :
                 (isOverdue ? '<span class="badge badge-red">Vencido</span>' : '<span class="badge badge-yellow">Pendiente</span>');
+              var adj = (typeof cacCuotaAmount === 'function') ? cacCuotaAmount(v, inst) : { amount: inst.amount, estado: '' };
+              var cobrarAmt = adj.amount || inst.amount || 0;
+              var importeCell = (v.cac_enabled && adj.estado && adj.estado !== 'sin_indice')
+                ? fmtMoney(adj.amount, v.currency) + ' ' + (CAC_ESTADO_BADGE[adj.estado] || '') +
+                  '<div style="font-size:11px;color:var(--text-muted)">base ' + fmtMoney(adj.base, v.currency) + '</div>'
+                : fmtMoney(inst.amount, v.currency);
               return '<tr' + (isOverdue ? ' style="background:rgba(239,68,68,0.04)"' : '') + '>' +
                 '<td>' + inst.number + '</td>' +
                 '<td>' + (inst.concept || '') + '</td>' +
                 '<td>' + fmtDate(inst.due_date) + '</td>' +
-                '<td>' + fmtMoney(inst.amount, v.currency) + '</td>' +
+                '<td>' + importeCell + '</td>' +
                 '<td>' + statusLabel + '</td>' +
                 '<td style="font-size:12px">' + (cobro ? fmtDate(cobro.date) : '—') + '</td>' +
                 '<td>' + (cobro ? fmtMoney(cobro.amount, v.currency) : '—') + '</td>' +
                 '<td>' +
                   (inst.status !== 'paid'
-                    ? '<button class="btn btn-sm btn-primary" onclick="vuRegistrarCobro(\'' + v.id + '\',\'' + inst.id + '\',' + (inst.amount || 0) + ',\'' + (v.currency || 'ARS') + '\')"><i class="fas fa-dollar-sign"></i> Cobrar</button>'
+                    ? '<button class="btn btn-sm btn-primary" onclick="vuRegistrarCobro(\'' + v.id + '\',\'' + inst.id + '\',' + cobrarAmt + ',\'' + (v.currency || 'ARS') + '\')"><i class="fas fa-dollar-sign"></i> Cobrar</button>'
                     : '') +
                 '</td>' +
               '</tr>';
@@ -1092,6 +1120,11 @@ function vuConfirmCobro(saleId, installmentId) {
   var cobAmt = parseFloat(g('vu-c-amount')) || 0;
   if (!cobDate || !cobAmt) { toast('Complete fecha e importe', 'error'); return; }
 
+  // Ajuste CAC aplicado (si la venta lo usa): para auditar y re-liquidar.
+  var ventaC = DB.getById('ventasUnidades', saleId);
+  var instC = ventaC && ventaC.installments ? ventaC.installments.find(function(i){ return i.id === installmentId; }) : null;
+  var cac = (ventaC && ventaC.cac_enabled && instC && typeof cacCuotaAmount === 'function') ? cacCuotaAmount(ventaC, instC) : null;
+
   DB.insert('cobrosVentas', {
     sale_id: saleId,
     installment_id: installmentId,
@@ -1101,13 +1134,21 @@ function vuConfirmCobro(saleId, installmentId) {
     method: g('vu-c-method'),
     reference: g('vu-c-ref'),
     notes: g('vu-c-notes'),
+    cac_estado: cac ? cac.estado : '',
+    cac_factor: cac ? cac.factor : null,
+    cac_value_used: cac ? cac.value : null,
+    cac_base_amount: cac ? cac.base : null,
   });
 
   // Mark installment as paid
   var venta = DB.getById('ventasUnidades', saleId);
   if (venta && venta.installments) {
     var insts = venta.installments.map(function(inst) {
-      if (inst.id === installmentId) return Object.assign({}, inst, { status: 'paid', paid_date: cobDate, paid_amount: cobAmt });
+      if (inst.id === installmentId) return Object.assign({}, inst, {
+        status: 'paid', paid_date: cobDate, paid_amount: cobAmt,
+        cac_estado: cac ? cac.estado : undefined,
+        cac_factor: cac ? cac.factor : undefined,
+      });
       return inst;
     });
     DB.update('ventasUnidades', saleId, { installments: insts });

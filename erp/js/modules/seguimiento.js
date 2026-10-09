@@ -208,7 +208,17 @@ function renderControlPresupuestal(projectId) {
     });
   });
 
-  let totBudget = 0, totAjustado = 0, totContratado = 0, totEjecutado = 0, totPrevision = 0, totCosto = 0, totSaldo = 0;
+  // Change orders: adicionales de contrato (demasía +, economía −) por rubro.
+  const changeOrderMap = {};
+  contracts.forEach(c => {
+    (c.adicionales || []).forEach(a => {
+      if (!a || !a.rubro_id) return;
+      const amt = a.type === 'economia' ? -(Math.abs(a.amount) || 0) : (Math.abs(a.amount) || 0);
+      changeOrderMap[a.rubro_id] = (changeOrderMap[a.rubro_id] || 0) + amt;
+    });
+  });
+
+  let totBudget = 0, totAjustado = 0, totContratado = 0, totChangeOrders = 0, totEjecutado = 0, totPrevision = 0, totCosto = 0, totSaldo = 0;
 
   function arsNum(v, colorType) {
     const n = Math.abs(v);
@@ -231,22 +241,24 @@ function renderControlPresupuestal(projectId) {
     const factor = (idx && idx.base_value) ? (idx.current_value / idx.base_value) : 1;
     const presupuestoAjustado = budgetAmt * factor;
     const contratado = contratoMap[r.id] || 0;
+    const changeOrders = changeOrderMap[r.id] || 0;
     const ejecutado = p.executed_external || 0;
     const previsionBruta = p.prevision || 0;
     const previsionEfectiva = Math.max(0, previsionBruta - contratado);
-    const costoTotal = contratado + ejecutado + previsionEfectiva;
+    const costoTotal = contratado + changeOrders + ejecutado + previsionEfectiva;
     const saldo = presupuestoAjustado - costoTotal;
-    const hasData = budgetAmt || contratado || ejecutado || previsionBruta;
+    const hasData = budgetAmt || contratado || changeOrders || ejecutado || previsionBruta;
 
     totBudget += budgetAmt;
     totAjustado += presupuestoAjustado;
     totContratado += contratado;
+    totChangeOrders += changeOrders;
     totEjecutado += ejecutado;
     totPrevision += previsionEfectiva;
     totCosto += costoTotal;
     totSaldo += saldo;
 
-    return { r, p, budgetAmt, indexId, idx, factor, presupuestoAjustado, contratado, ejecutado, previsionBruta, previsionEfectiva, costoTotal, saldo, hasData };
+    return { r, p, budgetAmt, indexId, idx, factor, presupuestoAjustado, contratado, changeOrders, ejecutado, previsionBruta, previsionEfectiva, costoTotal, saldo, hasData };
   });
 
   // Group rubros by category
@@ -255,7 +267,7 @@ function renderControlPresupuestal(projectId) {
   rubroData.forEach(function(rd) {
     const cat = rd.r.category || 'Sin Categoría';
     if (!seenCats[cat]) {
-      seenCats[cat] = { cat: cat, items: [], tB: 0, tA: 0, tC: 0, tE: 0, tP: 0, tCost: 0, tS: 0 };
+      seenCats[cat] = { cat: cat, items: [], tB: 0, tA: 0, tC: 0, tCO: 0, tE: 0, tP: 0, tCost: 0, tS: 0 };
       groups.push(seenCats[cat]);
     }
     const g = seenCats[cat];
@@ -263,6 +275,7 @@ function renderControlPresupuestal(projectId) {
     g.tB    += rd.budgetAmt;
     g.tA    += rd.presupuestoAjustado;
     g.tC    += rd.contratado;
+    g.tCO   += rd.changeOrders;
     g.tE    += rd.ejecutado;
     g.tP    += rd.previsionEfectiva;
     g.tCost += rd.costoTotal;
@@ -287,6 +300,7 @@ function renderControlPresupuestal(projectId) {
       '<td style="' + P + ';text-align:center;color:#94a3b8;font-size:11px">—</td>' +
       '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tA ? arsNum(g.tA) : '<span style="color:#cbd5e1">—</span>') + '</td>' +
       '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tC > 0 ? arsNum(g.tC, 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
+      '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tCO !== 0 ? arsNum(g.tCO, g.tCO < 0 ? 'green' : 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
       '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tE > 0 ? arsNum(g.tE, 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
       '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tP > 0 ? arsNum(g.tP, 'blue') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
       '<td style="' + P + ';text-align:right;white-space:nowrap">' + (g.tCost > 0 ? arsNum(g.tCost, g.tCost > g.tA && g.tA > 0 ? 'red' : '') : '<span style="color:#cbd5e1">—</span>') + '</td>' +
@@ -331,6 +345,9 @@ function renderControlPresupuestal(projectId) {
             ? '<span style="cursor:pointer" onclick="openContratadoDetail(\'' + projectId + '\',\'' + r.id + '\')" title="Ver detalle">' + arsNum(rd.contratado, 'blue') + '</span>'
             : '<span style="color:#cbd5e1">' + arsNum(0, 'muted') + '</span>') +
         '</td>' +
+        '<td style="padding:8px 12px;text-align:right;white-space:nowrap" title="Demasías (+) / economías (−) de contratos">' +
+          (rd.changeOrders !== 0 ? arsNum(rd.changeOrders, rd.changeOrders < 0 ? 'green' : 'blue') : '<span style="color:#cbd5e1">' + arsNum(0, 'muted') + '</span>') +
+        '</td>' +
         '<td style="padding:8px 12px;text-align:right;white-space:nowrap">' +
           '<span ' + editIcon(projectId, r.id, 'executed_external', rd.ejecutado) + ' title="Editar ejecutado">' +
             (rd.ejecutado ? arsNum(rd.ejecutado, 'blue') : emptyEdit) +
@@ -352,6 +369,7 @@ function renderControlPresupuestal(projectId) {
   const summaryCards = [
     { label: 'Presupuesto ajustado', val: totAjustado,   color: '#2563eb' },
     { label: 'Contratado',           val: totContratado, color: '#7c3aed' },
+    { label: 'Change orders',        val: totChangeOrders, color: totChangeOrders < 0 ? '#059669' : '#7c3aed' },
     { label: 'Ejecutado ext.',        val: totEjecutado,  color: '#0891b2' },
     { label: 'Previsión efectiva',    val: totPrevision,  color: '#d97706' },
     { label: 'Saldo',                 val: totSaldo,      color: totSaldo >= 0 ? '#059669' : '#dc2626' },
@@ -394,7 +412,7 @@ function renderControlPresupuestal(projectId) {
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px">
     ${summaryCards}
   </div>
 
@@ -414,6 +432,7 @@ function renderControlPresupuestal(projectId) {
             <th style="${thCtr}">Índice act.</th>
             <th style="${thStyle}">Ppto. Ajustado</th>
             <th style="${thStyle}">Contratado</th>
+            <th style="${thStyle}">Change Ord.</th>
             <th style="${thStyle}">Ejec. ext.</th>
             <th style="${thStyle}">Previsión ef.</th>
             <th style="${thStyle}">Costo Total</th>
@@ -428,6 +447,7 @@ function renderControlPresupuestal(projectId) {
             <td style="${tfStyle}"></td>
             <td style="${tfStyle}">${arsNum(totAjustado)}</td>
             <td style="${tfStyle}">${arsNum(totContratado, totContratado > 0 ? 'blue' : 'muted')}</td>
+            <td style="${tfStyle}">${totChangeOrders !== 0 ? arsNum(totChangeOrders, totChangeOrders < 0 ? 'green' : 'blue') : arsNum(0, 'muted')}</td>
             <td style="${tfStyle}">${arsNum(totEjecutado, totEjecutado > 0 ? 'blue' : 'muted')}</td>
             <td style="${tfStyle}">${arsNum(totPrevision, totPrevision > 0 ? 'blue' : 'muted')}</td>
             <td style="${tfStyle}">${arsNum(totCosto, totCosto > totAjustado && totAjustado > 0 ? 'red' : '')}</td>
@@ -728,9 +748,14 @@ function exportControlPresupuestal(projectId) {
   const partidaMap = {};
   partidas.forEach(p => { partidaMap[p.rubro_id] = p; });
   const contratoMap = {};
+  const changeOrderMap = {};
   contracts.forEach(c => {
     (c.items || []).forEach(item => {
       if (item.rubro_id) contratoMap[item.rubro_id] = (contratoMap[item.rubro_id]||0) + (item.total||0);
+    });
+    (c.adicionales || []).forEach(a => {
+      if (!a || !a.rubro_id) return;
+      changeOrderMap[a.rubro_id] = (changeOrderMap[a.rubro_id]||0) + (a.type === 'economia' ? -(Math.abs(a.amount)||0) : (Math.abs(a.amount)||0));
     });
   });
 
@@ -741,16 +766,17 @@ function exportControlPresupuestal(projectId) {
     const factor = (idx && idx.base_value) ? (idx.current_value / idx.base_value) : 1;
     const ajustado = budgetAmt * factor;
     const contratado = contratoMap[r.id] || 0;
+    const changeOrders = changeOrderMap[r.id] || 0;
     const ejecutado = p.executed_external || 0;
     const previsionBruta = p.prevision || 0;
     const previsionEfec = Math.max(0, previsionBruta - contratado);
-    const costoTotal = contratado + ejecutado + previsionEfec;
-    return [r.code, r.name, budgetAmt, idx ? idx.code : '', ajustado, contratado, ejecutado, previsionBruta, costoTotal, ajustado - costoTotal];
+    const costoTotal = contratado + changeOrders + ejecutado + previsionEfec;
+    return [r.code, r.name, budgetAmt, idx ? idx.code : '', ajustado, contratado, changeOrders, ejecutado, previsionBruta, costoTotal, ajustado - costoTotal];
   });
 
   exportXLSX(
     `ControlPresupuestal_${proj?.name?.replace(/\s+/g,'_') || projectId}.xlsx`,
-    ['Codificación','Partida','Monto Presupuesto','Índice','Ppto. Ajustado','Contratado','Ejec. Ext.','Previsión','Costo Total','Saldo'],
+    ['Codificación','Partida','Monto Presupuesto','Índice','Ppto. Ajustado','Contratado','Change Orders','Ejec. Ext.','Previsión','Costo Total','Saldo'],
     rows
   );
 }

@@ -427,6 +427,18 @@ function updateCollectionBalance(invoiceId) {
 }
 
 // Genera un ingreso en Tesorería para un cobro (si se eligió cuenta que recibe).
+// Asiento automático del cobro (Caja/Banco ← Cuentas por Cobrar). La contraparte
+// (AR) sale de la config de "Factura Emitida". Si no hay cuenta configurada, el
+// motor omite el asiento sin romper (mapear cuentas en el módulo Asientos).
+function _cobranzaAsiento(coll) {
+  if (typeof autoJournalEntry !== 'function' || !coll || !(coll.amount > 0)) return;
+  var ar = (typeof ajGetConfig === 'function' && ajGetConfig('fact_emitida')) ? ajGetConfig('fact_emitida').account : '';
+  autoJournalEntry('cobro_cliente', coll.amount, coll.date || todayStr(),
+    coll.reference || ('COBRO-' + (coll.invoice_id || coll.id || '')),
+    'Cobro' + (coll.client_name ? ' — ' + coll.client_name : ''),
+    { counterAccount: ar, counterName: 'Cuentas por Cobrar', project_id: coll.project_id || '', counterparty: coll.client_name || '', currency: coll.currency || '', book: coll.book || 'A' });
+}
+
 function _cobranzaToTesoreria(accountId, coll, clientName) {
   if (!accountId || !(coll.amount > 0)) return;
   DB.insert('treasuryTx', {
@@ -471,6 +483,7 @@ function saveCollection() {
 
     var _coll = DB.insert('collections', data);
     _cobranzaToTesoreria(accountId, _coll || data, data.client_name);
+    _cobranzaAsiento(_coll || data);
 
     var allCollected = DB.getAll('collections').filter(function(c) { return c.invoice_id === invoiceId; }).reduce(function(s,c){ return s+c.amount; }, 0);
     if (inv && allCollected >= inv.total) {
@@ -503,6 +516,7 @@ function saveCollection() {
 
     var _collC = DB.insert('collections', data);
     _cobranzaToTesoreria(accountId, _collC || data, data.client_name);
+    _cobranzaAsiento(_collC || data);
     toast('Cuota registrada' + (accountId ? ' e ingreso en Tesorería' : ''), 'success');
   }
 

@@ -178,6 +178,16 @@
                 <i class="fas fa-gavel"></i><span>Licitaciones</span>
               </a>
             </li>
+            <li class="nav-item" data-module="acopio">
+              <a href="#" onclick="navigate('acopio')">
+                <i class="fas fa-boxes-packing"></i><span>Acopio / Lista de Precios</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="remitos">
+              <a href="#" onclick="navigate('remitos')">
+                <i class="fas fa-truck-ramp-box"></i><span>Remitos / Recepción</span>
+              </a>
+            </li>
           </ul>
         </li>
 
@@ -310,6 +320,11 @@
             <li class="nav-item" data-module="indices">
               <a href="#" onclick="navigate('indices')">
                 <i class="fas fa-percent"></i><span>Índices de Ajuste</span>
+              </a>
+            </li>
+            <li class="nav-item" data-module="polinomicas">
+              <a href="#" onclick="navigate('polinomicas')">
+                <i class="fas fa-superscript"></i><span>Polinómicas</span>
               </a>
             </li>
           </ul>
@@ -515,6 +530,11 @@
                 <i class="fas fa-cog"></i><span>Configuración General</span>
               </a>
             </li>
+            <li class="nav-item" data-module="importador">
+              <a href="#" onclick="navigate('importador')">
+                <i class="fas fa-file-import"></i><span>Importador de Datos</span>
+              </a>
+            </li>
           </ul>
         </li>
       </ul>
@@ -608,7 +628,8 @@
 
 <!-- SCRIPTS -->
 <script src="js/db.js?v=54"></script>
-<script src="js/utils.js?v=22"></script>
+<script src="js/utils.js?v=23"></script>
+<script src="js/cac.js?v=1"></script>
 <script src="js/consolid.js?v=1"></script>
 <script src="js/fiscal.js?v=1"></script>
 <script src="js/modules/dashboard.js?v=15"></script>
@@ -616,9 +637,9 @@
 <script src="js/modules/attachments.js?v=4"></script>
 <script src="js/modules/compras.js?v=48"></script>
 <script src="js/modules/central_proveedores.js?v=11"></script>
-<script src="js/modules/ordenes_pedido.js?v=5"></script>
-<script src="js/modules/presupuesto.js?v=7"></script>
-<script src="js/modules/seguimiento.js?v=13"></script>
+<script src="js/modules/ordenes_pedido.js?v=6"></script>
+<script src="js/modules/presupuesto.js?v=8"></script>
+<script src="js/modules/seguimiento.js?v=14"></script>
 <script src="js/modules/gantt.js?v=8"></script>
 <script src="js/modules/afip.js?v=1"></script>
 <script src="js/modules/facturacion.js?v=31"></script>
@@ -630,10 +651,11 @@
 <script src="js/modules/ordenes_pago.js?v=31"></script>
 <script src="js/modules/retenciones.js?v=13"></script>
 <script src="js/modules/indices.js?v=7"></script>
+<script src="js/modules/polinomicas.js?v=1"></script>
 <script src="js/modules/empresas.js?v=5"></script>
-<script src="js/modules/asientos.js?v=10"></script>
+<script src="js/modules/asientos.js?v=11"></script>
 <script src="js/modules/aprobaciones.js?v=8"></script>
-<script src="js/modules/contratos.js?v=19"></script>
+<script src="js/modules/contratos.js?v=20"></script>
 <script src="js/modules/minutas.js?v=2"></script>
 <script src="js/modules/panel_obra.js?v=2"></script>
 <script src="js/modules/obra_docs.js?v=2"></script>
@@ -641,6 +663,7 @@
 <script src="js/modules/reportes.js?v=7"></script>
 <script src="js/modules/usuarios.js?v=35"></script>
 <script src="js/modules/ajustes.js?v=33"></script>
+<script src="js/modules/importador.js?v=1"></script>
 <script src="js/modules/nuevos.js?v=8"></script>
 <script src="js/modules/cuentas.js?v=7"></script>
 <script src="js/modules/bancos.js?v=5"></script>
@@ -654,6 +677,8 @@
 <script src="js/modules/apu.js?v=5"></script>
 <script src="js/modules/rrhh.js?v=2"></script>
 <script src="js/modules/licitaciones.js?v=12"></script>
+<script src="js/modules/acopio.js?v=1"></script>
+<script src="js/modules/remitos.js?v=2"></script>
 <script src="js/modules/conciliaciones.js?v=5"></script>
 <script src="js/modules/inversiones.js?v=2"></script>
 <script src="js/modules/reporte_tesoreria.js?v=4"></script>

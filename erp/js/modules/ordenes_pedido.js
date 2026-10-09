@@ -88,6 +88,7 @@ function renderOrdenesPedido() {
   document.getElementById('breadcrumb').innerHTML = '<i class="fas fa-list-check"></i><span>Órdenes de Pedido</span>';
   window._odpFilters = { q: '', status: '', project: '' };
   _odpAnimateCounters();
+  if (typeof attachColumnChooser === 'function') attachColumnChooser('odp-table-wrap', 'odp');
 }
 
 // Cuenta ascendente para los números de los KPIs (efecto del mockup).
@@ -179,6 +180,7 @@ function filterODP(q, status, project) {
   if (f.project) list = list.filter(r => r.project_id === f.project);
   const wrap = document.getElementById('odp-table-wrap');
   if (wrap) wrap.innerHTML = buildODPTable(list, DB.getAll('projects'));
+  if (typeof attachColumnChooser === 'function') attachColumnChooser('odp-table-wrap', 'odp');
 }
 
 /* ────────────────────────────────────────── FORM VIEW (full page) */
