@@ -575,6 +575,19 @@ function markPOPaid(id) {
   } else {
     toast('Orden marcada como pagada (sin cuenta bancaria: no se registró egreso)', 'warning');
   }
+
+  // Asiento automático del pago (Cuentas por Pagar → Caja/Banco) por el neto pagado.
+  // Contraparte (AP) desde la config de "Factura Proveedor". Si no hay cuenta
+  // configurada, el motor omite el asiento sin romper. (Las retenciones generan su
+  // propio asiento en el módulo de retenciones.)
+  if (typeof autoJournalEntry === 'function' && net > 0) {
+    var ap = (typeof ajGetConfig === 'function' && ajGetConfig('fact_proveedor')) ? ajGetConfig('fact_proveedor').account : '';
+    var _supN = '';
+    try { var _s = DB.getById('suppliers', o.supplier_id); _supN = _s ? _s.name : ''; } catch (e) {}
+    autoJournalEntry('orden_pago', net, o.date || todayStr(), o.number || o.id,
+      'Pago a ' + _supN, { counterAccount: ap, counterName: 'Cuentas por Pagar', project_id: o.project_id || '', counterparty: _supN, currency: o.currency || '' });
+  }
+
   renderOrdenesPago();
 }
 

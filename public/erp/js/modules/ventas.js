@@ -1013,7 +1013,8 @@ function vuRenderCuotas(filterSaleId) {
     ventas = ventas.filter(function(v) { return unitIds.indexOf(v.unit_id) !== -1; });
   }
 
-  var html = '<div style="margin-bottom:20px;">';
+  var html = '<div style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+    '<button class="btn btn-sm btn-secondary" onclick="openCacResettlements()"><i class="fas fa-rotate"></i> Re-liquidaciones CAC</button>';
   if (ventas.length > 0) {
     html += '<select class="form-control" style="max-width:380px" id="vu-cuotas-filter" onchange="vuRenderCuotas(this.value)">' +
       '<option value="">Todos los contratos</option>' +
