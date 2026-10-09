@@ -277,6 +277,131 @@ function initTabs(containerId) {
   if (firstBtn) firstBtn.click();
 }
 
+// ---- TRAZABILIDAD END-TO-END ----
+// Reconstruye el hilo de documentos relacionados siguiendo los *_id reales.
+var TRACE_LABELS = {
+  purchaseRequests: 'Orden de Pedido', purchaseOrders: 'Orden de Compra', receipts: 'Remito',
+  contratos: 'Contrato', certificaciones: 'Certificación', supplierInvoices: 'Factura Proveedor',
+  paymentOrders: 'Orden de Pago', invoices: 'Factura Cliente', collections: 'Cobro', treasuryTx: 'Mov. Tesorería',
+};
+var TRACE_ORDER = ['purchaseRequests', 'purchaseOrders', 'receipts', 'contratos', 'certificaciones', 'supplierInvoices', 'paymentOrders', 'invoices', 'collections', 'treasuryTx'];
+// Aristas padre→hijo: el hijo referencia al padre por `fk` (o por un array `arrayFk`).
+var TRACE_EDGES = [
+  { parent: 'purchaseOrders', child: 'receipts', fk: 'po_id' },
+  { parent: 'purchaseOrders', child: 'supplierInvoices', fk: 'po_id' },
+  { parent: 'contratos', child: 'supplierInvoices', fk: 'contract_id' },
+  { parent: 'contratos', child: 'certificaciones', fk: 'contrato_id' },
+  { parent: 'supplierInvoices', child: 'paymentOrders', fk: 'supplier_invoice_id', arrayFk: { field: 'applied_invoices', idKey: 'id' } },
+  { parent: 'paymentOrders', child: 'treasuryTx', fk: 'source_id', when: function (t) { return t.source === 'payment_order'; } },
+  { parent: 'invoices', child: 'collections', fk: 'invoice_id' },
+  { parent: 'collections', child: 'treasuryTx', fk: 'source_id', when: function (t) { return t.source === 'collection'; } },
+];
+
+function _traceNode(col, rec) {
+  return {
+    collection: col, id: rec.id, label: TRACE_LABELS[col] || col,
+    number: rec.number || rec.id, date: rec.date || rec.fecha || rec.created_at || '',
+    amount: rec.total != null ? rec.total : (rec.amount != null ? rec.amount : (rec.net_amount != null ? rec.net_amount : (rec.gross_amount || 0))),
+  };
+}
+
+function traceChain(collection, id) {
+  var start = DB.getById(collection, id);
+  if (!start) return [];
+  var seen = {}, nodes = [];
+  function visit(col, rec) {
+    var k = col + ':' + rec.id;
+    if (seen[k]) return;
+    seen[k] = true;
+    nodes.push(_traceNode(col, rec));
+    // hijos
+    TRACE_EDGES.filter(function (e) { return e.parent === col; }).forEach(function (e) {
+      (DB.getAll(e.child) || []).forEach(function (ch) {
+        var linked = ch[e.fk] === rec.id ||
+          (e.arrayFk && (ch[e.arrayFk.field] || []).some(function (x) { return (x && x[e.arrayFk.idKey] || x) === rec.id; }));
+        if (linked && (!e.when || e.when(ch))) visit(e.child, ch);
+      });
+    });
+    // padres
+    TRACE_EDGES.filter(function (e) { return e.child === col; }).forEach(function (e) {
+      if (rec[e.fk]) { var p = DB.getById(e.parent, rec[e.fk]); if (p) visit(e.parent, p); }
+      if (e.arrayFk) (rec[e.arrayFk.field] || []).forEach(function (x) { var pp = DB.getById(e.parent, (x && x[e.arrayFk.idKey]) || x); if (pp) visit(e.parent, pp); });
+    });
+  }
+  visit(collection, start);
+  nodes.sort(function (a, b) { return TRACE_ORDER.indexOf(a.collection) - TRACE_ORDER.indexOf(b.collection); });
+  return nodes;
+}
+
+function openTrace(collection, id) {
+  var chain = traceChain(collection, id);
+  var body;
+  if (chain.length <= 1) {
+    body = '<div class="empty-state"><i class="fas fa-link-slash"></i><p>Sin documentos relacionados todavía.</p></div>';
+  } else {
+    body = '<div style="display:flex;flex-direction:column;gap:0">' + chain.map(function (n, i) {
+      return '<div style="display:flex;gap:12px;align-items:flex-start">' +
+        '<div style="display:flex;flex-direction:column;align-items:center">' +
+          '<div style="width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px"><i class="fas fa-file"></i></div>' +
+          (i < chain.length - 1 ? '<div style="width:2px;flex:1;min-height:18px;background:var(--border)"></div>' : '') +
+        '</div>' +
+        '<div style="padding-bottom:14px">' +
+          '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">' + escapeHtml(n.label) + '</div>' +
+          '<div style="font-size:13px"><strong>' + escapeHtml(String(n.number)) + '</strong>' + (n.date ? ' · ' + fmtDate(n.date) : '') + (n.amount ? ' · ' + fmtMoney(n.amount) : '') + '</div>' +
+        '</div></div>';
+    }).join('') + '</div>';
+  }
+  openModal('Trazabilidad', body, 'modal-lg', '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
+}
+
+// ---- SELECTOR DE COLUMNAS (no invasivo, post-render) ----
+// Agrega un botón "Columnas" sobre la tabla del wrap indicado; permite mostrar/
+// ocultar columnas por índice y recuerda la elección por usuario (localStorage).
+function attachColumnChooser(wrapId, storageKey) {
+  var wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  var table = wrap.querySelector('table');
+  if (!table || !table.querySelector('thead th')) return;
+  var ths = table.querySelectorAll('thead th');
+  var hidden = {};
+  try { hidden = JSON.parse(localStorage.getItem('cols_' + storageKey) || '{}') || {}; } catch (e) { hidden = {}; }
+
+  function apply() {
+    table.querySelectorAll('tr').forEach(function (tr) {
+      for (var i = 0; i < tr.children.length; i++) tr.children[i].style.display = hidden[i] ? 'none' : '';
+    });
+  }
+  apply();
+
+  // Evitar duplicar la barra si se re-renderiza.
+  var prev = wrap.parentNode && wrap.parentNode.querySelector('.colchooser[data-for="' + wrapId + '"]');
+  if (prev) prev.remove();
+
+  var labels = [];
+  ths.forEach(function (th, i) { labels.push(th.textContent.trim() || ('Col ' + (i + 1))); });
+  var bar = document.createElement('div');
+  bar.className = 'colchooser';
+  bar.setAttribute('data-for', wrapId);
+  bar.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px;position:relative';
+  bar.innerHTML =
+    '<button class="btn btn-sm btn-secondary" type="button"><i class="fas fa-table-columns"></i> Columnas</button>' +
+    '<div class="colchooser-menu" style="display:none;position:absolute;right:0;top:110%;z-index:60;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-md);padding:8px;min-width:190px;max-height:320px;overflow:auto">' +
+    labels.map(function (l, i) { return '<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:4px 6px;cursor:pointer"><input type="checkbox" data-ci="' + i + '" ' + (hidden[i] ? '' : 'checked') + '> ' + escapeHtml(l) + '</label>'; }).join('') +
+    '</div>';
+  wrap.parentNode.insertBefore(bar, wrap);
+
+  var menu = bar.querySelector('.colchooser-menu');
+  bar.querySelector('button').addEventListener('click', function (e) { e.stopPropagation(); menu.style.display = menu.style.display === 'none' ? 'block' : 'none'; });
+  menu.addEventListener('click', function (e) { e.stopPropagation(); });
+  menu.addEventListener('change', function (e) {
+    var ci = e.target.getAttribute('data-ci'); if (ci == null) return;
+    hidden[ci] = !e.target.checked;
+    try { localStorage.setItem('cols_' + storageKey, JSON.stringify(hidden)); } catch (err) {}
+    apply();
+  });
+  document.addEventListener('click', function () { if (menu) menu.style.display = 'none'; });
+}
+
 // ---- EXPORT CSV ----
 function exportCSV(filename, headers, rows) {
   const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${(c ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');

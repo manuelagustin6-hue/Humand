@@ -294,5 +294,6 @@ function viewRemito(id) {
 </div>
 ${r.notes ? '<p style="margin-top:10px"><strong>Notas:</strong> ' + escapeHtml(r.notes) + '</p>' : ''}
 <p style="font-size:11px;color:var(--text-muted);margin-top:8px"><i class="fas fa-circle-info"></i> La factura del proveedor puede referenciar esta OC/recepción.</p>
-`, 'modal-lg', `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>`);
+`, 'modal-lg', `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
+   <button class="btn btn-secondary" onclick="openTrace('purchaseOrders','${r.po_id}')"><i class="fas fa-diagram-project"></i> Ver trazabilidad</button>`);
 }
