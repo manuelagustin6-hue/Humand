@@ -429,7 +429,9 @@ function autoAttachColumnChoosers(moduleKey) {
         wrap = p;
       } else {
         wrap = document.createElement('div');
-        wrap.className = 'cc-wrap';
+        // table-wrap → la tabla scrollea DENTRO de la cajita (reusa CSS existente),
+        // así la página no scrollea de costado y el botón "Columnas" queda fijo.
+        wrap.className = 'cc-wrap table-wrap';
         table.parentNode.insertBefore(wrap, table);
         wrap.appendChild(table);
       }
