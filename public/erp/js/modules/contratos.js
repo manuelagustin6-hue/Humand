@@ -739,6 +739,10 @@ function openAddAdicionalModal(contractId) {
         '<input class="form-control" id="adic-new-desc" placeholder="Descripción del adicional"></div>' +
       '<div class="form-group"><label class="form-label">Monto *</label>' +
         '<input class="form-control" id="adic-new-amount" type="number" min="0" step="0.01" placeholder="0"></div>' +
+      '<div class="form-group full"><label class="form-label">Rubro (para que impacte el control presupuestal)</label>' +
+        '<select class="form-control" id="adic-new-rubro"><option value="">— Sin rubro —</option>' +
+        DB.getAll('rubros').filter(function(r){ return r.active !== false; }).sort(function(a,b){ return (a.code||'').localeCompare(b.code||''); }).map(function(r){ return '<option value="' + r.id + '">' + escapeHtml(r.code + ' — ' + r.name) + '</option>'; }).join('') +
+        '</select></div>' +
     '</div>',
     'modal-md',
     '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
@@ -757,6 +761,7 @@ function doAddAdicionalToContract(contractId) {
     description: desc,
     date:        document.getElementById('adic-new-date').value,
     amount:      amount,
+    rubro_id:    (document.getElementById('adic-new-rubro') || {}).value || '',
   };
   var adicionales = (contract.adicionales || []).concat([newAdic]);
   var baseTotal = contract.base_total != null ? contract.base_total : ((contract.total_amount || 0) - adicionalesNet(contract.adicionales || []));
