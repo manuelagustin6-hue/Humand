@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo 'ERP estático: sin install'",
+  "buildCommand": "echo 'ERP estático: sin build'",
+  "outputDirectory": "public/erp",
+  "cleanUrls": true,
+  "trailingSlash": false
+}
