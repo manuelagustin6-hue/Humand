@@ -15,6 +15,7 @@ function renderPresupuesto() {
       <option value="">Seleccionar proyecto...</option>
       ${projects.map(p => `<option value="${p.id}" ${p.id===activeProjectId?'selected':''}>${p.name}</option>`).join('')}
     </select>
+    <button class="btn btn-secondary" onclick="openBase0(window.APP_STATE.activeProject)"><i class="fas fa-camera"></i> Base 0</button>
     <button class="btn btn-secondary" onclick="exportBOQ()"><i class="fas fa-download"></i> Exportar</button>
     <button class="btn btn-primary" onclick="openBOQItemForm()"><i class="fas fa-plus"></i> Nuevo Ítem</button>
   </div>
@@ -30,6 +31,58 @@ function renderPresupuesto() {
 function loadBOQ(projectId) {
   window.APP_STATE.activeProject = projectId;
   document.getElementById('boq-container').innerHTML = projectId ? renderBOQ(projectId) : `<div class="empty-state"><i class="fas fa-calculator"></i><p>Seleccioná un proyecto</p></div>`;
+}
+
+/* ===== BASE 0 — presupuesto inicial inmutable, versionado por fecha ===== */
+function openBase0(projectId) {
+  if (!projectId) { toast('Seleccioná un proyecto primero', 'warning'); return; }
+  var versions = DB.getAll('budgetBaselines').filter(function (b) { return b.project_id === projectId; })
+    .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.version - a.version); });
+  var items = DB.getAll('boqItems').filter(function (b) { return b.project_id === projectId; });
+  var curTotal = items.reduce(function (s, b) { return s + (b.total || 0); }, 0);
+  var rows = versions.length ? versions.map(function (v) {
+    return '<tr>' +
+      '<td><strong>' + escapeHtml(v.label || ('Base 0 v' + v.version)) + '</strong></td>' +
+      '<td>' + fmtDate(v.date) + '</td>' +
+      '<td class="number-cell text-right">' + (v.items || []).length + '</td>' +
+      '<td class="number-cell text-right">' + fmtMoney(v.total || 0) + '</td>' +
+      '<td><button class="btn btn-sm btn-secondary" onclick="viewBase0(\'' + v.id + '\')"><i class="fas fa-eye"></i></button></td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px">Sin versiones. Congelá la primera Base 0.</td></tr>';
+  var body =
+    '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">La Base 0 es una foto <strong>inmutable</strong> del cómputo, para comparar contra la ejecución. Cómputo actual: <strong>' + items.length + ' ítems · ' + fmtMoney(curTotal) + '</strong>.</p>' +
+    '<div class="table-wrap"><table><thead><tr><th>Versión</th><th>Fecha</th><th class="text-right">Ítems</th><th class="text-right">Total</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  openModal('Base 0 — versiones del presupuesto', body, 'modal-lg',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>' +
+    '<button class="btn btn-primary" onclick="congelarBase0(\'' + projectId + '\')"><i class="fas fa-camera"></i> Congelar Base 0 actual</button>');
+}
+
+function congelarBase0(projectId) {
+  var items = DB.getAll('boqItems').filter(function (b) { return b.project_id === projectId; });
+  if (!items.length) { toast('El cómputo está vacío: no hay nada para congelar', 'error'); return; }
+  var existing = DB.getAll('budgetBaselines').filter(function (b) { return b.project_id === projectId; });
+  var version = existing.length + 1;
+  var snapshot = items.map(function (b) {
+    return { chapter: b.chapter, item: b.item, category: b.category, description: b.description, unit: b.unit, quantity: b.quantity, unit_price: b.unit_price, total: b.total };
+  });
+  var total = snapshot.reduce(function (s, b) { return s + (b.total || 0); }, 0);
+  DB.insert('budgetBaselines', { project_id: projectId, version: version, label: 'Base 0 v' + version, date: todayStr(), items: snapshot, total: total });
+  toast('Base 0 v' + version + ' congelada (' + snapshot.length + ' ítems · ' + fmtMoney(total) + ')', 'success');
+  openBase0(projectId);
+}
+
+function viewBase0(id) {
+  var v = DB.getById('budgetBaselines', id);
+  if (!v) return;
+  var rows = (v.items || []).map(function (it) {
+    return '<tr><td>' + escapeHtml(it.chapter || '') + '</td><td>' + escapeHtml(it.description || '') + '</td><td>' + escapeHtml(it.unit || '') +
+      '</td><td class="number-cell text-right">' + fmtNum(it.quantity) + '</td><td class="number-cell text-right">' + fmtMoney(it.unit_price) +
+      '</td><td class="number-cell text-right">' + fmtMoney(it.total) + '</td></tr>';
+  }).join('');
+  openModal(escapeHtml(v.label || 'Base 0') + ' — ' + fmtDate(v.date) + ' (solo lectura)',
+    '<div class="table-wrap"><table><thead><tr><th>Cap.</th><th>Descripción</th><th>Un.</th><th class="text-right">Cant.</th><th class="text-right">P.Unit</th><th class="text-right">Total</th></tr></thead><tbody>' + rows + '</tbody>' +
+    '<tfoot><tr class="total-row"><td colspan="5" class="text-right">Total</td><td class="number-cell text-right">' + fmtMoney(v.total || 0) + '</td></tr></tfoot></table></div>',
+    'modal-lg', '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>');
 }
 
 function renderBOQ(projectId) {
