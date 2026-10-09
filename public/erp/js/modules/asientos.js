@@ -39,6 +39,7 @@ function renderAsientos() {
       '<div class="page-title"><i class="fas fa-magic" style="margin-right:8px;color:var(--primary)"></i>Asientos Automaticos</div>' +
       '<div class="page-subtitle">Asigne una cuenta contable por tipo de operacion. El sistema generara el asiento automaticamente al registrar cada operacion.</div>' +
     '</div></div>' +
+    ajBuildPendingSection() +
     '<div class="card">' +
       '<table class="table">' +
         '<thead><tr>' +
@@ -109,6 +110,87 @@ function ajSaveConfig(operationId, config) {
     db.autoJournalConfig[idx] = Object.assign({}, db.autoJournalConfig[idx], record);
   }
   DB.save(db);
+}
+
+// ---- PENDIENTES (asientos que no se pudieron generar por falta de config) ----
+// En vez de descartar en silencio, se guardan con el motivo para no perderlos y
+// poder reintentarlos una vez mapeada la cuenta.
+function _recordPendingJournal(opType, amount, date, ref, desc, opts, reason) {
+  try {
+    opts = opts || {};
+    var rec = {
+      operation_type: opType, amount: amount, date: date || now().split('T')[0],
+      reference: ref || '', description: desc || '',
+      project_id: opts.project_id || '', counterparty: opts.counterparty || '',
+      currency: opts.currency || '', book: opts.book || 'A',
+      counter_account: opts.counterAccount || '', counter_name: opts.counterName || '',
+      reason: reason || '', status: 'pending',
+    };
+    if (opts._imputacion) { rec.kind = 'imputacion'; rec.imputacion = opts._imputacion; rec.neto = opts._neto; rec.total = opts._total; rec.taxes = opts._taxes; }
+    else { rec.kind = 'simple'; }
+    DB.insert('pendingJournalEntries', rec);
+  } catch (e) { console.error('pendingJournal:', e); }
+}
+
+function ajPendingCount() {
+  return DB.getAll('pendingJournalEntries').filter(function (p) { return p.status !== 'done'; }).length;
+}
+
+function _ajRepost(p) {
+  var opts = { project_id: p.project_id, counterparty: p.counterparty, currency: p.currency, book: p.book, counterAccount: p.counter_account, counterName: p.counter_name, _noPend: true };
+  return (p.kind === 'imputacion')
+    ? autoJournalEntryFromImputacion(p.operation_type, p.imputacion || [], p.neto, p.total, p.taxes, p.date, p.reference, opts)
+    : autoJournalEntry(p.operation_type, p.amount, p.date, p.reference, p.description, opts);
+}
+
+function ajRetryPending(id) {
+  var p = DB.getById('pendingJournalEntries', id);
+  if (!p) return;
+  if (_ajRepost(p)) { DB.remove('pendingJournalEntries', id); toast('Asiento generado', 'success'); }
+  else { toast('Todavía falta configurar la cuenta de este tipo', 'warning'); }
+  renderAsientos();
+}
+
+function ajRetryAllPending() {
+  var pend = DB.getAll('pendingJournalEntries').filter(function (p) { return p.status !== 'done'; });
+  var ok = 0;
+  pend.forEach(function (p) { if (_ajRepost(p)) { DB.remove('pendingJournalEntries', p.id); ok++; } });
+  toast(ok + ' asiento(s) generado(s)' + (ok < pend.length ? ' · ' + (pend.length - ok) + ' siguen pendientes' : ''), ok ? 'success' : 'warning');
+  renderAsientos();
+}
+
+function ajDiscardPending(id) {
+  confirmDialog('¿Descartar este asiento pendiente? No se registrará.', function () {
+    DB.remove('pendingJournalEntries', id);
+    toast('Pendiente descartado', 'warning');
+    renderAsientos();
+  });
+}
+
+function ajBuildPendingSection() {
+  var pend = DB.getAll('pendingJournalEntries').filter(function (p) { return p.status !== 'done'; });
+  if (!pend.length) return '';
+  var typeName = function (id) { var t = AJ_TYPES.find(function (x) { return x.id === id; }); return t ? t.name : id; };
+  var rows = pend.map(function (p) {
+    return '<tr>' +
+      '<td>' + escapeHtml(typeName(p.operation_type)) + '</td>' +
+      '<td>' + fmtDate(p.date) + '</td>' +
+      '<td style="font-size:12px">' + escapeHtml(p.reference || '') + (p.counterparty ? ' · ' + escapeHtml(p.counterparty) : '') + '</td>' +
+      '<td class="number-cell text-right">' + fmtMoney(p.amount, p.currency) + '</td>' +
+      '<td style="font-size:12px;color:var(--danger)">' + escapeHtml(p.reason || '') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<button class="btn btn-sm btn-primary" onclick="ajRetryPending(\'' + p.id + '\')"><i class="fas fa-rotate"></i> Reintentar</button> ' +
+        '<button class="btn btn-sm btn-ghost danger" onclick="ajDiscardPending(\'' + p.id + '\')"><i class="fas fa-trash"></i></button>' +
+      '</td></tr>';
+  }).join('');
+  return '<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warning,#f59e0b)">' +
+    '<div class="card-header" style="display:flex;justify-content:space-between;align-items:center">' +
+      '<span class="card-title"><i class="fas fa-triangle-exclamation" style="color:var(--warning)"></i> Asientos pendientes de ajustar (' + pend.length + ')</span>' +
+      '<button class="btn btn-sm btn-secondary" onclick="ajRetryAllPending()"><i class="fas fa-rotate"></i> Reintentar todos</button>' +
+    '</div>' +
+    '<div class="card-body" style="padding:0"><div class="table-wrap"><table class="table">' +
+      '<thead><tr><th>Tipo</th><th>Fecha</th><th>Referencia</th><th class="text-right">Importe</th><th>Motivo</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></div></div>';
 }
 
 // ---- EDIT MODAL ----
@@ -267,11 +349,13 @@ function ajSaveEdit(typeId) {
 // Retorna el asiento creado o null si no hay config activa.
 function autoJournalEntry(operationTypeId, amount, date, ref, description, opts) {
   try {
-    var cfg = ajGetConfig(operationTypeId);
-    if (!cfg || !cfg.active || !cfg.account) return null;
-    if (!amount || isNaN(amount) || amount <= 0) return null;
-
     opts = opts || {};
+    if (!amount || isNaN(amount) || amount <= 0) return null;
+    var cfg = ajGetConfig(operationTypeId);
+    if (!cfg || !cfg.active || !cfg.account) {
+      if (!opts._noPend) _recordPendingJournal(operationTypeId, amount, date, ref, description, opts, 'Tipo de operación sin cuenta configurada');
+      return null;
+    }
     var concept = (cfg.concept_template || 'Asiento auto - {ref}')
       .replace(/\{ref\}/g, ref || '')
       .replace(/\{date\}/g, date || '')
@@ -290,7 +374,8 @@ function autoJournalEntry(operationTypeId, amount, date, ref, description, opts)
     var _accts = DB.getAll('accounts');
     var _counterValid = counterCode && _accts.some(function(a) { return a.code === counterCode; });
     if (!_counterValid) {
-      console.warn('[asientos] "' + operationTypeId + '": sin cuenta contraparte válida — asiento omitido para no descuadrar el balance.');
+      console.warn('[asientos] "' + operationTypeId + '": sin cuenta contraparte válida — queda pendiente de ajustar.');
+      if (!opts._noPend) _recordPendingJournal(operationTypeId, amount, date, ref, description, opts, 'Cuenta contraparte no configurada');
       return null;
     }
 
@@ -328,7 +413,10 @@ function autoJournalEntryFromImputacion(operationTypeId, imputacion, neto, total
   try {
     opts = opts || {};
     var cfg = ajGetConfig(operationTypeId);
-    if (!cfg || !cfg.active || !cfg.account) return null;
+    if (!cfg || !cfg.active || !cfg.account) {
+      if (!opts._noPend) _recordPendingJournal(operationTypeId, (total || neto || 0), date, ref, '', Object.assign({}, opts, { _imputacion: imputacion, _neto: neto, _total: total, _taxes: taxes }), 'Tipo de operación sin cuenta configurada');
+      return null;
+    }
     var validLines = (imputacion || []).filter(function(l) { return l.account_code && l.amount > 0; });
     if (!validLines.length) return autoJournalEntry(operationTypeId, total, date, ref, '', opts);
     taxes = taxes || {};
