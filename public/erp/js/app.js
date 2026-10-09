@@ -1,6 +1,6 @@
 /* ===== APP CORE / ROUTER ===== */
 
-var APP_VERSION = '2026-06-16-v7';
+var APP_VERSION = '2026-06-16-v8';
 
 function forceClearCache() {
   var btn = event && event.target ? event.target.closest('button') : null;
@@ -147,6 +147,8 @@ function navigate(module) {
   setTimeout(function() {
     try {
       mod.render();
+      // Selector de columnas automático en tablas anchas (overflow en móvil).
+      if (typeof autoAttachColumnChoosers === 'function') autoAttachColumnChoosers(module);
     } catch(e) {
       content.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error al cargar modulo: ' + e.message + '</p></div>';
       console.error(e);

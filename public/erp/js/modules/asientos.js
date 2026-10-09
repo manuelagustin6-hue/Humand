@@ -53,6 +53,9 @@ function renderAsientos() {
         '<tbody id="aj-tbody">' + ajBuildRows() + '</tbody>' +
       '</table>' +
     '</div>';
+  // Re-enganchar el selector de columnas: este módulo se re-dibuja solo al
+  // configurar una fila (sin pasar por navigate()), así que lo llamamos acá.
+  if (typeof autoAttachColumnChoosers === 'function') autoAttachColumnChoosers('asientos');
 }
 
 function ajBuildRows() {

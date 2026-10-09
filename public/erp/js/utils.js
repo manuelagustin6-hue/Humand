@@ -402,6 +402,44 @@ function attachColumnChooser(wrapId, storageKey) {
   document.addEventListener('click', function () { if (menu) menu.style.display = 'none'; });
 }
 
+// Engancha automáticamente un selector de columnas a TODAS las tablas anchas del
+// módulo recién renderizado (#content). Evita duplicar en módulos que ya lo manejan
+// solos (p. ej. Órdenes de Pedido). No toca tablas de modales (#modal-body es aparte).
+function autoAttachColumnChoosers(moduleKey) {
+  try {
+    var content = document.getElementById('content');
+    if (!content || typeof attachColumnChooser !== 'function') return;
+    var tables = content.querySelectorAll('table');
+    var n = 0;
+    tables.forEach(function (table) {
+      // Solo tablas anchas (con encabezados) — las chicas no se cortan en móvil.
+      if (table.querySelectorAll('thead th').length < 5) return;
+      // Ya gobernada por un selector (p. ej. un módulo que lo maneja solo, como
+      // Órdenes de Pedido): si algún ancestro con id ya tiene su .colchooser, saltear.
+      var alreadyGoverned = false;
+      var anc = table.parentNode;
+      while (anc && anc !== content) {
+        if (anc.id && content.querySelector('.colchooser[data-for="' + anc.id + '"]')) { alreadyGoverned = true; break; }
+        anc = anc.parentNode;
+      }
+      if (alreadyGoverned) { n++; return; }
+      var p = table.parentNode;
+      var wrap;
+      if (p && p.classList && p.classList.contains('cc-wrap')) {
+        wrap = p;
+      } else {
+        wrap = document.createElement('div');
+        wrap.className = 'cc-wrap';
+        table.parentNode.insertBefore(wrap, table);
+        wrap.appendChild(table);
+      }
+      if (!wrap.id) wrap.id = 'ccw-' + moduleKey + '-' + n;
+      attachColumnChooser(wrap.id, moduleKey + '_' + n);
+      n++;
+    });
+  } catch (e) { console.error('autoColChooser', e); }
+}
+
 // ---- EXPORT CSV ----
 function exportCSV(filename, headers, rows) {
   const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${(c ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
